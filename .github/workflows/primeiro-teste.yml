@@ -60,7 +60,7 @@ jobs:
           const server = ext.mcpServers?.['chrome-devtools'];
           if (!server || !Array.isArray(server.args)) throw new Error('Configuracao MCP ausente');
           server.args = server.args.filter(arg => !/^--(headless|isolated|executable-path|executablePath|chrome-arg)/.test(arg));
-          server.args.push('--headless', '--isolated', '--executable-path=' + process.env.CHROME_BIN);
+          server.args.push('--headless', '--isolated', '--executable-path=' + process.env.CHROME_BIN, '--chrome-arg', '--no-sandbox', '--log-file=/tmp/chrome-devtools-mcp.log');
           fs.writeFileSync(config, JSON.stringify(ext, null, 2) + '\n');
           console.log('Chrome DevTools configurado para execucao sem interface.');
           NODE
@@ -72,7 +72,7 @@ jobs:
         run: |
           mkdir -p evidencias
           gemini mcp list
-          gemini -p 'Use as ferramentas MCP do Chrome DevTools para abrir https://horizonsolucoes.com. Inspecione o viewport mobile 390x844, procure erros no console e de rede e descreva apenas fatos observados em portugues. Nao altere o site nem envie formularios. Indique se realmente utilizou o Chrome DevTools MCP.' --approval-mode=yolo --output-format=json > evidencias/relatorio.json
+          timeout 150s gemini --model gemini-2.5-flash-lite -p 'Use somente as ferramentas Chrome DevTools MCP para abrir https://horizonsolucoes.com e verificar a tela mobile 390x844. Diga objetivamente se o navegador abriu e relate erros observados. Se o MCP falhar, informe o erro e encerre; nao use shell nem web_fetch como alternativa.' --approval-mode=yolo --output-format=json > evidencias/relatorio.json
           echo 'Auditoria concluida. Relatorio salvo.'
 
       - name: Capturar screenshot mobile independente
