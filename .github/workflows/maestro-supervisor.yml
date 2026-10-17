@@ -1,0 +1,52 @@
+name: May Maestro - Radar Proativo
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Apenas inspecionar, sem usar Gemini nem abrir issues'
+        type: boolean
+        default: true
+  push:
+    branches: [main]
+    paths:
+      - 'supervisor.py'
+      - '.github/workflows/maestro-supervisor.yml'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: maestro-proactive
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar supervisor
+        run: python3 supervisor.py --self-test
+
+  proactively-review:
+    if: github.event_name != 'push'
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gemini analisa e solicita tarefas para May
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: gemini-3.5-flash-lite
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            python3 supervisor.py --dry-run
+          else
+            python3 supervisor.py
+          fi
