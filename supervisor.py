@@ -44,19 +44,21 @@ def discover(get=github, today=None):
             print("Repository unavailable:", project, type(err).__name__, file=sys.stderr)
             continue
         seen = set()
+        failures = 0
         for run in history.get("workflow_runs", []):
-            if run.get("conclusion") != "failure":
-                continue
             name = re.sub(r"\s+", " ", str(run.get("name", "CI"))).strip()[:85]
             if name in seen:
                 continue
             seen.add(name)
+            if run.get("conclusion") != "failure":
+                continue
+            failures += 1
             found.append({"key":project + ":ci:" + name, "project":project,
                           "kind":"ci_failure", "summary":"Workflow failed: "+name,
                           "url":run.get("html_url","")})
-            if len(seen) >= 2:
+            if failures >= 2:
                 break
-        if not seen:
+        if failures == 0:
             found.append({"key":project + ":review:" + week, "project":project,
                           "kind":"periodic_review",
                           "summary":"Review existing UI, regression tests and delivery opportunities; this is not a confirmed defect.",
