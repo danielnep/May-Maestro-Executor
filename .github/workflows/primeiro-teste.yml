@@ -65,6 +65,21 @@ jobs:
           console.log('Chrome DevTools configurado para execucao sem interface.');
           NODE
 
+      - name: Testar Chrome MCP diretamente sem IA
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          mkdir -p evidencias
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const file = path.join(process.env.HOME, '.gemini', 'extensions', 'chrome-devtools-mcp', 'gemini-extension.json');
+          const ext = JSON.parse(fs.readFileSync(file, 'utf8'));
+          fs.writeFileSync('.mcp-smoke.json', JSON.stringify({mcpServers: {'chrome-devtools': ext.mcpServers['chrome-devtools']}}, null, 2));
+          NODE
+          timeout 90s npx -y @modelcontextprotocol/inspector --cli --config .mcp-smoke.json --server chrome-devtools --method tools/call --tool-name list_pages --format json > evidencias/chrome-mcp.json
+          echo 'Chrome DevTools MCP testado independentemente da IA.'
+
       - name: Testar Gemini e Chrome DevTools MCP
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -72,7 +87,7 @@ jobs:
         run: |
           mkdir -p evidencias
           gemini mcp list
-          timeout 150s gemini --model gemini-2.5-flash-lite -p 'Use somente as ferramentas Chrome DevTools MCP para abrir https://horizonsolucoes.com e verificar a tela mobile 390x844. Diga objetivamente se o navegador abriu e relate erros observados. Se o MCP falhar, informe o erro e encerre; nao use shell nem web_fetch como alternativa.' --approval-mode=yolo --output-format=json > evidencias/relatorio.json
+          timeout 150s gemini --model gemini-3.5-flash-lite -p 'Use somente as ferramentas Chrome DevTools MCP para abrir https://horizonsolucoes.com e verificar a tela mobile 390x844. Diga objetivamente se o navegador abriu e relate erros observados. Se o MCP falhar, informe o erro e encerre; nao use shell nem web_fetch como alternativa.' --approval-mode=yolo --output-format=json > evidencias/relatorio.json
           echo 'Auditoria concluida. Relatorio salvo.'
 
       - name: Capturar screenshot mobile independente
