@@ -60,10 +60,25 @@ jobs:
           const server = ext.mcpServers?.['chrome-devtools'];
           if (!server || !Array.isArray(server.args)) throw new Error('Configuracao MCP ausente');
           server.args = server.args.filter(arg => !/^--(headless|isolated|executable-path|executablePath|chrome-arg)/.test(arg));
-          server.args.push('--headless', '--isolated', '--executable-path=' + process.env.CHROME_BIN, '--chrome-arg', '--no-sandbox', '--log-file=/tmp/chrome-devtools-mcp.log');
+          server.args.push('--browser-url=http://127.0.0.1:9222', '--log-file=/tmp/chrome-devtools-mcp.log');
           fs.writeFileSync(config, JSON.stringify(ext, null, 2) + '\n');
           console.log('Chrome DevTools configurado para execucao sem interface.');
           NODE
+
+      - name: Iniciar Chrome remoto via porta local
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: |
+          "$CHROME_BIN" --headless --no-sandbox --disable-dev-shm-usage --disable-gpu --no-first-run --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$RUNNER_TEMP/chrome-maestro" about:blank > "$RUNNER_TEMP/chrome-maestro.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:9222/json/version >/dev/null; then
+              echo 'Chrome respondeu na porta local 9222.'
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/chrome-maestro.log"
+          exit 1
 
       - name: Testar Chrome MCP diretamente sem IA
         env:
