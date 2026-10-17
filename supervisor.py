@@ -189,6 +189,9 @@ def main():
     if args.self_test:
         self_test()
         return
+    # Legacy Gemini auditor retired at user request: only May reviews projects.
+    print("Gemini supervisor desativado. A auditoria proativa pertence a May no ChatGPT.")
+    return
     signals=discover()
     print("Evidence signals:",len(signals))
     if args.dry_run:
