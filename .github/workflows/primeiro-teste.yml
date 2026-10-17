@@ -14,38 +14,71 @@ jobs:
       - name: Obter arquivos do repositorio
         uses: actions/checkout@v4
 
+      - name: Verificar chave do Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo 'ERRO: GEMINI_API_KEY ausente. Configure em Settings > Secrets and variables > Actions.'
+            exit 1
+          fi
+          echo 'Chave encontrada no ambiente (valor oculto).'
+
       - name: Preparar Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      - name: Instalar Google Chrome para testes
+      - name: Instalar Google Chrome
         uses: browser-actions/setup-chrome@v2
         id: chrome
         with:
           install-dependencies: true
 
-      - name: Verificar se a chave esta configurada
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: | if [ -z "$GEMINI_API_KEY" ]; then echo "ERRO: falta adicionar GEMINI_API_KEY em Settings > Secrets and variables > Actions." exit 1 fi 
-      - name: Instalar Gemini CLI e Chrome DevTools MCP
-        run: | npm install -g @google/gemini-cli gemini extensions install --consent https://github.com/ChromeDevTools/chrome-devtools-mcp 
-      - name: Configurar Chrome DevTools para rodar sem janela
+      - name: Instalar Gemini CLI e extensao oficial do Chrome
+        run: |
+          npm install -g @google/gemini-cli
+          gemini --version
+          gemini extensions install --consent --auto-update https://github.com/ChromeDevTools/chrome-devtools-mcp
+          gemini extensions list
+
+      - name: Configurar Chrome DevTools MCP em modo headless
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: | node <<'NODE' const fs = require('node:fs'); const path = require('node:path'); const file = path.join(process.env.HOME, '.gemini', 'extensions', 'chrome-devtools-mcp', 'gemini-extension.json'); const settings = JSON.parse(fs.readFileSync(file, 'utf8')); const server = settings.mcpServers['chrome-devtools']; if (!server || !Array.isArray(server.args)) throw new Error('Extensao Chrome DevTools nao encontrada'); server.args = server.args.filter(arg => !/^--(headless|isolated|executable-path|executablePath)/.test(arg)); server.args.push('--headless', '--isolated', `--executable-path=${process.env.CHROME_BIN}`); fs.writeFileSync(file, JSON.stringify(settings, null, 2)); NODE 
-      - name: Verificar extensao e executar auditoria
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const config = path.join(process.env.HOME, '.gemini', 'extensions', 'chrome-devtools-mcp', 'gemini-extension.json');
+          if (!fs.existsSync(config)) throw new Error('Extensao nao encontrada: ' + config);
+          const ext = JSON.parse(fs.readFileSync(config, 'utf8'));
+          const server = ext.mcpServers?.['chrome-devtools'];
+          if (!server || !Array.isArray(server.args)) throw new Error('Configuracao MCP ausente');
+          server.args = server.args.filter(arg => !/^--(headless|isolated|executable-path|executablePath|chrome-arg)/.test(arg));
+          server.args.push('--headless', '--isolated', '--executable-path=' + process.env.CHROME_BIN);
+          fs.writeFileSync(config, JSON.stringify(ext, null, 2) + '\n');
+          console.log('Chrome DevTools configurado para execucao sem interface.');
+          NODE
+
+      - name: Testar Gemini e Chrome DevTools MCP
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CI: 'true'
-        run: | mkdir -p evidencias gemini extensions list gemini mcp list gemini -p 'Use especificamente as ferramentas MCP do Chrome DevTools para abrir https://horizonsolucoes.com. Inspecione a pagina no viewport mobile (390x844), verifique erros de console e eventuais falhas de rede. Nao altere o site nem envie formularios. Responda em portugues com resultados factuais e informe se o uso do Chrome DevTools MCP funcionou.' --approval-mode=yolo --output-format=json > evidencias/relatorio.json 
-      - name: Capturar screenshot independente para conferencia
+        run: |
+          mkdir -p evidencias
+          gemini mcp list
+          gemini -p 'Use as ferramentas MCP do Chrome DevTools para abrir https://horizonsolucoes.com. Inspecione o viewport mobile 390x844, procure erros no console e de rede e descreva apenas fatos observados em portugues. Nao altere o site nem envie formularios. Indique se realmente utilizou o Chrome DevTools MCP.' --approval-mode=yolo --output-format=json > evidencias/relatorio.json
+          echo 'Auditoria concluida. Relatorio salvo.'
+
+      - name: Capturar screenshot mobile independente
         if: always()
         env:
           CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
-        run: | mkdir -p evidencias "$CHROME_BIN" --headless --no-sandbox --disable-gpu --no-first-run --hide-scrollbars --window-size=390,844 --virtual-time-budget=5000 --screenshot=evidencias/horizon-mobile.png https://horizonsolucoes.com >/dev/null 2>&1 || echo 'Screenshot nao gerada; consultar logs.' 
-      - name: Disponibilizar relatorio e screenshot
+        run: |
+          mkdir -p evidencias
+          "$CHROME_BIN" --headless --no-sandbox --disable-gpu --no-first-run --hide-scrollbars --window-size=390,844 --virtual-time-budget=5000 --screenshot=evidencias/horizon-mobile.png https://horizonsolucoes.com >/dev/null 2>&1 || echo 'Screenshot indisponivel; verificar logs.'
+
+      - name: Publicar evidencias no GitHub Actions
         if: always()
         uses: actions/upload-artifact@v4
         with:
