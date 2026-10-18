@@ -325,6 +325,15 @@ def main(argv=None):
                           'error': {'kind': type(error).__name__},
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
             publish_result(api, path.stem, report)
+            # Event-driven owner alert follows durable result publication, not
+            # the five-minute recovery schedule or the ChatGPT task cadence.
+            from .notify import notify
+            try:
+                alert = notify(report, os.getenv("GITHUB_TOKEN"))
+            except RuntimeError:
+                # Delivery state must survive an unavailable notification channel.
+                alert = "notification_unavailable"
+            print(json.dumps({"request_id": path.stem, "alert": alert}))
             processed += 1
         # Durable state has already been updated. Dispatch once, in a separate
         # workflow step, only when a task is immediately claimable or an incoming
