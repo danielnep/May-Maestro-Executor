@@ -148,8 +148,21 @@ class Worker:
                     self.state.remember(task['project'], task['agent'], key, value)
                     outcome = {'remembered': key}
                 elif name == 'delegate':
-                    outcome = self.delegate(task, args)
-                    delegated.extend(outcome['delegated'])
+                    try:
+                        outcome = self.delegate(task, args)
+                        delegated.extend(outcome['delegated'])
+                    except (ValueError, TypeError, KeyError) as error:
+                        # An invalid plan is a model/tool contract error, not an
+                        # unrecoverable task failure. Feed a bounded validation
+                        # reason back into the next independent reasoning step.
+                        # No tool ran and no privilege was enlarged.
+                        outcome = {
+                            'tool_error': type(error).__name__,
+                            'reason': 'invalid_delegation',
+                            'message': str(error)[:200],
+                            'instruction': 'Correct the delegated task IDs, order, agents and dependencies. '
+                                           'Return one valid delegate action; do not describe it as executed.'
+                        }
                 elif name == 'inspect_image':
                     question=args.get('question','Assess layout, readability, overlap and obvious visual defects.')
                     if not isinstance(question,str) or len(question)>5000:
