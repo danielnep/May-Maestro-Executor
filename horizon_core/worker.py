@@ -56,6 +56,8 @@ class Worker:
         seen = set()
         specs = []
         for spec in tasks:
+            if not isinstance(spec, dict):
+                raise ValueError('Each delegated task must be an object')
             local = spec.get('id', '')
             if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,49}', local) or local in seen:
                 raise ValueError('Duplicate or invalid plan task id')
