@@ -1,0 +1,66 @@
+name: Horizon - ferramentas e ponte do bate-papo
+on:
+  push:
+    branches: ['feat/horizon-chat-tools-20261018']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  database-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: horizon_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: horizon_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U horizon_test -d horizon_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      POSTGRES_TEST_DSN: postgresql://horizon_test:synthetic-ci-only@localhost:5432/horizon_test
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements-postgres.txt
+      - run: python -m unittest discover -s tests -p test_existing_database.py -v
+      - run: python -m unittest discover -s tests -p test_postgres_state.py -v
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: sandbox
+      - run: node --test sandbox/postgres_bridge.test.mjs
+  existing-postgres-live:
+    needs: database-compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: sandbox
+      - name: Banco e usuário dos agentes dentro do PostgreSQL existente
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
+        run: |
+          python - <<'PY'
+          import json
+          from horizon_core.railway_postgres import RailwayPostgresState
+          state = RailwayPostgresState()
+          print(json.dumps({'provision':state.bootstrap_existing()}),flush=True)
+          print(json.dumps({'health':state.health()}),flush=True)
+          result=state._request(operation='test_pg')
+          print(json.dumps({'postgres_tests':result}),flush=True)
+          if not result.get('passed') or result.get('tests_run',0)<14: raise SystemExit(1)
+          state.remember('__runtime__','integration-proof','existing_database',{'verified':True})
+          assert state.recall('__runtime__','integration-proof')['existing_database']['verified']
+          state.close()
+          PY

@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const STATE_ENVIRONMENT_ID = '11b303c5-e811-4fb2-9e77-514ad050697e';
+export const STATE_ENVIRONMENT_ID = 'da638584-8400-44f8-9b93-3c3d343a6022';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const HOME = '/tmp/horizon-postgres-controller';
 const MARKER = '/tmp/horizon-postgres-owner.json';
@@ -45,16 +45,19 @@ try:
     parts = urlsplit(dsn)
     if parts.scheme not in ('postgres','postgresql') or not parts.hostname or not parts.hostname.endswith('.railway.internal'):
         raise ValueError('Private database reference required')
+    from horizon_core.existing_database import agent_dsn,provision
     request = json.load(sys.stdin)
     schema = request.get('schema', 'horizon_agents')
     operation = request.get('operation')
-    if operation == 'test_pg':
-        os.environ['POSTGRES_TEST_DSN'] = dsn
+    if operation == 'bootstrap_existing':
+        response = {'ok':True,'result':provision(dsn)}
+    elif operation == 'test_pg':
+        os.environ['POSTGRES_TEST_DSN'] = agent_dsn(dsn)
         suite = unittest.defaultTestLoader.discover('${HOME}/tests', pattern='test_postgres_state.py')
         result = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(suite)
         response = {'ok': True, 'result': {'tests_run':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped),'passed':result.wasSuccessful() and result.testsRun>0 and not result.skipped}}
     else:
-        state = PostgresState(dsn, schema)
+        state = PostgresState(agent_dsn(dsn), schema)
         if operation == 'health':
             response = {'ok': True, 'result': {'connected':True,'private_database':True,'schema':schema}}
         elif operation == 'rpc':
@@ -85,7 +88,7 @@ print(serialized)
 export async function loadTrustedSources() {
   const sources = {};
   for (const name of ['horizon_core/state.py', 'horizon_core/postgres_state.py',
-    'horizon_core/registry.py', 'tests/test_postgres_state.py']) {
+    'horizon_core/registry.py', 'horizon_core/existing_database.py', 'tests/test_postgres_state.py']) {
     sources[name] = await readFile(`${ROOT}${name}`, 'utf8');
   }
   sources['horizon_core/__init__.py'] = '"""Trusted private state RPC package."""\n';
@@ -163,7 +166,7 @@ export function createPostgresBridge({ Sandbox, env = process.env, sources }) {
   return async function handle(request) {
     try {
       check(request && typeof request === 'object' && !Array.isArray(request));
-      check(['ensure', 'health', 'rpc', 'test_pg'].includes(request.operation));
+      check(['ensure', 'health', 'rpc', 'test_pg', 'bootstrap_existing'].includes(request.operation));
       const schema = request.schema || 'horizon_agents';
       check(typeof schema === 'string' && /^[a-z][a-z0-9_]{0,62}$/.test(schema)
         && !schema.startsWith('pg_') && !['public', 'information_schema'].includes(schema));
