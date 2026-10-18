@@ -276,32 +276,9 @@ class Agent:
         observed=command_run(["git","branch","--show-current"],self.root,15)
         if observed.get("stdout_tail","").strip()!=self.branch:
             raise ValueError("Worktree is not on the authorized feature branch")
-        if not shutil.which("codex"):
-            self.record("implement","blocked","Codex CLI not installed/authenticated. No code edits attempted.")
-            return
-        if not task_file.is_file() or not task_file.resolve().is_relative_to(self.root):
-            raise ValueError("Task must be a file inside the checked-out repository")
-        task=task_file.read_text(encoding="utf-8")
-        if len(task)>12000 or len(task)<20:
-            raise ValueError("Task length out of bounds")
-        playbook_path=Path(__file__).resolve().parents[1]/"playbooks"/(self.slug+".md")
-        if not playbook_path.is_file():
-            raise ValueError("Missing agent-specific playbook: "+self.slug)
-        role_policy=playbook_path.read_text(encoding="utf-8")
-        directive=(
-            "You are the "+self.profile["title"]+" executor for Horizon. "
-            "Read the repository and current manuals. Work only inside the checked-out "
-            "feature branch; do not commit, push, merge, deploy, remove secrets or change "
-            "credentials. Preserve operational functionality. Run relevant tests and "
-            "report what genuinely passed. Your work is reviewed before publication.\n\n"
-            +"\n\n# SPECIALIZED ROLE PLAYBOOK\n"+role_policy+"\n\n# TASK\n"+task
-        )
-        result=command_run(["codex","exec","--sandbox","workspace-write","--skip-git-repo-check",directive],
-                           self.root,135)
-        self.record("implement",result["status"],"Isolated optional code executor returned",
-                    exit_code=result.get("exit_code"),duration_s=result.get("duration_s"),
-                    stdout_tail=result.get("stdout_tail","")[-1500:])
-        # Final state: manual branch review and tests required, never auto-push.
+        self.record("implement","blocked",
+                    "Legacy audit entry point. Submit an authorized task to horizon_core.app "
+                    "with a specialist ID, objective, branch and allowed_paths; API runtime needs no agent CLI.")
 
     def run(self, mode: str="audit", url: str="", task_file: Path | None = None,
             allow_write: bool = False)->dict[str,Any]:

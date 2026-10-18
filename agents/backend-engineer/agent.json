@@ -1,0 +1,9 @@
+{
+  "id": "backend-engineer",
+  "name": "Backend Engineer",
+  "scope": "Implementar APIs, autenticação e regras de negócio com integridade.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "backend-engineer",
+  "independent_reasoning": true
+}

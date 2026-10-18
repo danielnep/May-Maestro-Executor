@@ -1,0 +1,9 @@
+{
+  "id": "may-persona",
+  "name": "May Persona",
+  "scope": "Revisar linguagem e diretrizes editoriais preservando precisão técnica.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "may-persona",
+  "independent_reasoning": true
+}

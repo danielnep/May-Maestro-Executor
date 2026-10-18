@@ -1,0 +1,9 @@
+{
+  "id": "horizon-skills",
+  "name": "Horizon Skills",
+  "scope": "Pesquisar e manter conhecimento técnico reutilizável com fontes e validade.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "horizon-skills",
+  "independent_reasoning": true
+}

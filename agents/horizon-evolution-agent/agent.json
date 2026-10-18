@@ -1,0 +1,9 @@
+{
+  "id": "horizon-evolution-agent",
+  "name": "Horizon Evolution Agent",
+  "scope": "Diagnosticar e priorizar melhorias com prova antes/depois.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "horizon-evolution-agent",
+  "independent_reasoning": true
+}

@@ -1,0 +1,55 @@
+{
+  "repository": "danielnep/May-Maestro-Executor",
+  "branch": "feat/horizon-team-runtime-20261018",
+  "request": "Fallback DeepSeek para todos por qualquer indisponibilidade Gemini; qualidade sem economia de tokens; SDK Railway cria/reusa sandbox",
+  "authorization": "User explicitly authorized DeepSeek for all agents without economic rationing; main still requires owner approval",
+  "stage": "implemented_and_live_verified",
+  "proof_code_commit": "01fcce127cd0894dab2837f8e99ba734366315a5",
+  "checks": {
+    "python_tests": 98,
+    "node_tests": 17,
+    "git_diff_check": "passed",
+    "live_actions_run": 39165714831,
+    "independent_deepseek_calls": 17,
+    "model": "deepseek-flash",
+    "real_fallback_cause": "Gemini configuration missing, not a real quota exhaustion",
+    "per_specialist": [
+      "real tool action",
+      "memory retrieval",
+      "checkpoint"
+    ],
+    "railway": {
+      "sandbox_id": "9de2a58a-27c9-42fc-966c-6b577a65ba00",
+      "created": true,
+      "reused": true,
+      "real_tests_run": 1,
+      "isolation": "Docker without controller credentials"
+    },
+    "remote_resume": "passed on separate runner"
+  },
+  "policy": {
+    "default_token_cap": null,
+    "default_call_cap": null,
+    "default_step_cap": null,
+    "deepseek_thinking": "enabled",
+    "deepseek_effort": "max",
+    "full_history": true,
+    "technical_slice": "cooperative resume, not failure"
+  },
+  "pending": [
+    "main approval and periodic-worker enablement",
+    "complex joint autonomous delivery",
+    "visual/native adapters"
+  ],
+  "final_hardening": "Lease renewed after model response and before tools, tested with synthetic 1200s model plus 800s tool",
+  "final_code_commit": "d245f86967769770c623f8bdabfefe8c286bfc84",
+  "final_actions_run": 39166060299,
+  "final_verification": {
+    "python_tests": 98,
+    "node_tests": 17,
+    "providers_proof": "success",
+    "railway_proof": "success",
+    "remote_resume": "success",
+    "periodic_worker": "not_enabled; awaiting main approval"
+  }
+}

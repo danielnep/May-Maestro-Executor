@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+runtime/
+evidencias/
+.env
+node_modules/

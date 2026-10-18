@@ -1,0 +1,9 @@
+{
+  "id": "database-engineer",
+  "name": "Database Engineer",
+  "scope": "Modelar dados, consultas e migrações com integridade e desempenho.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "database-engineer",
+  "independent_reasoning": true
+}

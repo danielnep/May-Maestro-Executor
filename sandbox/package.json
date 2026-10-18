@@ -1,0 +1,11 @@
+{
+  "name": "horizon-railway-sandbox-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test bridge.test.mjs" },
+  "dependencies": {
+    "railway": "3.16.0"
+  }
+}

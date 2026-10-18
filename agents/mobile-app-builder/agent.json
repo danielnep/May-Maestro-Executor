@@ -1,0 +1,9 @@
+{
+  "id": "mobile-app-builder",
+  "name": "Mobile App Builder",
+  "scope": "Desenvolver recursos Android nativos e integração com o dispositivo.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "mobile-app-builder",
+  "independent_reasoning": true
+}

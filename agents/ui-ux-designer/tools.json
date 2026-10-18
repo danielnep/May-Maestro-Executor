@@ -1,0 +1,7 @@
+[
+  "read_file",
+  "list_files",
+  "write_file",
+  "remember",
+  "finish"
+]

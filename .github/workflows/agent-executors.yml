@@ -1,53 +1,26 @@
-name: May Maestro - Sete executores (branch)
+name: Horizon - 17 especialistas via API
 
 on:
   push:
-    branches:
-      - 'feat/**'
-      - 'fix/**'
-      - 'agent/**'
-      - 'test/**'
-    paths:
-      - 'maestro_exec/**'
-      - 'executors/**'
-      - 'tests/**'
-      - '.github/workflows/agent-executors.yml'
+    branches: ['feat/**', 'fix/**', 'agent/**', 'test/**']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', '.github/workflows/agent-executors.yml']
   pull_request:
-    paths:
-      - 'maestro_exec/**'
-      - 'executors/**'
-      - 'tests/**'
-      - '.github/workflows/agent-executors.yml'
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', '.github/workflows/agent-executors.yml']
   workflow_dispatch:
-    inputs:
-      agent:
-        description: 'Agente individual ou all'
-        required: false
-        default: 'all'
-        type: string
+  schedule:
+    - cron: '17 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: agents-${{ github.ref }}
+  group: horizon-durable-worker
   cancel-in-progress: false
 
 jobs:
-  isolated-agents:
+  verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    strategy:
-      fail-fast: false
-      matrix:
-        agent:
-          - may-maestro
-          - corregedoria-may
-          - may-persona
-          - horizon-skills
-          - horizon-evolution-agent
-          - horizon-project-studio
-          - horizon-ui-guardian
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,29 +28,173 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Testes unitarios e de seguranca
-        run: python3 -m unittest discover -s tests -v
-      - name: Executar especialidade isolada
-        env:
-          SELECTED: ${{ inputs.agent || 'all' }}
-          CURRENT_BRANCH: ${{ github.head_ref || github.ref_name }}
-          AGENT: ${{ matrix.agent }}
-        run: |
-          if [ "$SELECTED" != "all" ] && [ "$SELECTED" != "$AGENT" ]; then
-            echo "Pulando executor nao selecionado: $AGENT"
-            exit 0
-          fi
-          python3 -m maestro_exec.runner --agent "$AGENT" --mode audit \
-            --root . --branch "$CURRENT_BRANCH" --evidence evidencias
-          python3 -m maestro_exec.runner --agent "$AGENT" --mode test \
-            --root . --branch "$CURRENT_BRANCH" --evidence evidencias
-          python3 -m maestro_exec.runner --verify "evidencias/$AGENT/checkpoint.json"
-      - name: Publicar checkpoints
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Validar runtime, 17 identidades e retomada sem chamar API
+        run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
         with:
-          name: maestro-${{ matrix.agent }}-${{ github.run_id }}
-          path: evidencias/${{ matrix.agent }}/
-          if-no-files-found: warn
-          retention-days: 14
+          node-version: '22'
+      - name: Instalar SDK oficial Railway (sem CLI)
+        working-directory: sandbox
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Testar bridge do SDK
+        working-directory: sandbox
+        run: node --test bridge.test.mjs
+      - name: Inventariar especialistas
+        run: python -m horizon_core.app --list
 
+  configuration:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Conferir configuração sem chamar IA e sem revelar credenciais
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: python3 -m horizon_core.app --preflight
+
+  smoke-prepare:
+    needs: verification
+    if: >-
+      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Publicar checkpoint sintético por API sem chamar IA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 -m horizon_core.smoke prepare --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
+
+  smoke-resume:
+    needs: smoke-prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retomar em outro runner e executar Docker real
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 -m horizon_core.smoke resume --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
+
+  providers-proof:
+    needs: verification
+    if: >-
+      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Provar decisões independentes dos 17 perfis com API real
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 -m horizon_core.prove providers --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
+
+  railway-proof:
+    needs: verification
+    if: >-
+      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar SDK oficial Railway
+        working-directory: sandbox
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Provar criação, reuso e teste isolado em sandbox real
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 -m horizon_core.prove railway --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
+
+  worker:
+    needs: verification
+    # User-authorized providers; no inference on pull requests.
+    # Scheduling starts only when this workflow is approved onto the default branch.
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
+      vars.HORIZON_WORKER_ENABLED == 'true' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.HORIZON_WORK_BRANCH || 'feat/horizon-team-runtime-20261018' }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar SDK oficial Railway
+        working-directory: sandbox
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Executar fila com raciocínio sem racionamento
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: >-
+          python -m horizon_core.app --remote-repo danielnep/May-Maestro-Executor
+          --session-seconds 2400
+      - name: Publicar arquivos recuperáveis somente na branch de trabalho
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m horizon_core.publish --repo danielnep/May-Maestro-Executor
+      - name: Resumo da execução
+        if: always()
+        run: |
+          if [ -f runtime/report.json ]; then
+            cat runtime/report.json
+          fi

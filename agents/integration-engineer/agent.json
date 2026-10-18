@@ -1,0 +1,9 @@
+{
+  "id": "integration-engineer",
+  "name": "Integration Engineer",
+  "scope": "Integrar APIs externas, webhooks, MCP e automações com contratos explícitos.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "integration-engineer",
+  "independent_reasoning": true
+}
