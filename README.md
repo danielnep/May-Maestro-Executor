@@ -6,7 +6,7 @@ Runtime Python 3.11+ com chamadas diretas à API Gemini. Não instala nem depend
 
 Implementados: 17 perfis, gateway REST, fila SQLite, agendamento, dependências, memória por agente/projeto, checkpoints com retomada, ferramentas de leitura/escrita, testes isolados em Docker, persistência GitHub por API e publicação em branch de trabalho. A suíte usa HTTP simulado para verificar o contrato sem consumir API.
 
-**Não declarar a equipe operacional por esta suíte.** Ainda exigem prova externa: chamada Gemini real para cada perfil; worker autenticado usando estado remoto; execução Docker real; tarefa conjunta real e retomada em outro runner. O `--preflight` verifica presença de configuração, não valida chave nem situação de cobrança Google. A implantação de plugins do ChatGPT é separada deste runtime: os 10 novos especialistas são agentes do executor, não plugins privados já instalados na conta.
+**Não declarar a equipe operacional por esta suíte.** Provas externas concluídas no [Actions 39162318353](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39162318353): 71 testes, checkpoint GitHub por API, memória recuperada em outro runner e teste Docker real sem credenciais. Ainda exigem prova: chamada Gemini real para cada perfil e tarefa conjunta com decisões reais e retomada. O `--preflight` verifica presença de configuração, não valida chave nem situação de cobrança Google. A implantação de plugins do ChatGPT é separada deste runtime: os 10 novos especialistas são agentes do executor, não plugins privados já instalados na conta.
 
 ## Especialistas
 
@@ -97,6 +97,12 @@ python3 -m horizon_core.app --tasks tasks/example.json --db runtime/state.sqlite
 ```
 
 A suíte verifica identidades e requisições independentes, leitura/memória por 17 perfis, ferramentas reais em fixtures Git, retomada SQLite após interrupção, DAG, dependências, falhas de QA preservadas, lease expirado, concorrência, orçamento, snapshot remoto simulado, proteção de caminhos e Docker simulado sem credenciais. Os sete auditores estáticos em `maestro_exec/` e `executors/` permanecem para compatibilidade; o caminho de codificação via Codex CLI foi retirado. `supervisor.py` encaminha ao runtime ativo; não contém mais o retorno antecipado desativando Gemini.
+
+## Evidências da execução remota
+
+Commit de código verificado: `df1a65a9ac7ff7007da970d1fb8a7fde4f9d5318`. Jobs `verification`, `smoke-prepare` e `smoke-resume` concluíram com sucesso. O último publicou `remote_resume=true`, `docker_passed=true`, `memory_recovered=true`, `model_calls=0`. A leitura independente do SQLite na branch `agent-state/smoke-39162318353` confirmou tarefa `succeeded`, duas tentativas e eventos `enqueued → claimed → checkpoint → lease_expired → claimed → succeeded`. O snapshot tem SHA Git `30a34534674e1c5e98a8138341ae51be3337cba9`.
+
+O preflight remoto confirmou `GEMINI_API_KEY=true`, `GEMINI_MODEL=false`, `free_tier_attested=false`. A chave existe no GitHub e não foi extraída. O worker de IA permaneceu pulado; nenhum pedido de geração foi enviado.
 
 ## Critério de ativação
 

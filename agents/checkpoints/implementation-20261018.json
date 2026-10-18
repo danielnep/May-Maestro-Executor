@@ -3,7 +3,7 @@
   "repository": "danielnep/May-Maestro-Executor",
   "branch": "feat/horizon-team-runtime-20261018",
   "base_commit": "399ca2adda087d6e857d0f403a3bf86b447ab249",
-  "stage": "implemented_and_locally_tested",
+  "stage": "published_and_infrastructure_verified",
   "authors": {
     "coordinator": "May via Work",
     "delegated_workers": [
@@ -33,6 +33,32 @@
       "model_present": false,
       "free_tier_attested": false,
       "requests_sent": 0
+    },
+    {
+      "check": "GitHub Actions 71 tests",
+      "result": "passed",
+      "run_id": 39162318353
+    },
+    {
+      "check": "Live GitHub state publish and second runner recovery",
+      "result": "passed",
+      "branch": "agent-state/smoke-39162318353",
+      "snapshot_sha": "30a34534674e1c5e98a8138341ae51be3337cba9",
+      "task_status": "succeeded",
+      "attempts": 2
+    },
+    {
+      "check": "Docker isolation on real runner with synthetic fixture",
+      "result": "passed",
+      "job_id": 117778087593
+    },
+    {
+      "check": "Gemini remote preflight",
+      "result": "blocked",
+      "api_key_present": true,
+      "model_present": false,
+      "free_tier_attested": false,
+      "requests_sent": 0
     }
   ],
   "implemented": [
@@ -47,11 +73,11 @@
   ],
   "not_proven": [
     "real Gemini calls for all 17",
-    "live remote persistence roundtrip",
-    "Docker execution on runner",
     "real joint task and runner restart",
     "native Android build",
     "interactive browser/vision"
   ],
-  "next_action": "Publish branch and PR, inspect remote CI and configuration preflight; keep main untouched. Activation requires validated free-tier configuration; hourly schedule requires approved workflow on default branch."
+  "next_action": "Confirm Google project has no billing, choose available free model and configure worker variables; then prove each specialist and joint reasoning with real API. Keep main untouched until owner approves merge.",
+  "code_commit": "df1a65a9ac7ff7007da970d1fb8a7fde4f9d5318",
+  "pull_request": "https://github.com/danielnep/May-Maestro-Executor/pull/2"
 }
