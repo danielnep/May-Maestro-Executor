@@ -54,10 +54,20 @@ def main(argv=None):
         parser.error('max-tasks must be positive when explicitly set')
     if args.session_seconds < 1:
         parser.error('session-seconds must be positive')
-    remote = GitHubState(args.remote_repo) if args.remote_repo else None
+    backend = os.getenv('HORIZON_STATE_BACKEND', 'sqlite')
+    remote = GitHubState(args.remote_repo) if args.remote_repo and backend == 'sqlite' else None
     if remote:
         remote.pull(args.db)
-    state = State(args.db)
+    if backend == 'postgres':
+        from .postgres_state import PostgresState
+        state = PostgresState(os.environ.get('HORIZON_DATABASE_URL', ''))
+    elif backend == 'railway-postgres':
+        from .railway_postgres import RailwayPostgresState
+        state = RailwayPostgresState()
+    elif backend == 'sqlite':
+        state = State(args.db)
+    else:
+        raise ValueError('Unknown state backend')
     persist = (lambda: remote.push(args.db)) if remote else (lambda: None)
     try:
         import_tasks(state, json.loads(Path(args.tasks).read_text(encoding='utf-8')))
@@ -77,7 +87,7 @@ def main(argv=None):
             results.append({'task_id': result['task_id'], 'agent': result['agent'],
                             'status': result['status'], 'result': result.get('result'), 'error': result.get('error')})
         report = {'executed': results, 'provider_calls': worker.gateway.calls,
-                  'states': [dict(row) for row in state.db.execute('SELECT task_id,agent,status,attempts FROM tasks ORDER BY seq')],
+                  'states': state.list_tasks_snapshot(),
                   'note': 'succeeded means the specialist reported completion. Read verification entries for actual checks; this is not human approval.'}
         destination = Path(args.report)
         destination.parent.mkdir(parents=True, exist_ok=True)

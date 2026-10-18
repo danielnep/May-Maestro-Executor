@@ -2,10 +2,10 @@ name: Horizon - 17 especialistas via API
 
 on:
   push:
-    branches: ['feat/**', 'fix/**', 'agent/**', 'test/**']
-    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', '.github/workflows/agent-executors.yml']
+    branches: ['main', 'feat/**', 'fix/**', 'agent/**', 'test/**']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', 'benchmarks/**', 'requirements-postgres.txt', '.github/workflows/agent-executors.yml']
   pull_request:
-    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', '.github/workflows/agent-executors.yml']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', 'benchmarks/**', 'requirements-postgres.txt', '.github/workflows/agent-executors.yml']
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
@@ -20,7 +20,20 @@ concurrency:
 jobs:
   verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: horizon_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: horizon_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U horizon_test -d horizon_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      POSTGRES_TEST_DSN: postgresql://horizon_test:synthetic-ci-only@localhost:5432/horizon_test
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +41,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - run: pip install -r requirements-postgres.txt
       - name: Validar runtime, 17 identidades e retomada sem chamar API
         run: python -m unittest discover -s tests -v
       - uses: actions/setup-node@v4
@@ -54,13 +68,15 @@ jobs:
         continue-on-error: true
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-        run: python3 -m horizon_core.app --preflight
+        run: |
+          python3 -m horizon_core.discover_models
+          python3 -m horizon_core.app --preflight
 
   smoke-prepare:
     needs: verification
@@ -100,7 +116,7 @@ jobs:
   providers-proof:
     needs: verification
     if: >-
-      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.event_name == 'workflow_dispatch' && github.actor == 'danielnep' &&
       github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -114,7 +130,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
@@ -124,7 +140,7 @@ jobs:
   railway-proof:
     needs: verification
     if: >-
-      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.event_name == 'workflow_dispatch' && github.actor == 'danielnep' &&
       github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -153,8 +169,9 @@ jobs:
     # User-authorized providers; no inference on pull requests.
     # Scheduling starts only when this workflow is approved onto the default branch.
     if: >-
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
-      vars.HORIZON_WORKER_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
+      vars.HORIZON_WORKER_ENABLED != 'false' &&
       github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -163,7 +180,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ vars.HORIZON_WORK_BRANCH || 'feat/horizon-team-runtime-20261018' }}
+          ref: ${{ vars.HORIZON_WORK_BRANCH || 'agent/runtime-work' }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -178,12 +195,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          HORIZON_STATE_BACKEND: railway-postgres
+          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
         run: >-
           python -m horizon_core.app --remote-repo danielnep/May-Maestro-Executor
           --session-seconds 2400
@@ -191,6 +210,9 @@ jobs:
         if: success()
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
+          HORIZON_STATE_BACKEND: railway-postgres
         run: python -m horizon_core.publish --repo danielnep/May-Maestro-Executor
       - name: Resumo da execução
         if: always()
@@ -198,3 +220,36 @@ jobs:
           if [ -f runtime/report.json ]; then
             cat runtime/report.json
           fi
+
+  complex-benchmark:
+    needs: verification
+    if: >-
+      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.ref == 'refs/heads/feat/horizon-quality-20261018' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Desafio sintético difícil com reparo por API e avaliação privada
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+        run: python benchmarks/run_live.py --session-seconds 2400
+      - name: Evidências sintéticas sem credenciais
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reservations-v1-${{ github.run_id }}
+          path: |
+            runtime/benchmark-report.json
+            runtime/benchmark-engine.py
+            runtime/benchmark-checkpoint.sqlite3

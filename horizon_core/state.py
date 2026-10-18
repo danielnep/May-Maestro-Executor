@@ -228,6 +228,14 @@ class State:
             return [dict(row, data=json.loads(row["data"])) for row in self.db.execute(
                 "SELECT * FROM events WHERE task_id=? ORDER BY id", (task_id,))]
 
+    def tasks(self, project=None):
+        with self._lock:
+            rows = self.db.execute('SELECT * FROM tasks ORDER BY seq') if project is None else self.db.execute('SELECT * FROM tasks WHERE project=? ORDER BY seq', (project,))
+            return [self._decode(row) for row in rows]
+
+    def list_tasks_snapshot(self):
+        return [{key: task[key] for key in ('task_id', 'agent', 'status', 'attempts')} for task in self.tasks()]
+
     def backup(self, destination):
         """Create a consistent standalone SQLite file, including committed WAL data."""
         if self.path != ":memory:" and Path(destination).resolve() == Path(self.path).resolve():

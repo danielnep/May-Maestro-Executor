@@ -35,8 +35,8 @@ class Worker:
     def workspace_tools(self, task):
         branch = task['payload'].get('branch')
         allowed = []
-        for row in self.state.db.execute('SELECT agent,payload FROM tasks WHERE project=?', (task['project'],)):
-            payload = json.loads(row['payload'])
+        for row in self.state.tasks(project=task['project']):
+            payload = row['payload']
             if payload.get('branch') == branch and 'write_file' in load_agent(row['agent'])['tools']:
                 allowed.extend(payload.get('allowed_paths', []))
         return Tools(self.root, {'tools': ['write_file']}, allowed, branch)
