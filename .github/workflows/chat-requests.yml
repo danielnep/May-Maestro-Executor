@@ -26,6 +26,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,3 +56,9 @@ jobs:
           RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
           HORIZON_STATE_BACKEND: railway-postgres
         run: python -m horizon_core.commit_bridge --session-seconds 2400
+      - name: Continuar imediatamente quando o checkpoint estiver pronto
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+        run: python -m horizon_core.handoff --dispatch
