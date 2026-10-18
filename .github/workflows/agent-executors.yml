@@ -1,0 +1,83 @@
+name: May Maestro - Sete executores (branch)
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+      - 'fix/**'
+      - 'agent/**'
+      - 'test/**'
+    paths:
+      - 'maestro_exec/**'
+      - 'executors/**'
+      - 'tests/**'
+      - '.github/workflows/agent-executors.yml'
+  pull_request:
+    paths:
+      - 'maestro_exec/**'
+      - 'executors/**'
+      - 'tests/**'
+      - '.github/workflows/agent-executors.yml'
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: 'Agente individual ou all'
+        required: false
+        default: 'all'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agents-${{ github.ref }
+  cancel-in-progress: false
+
+jobs:
+  isolated-agents:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        agent:
+          - may-maestro
+          - corregedoria-may
+          - may-persona
+          - horizon-skills
+          - horizon-evolution-agent
+          - horizon-project-studio
+          - horizon-ui-guardian
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Testes unitarios e de seguranca
+        run: python3 -m unittest discover -s tests -v
+      - name: Executar especialidade isolada
+        env:
+          SELECTED: ${{ inputs.agent || 'all' }
+          CURRENT_BRANCH: ${{ github.head_ref || github.ref_name }
+          AGENT: ${{ matrix.agent }
+        run: |
+          if [ "$SELECTED" != "all" ] && [ "$SELECTED" != "$AGENT" ]; then
+            echo "Pulando executor nao selecionado: $AGENT"
+            exit 0
+          fi
+          python3 -m maestro_exec.runner --agent "$AGENT" --mode audit \
+            --root . --branch "$CURRENT_BRANCH" --evidence evidencias
+          python3 -m maestro_exec.runner --agent "$AGENT" --mode test \
+            --root . --branch "$CURRENT_BRANCH" --evidence evidencias
+          python3 -m maestro_exec.runner --verify "evidencias/$AGENT/checkpoint.json"
+      - name: Publicar checkpoints
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-${{ matrix.agent }-${{ github.run_id }
+          path: evidencias/${{ matrix.agent }/
+          if-no-files-found: warn
+          retention-days: 14
+
