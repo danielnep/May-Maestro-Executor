@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const STATE_ENVIRONMENT_ID = '11b303c5-e811-4fb2-9e77-514ad050697e';
+export const STATE_ENVIRONMENT_ID = 'da638584-8400-44f8-9b93-3c3d343a6022';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const HOME = '/tmp/horizon-postgres-controller';
 const MARKER = '/tmp/horizon-postgres-owner.json';
@@ -35,7 +35,8 @@ function failure(error) {
 // It imports only controller-owned source uploaded by trusted workflow code.
 export const RPC_SCRIPT = String.raw`import inspect,json,os,sys,unittest,io
 from urllib.parse import urlsplit,unquote
-sys.path.insert(0, '${HOME}')
+controller_root=os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, controller_root)
 from horizon_core.postgres_state import PostgresState
 allowed = ${JSON.stringify([...METHODS])}
 state = None
@@ -45,16 +46,19 @@ try:
     parts = urlsplit(dsn)
     if parts.scheme not in ('postgres','postgresql') or not parts.hostname or not parts.hostname.endswith('.railway.internal'):
         raise ValueError('Private database reference required')
+    from horizon_core.existing_database import agent_dsn,provision
     request = json.load(sys.stdin)
     schema = request.get('schema', 'horizon_agents')
     operation = request.get('operation')
-    if operation == 'test_pg':
-        os.environ['POSTGRES_TEST_DSN'] = dsn
-        suite = unittest.defaultTestLoader.discover('${HOME}/tests', pattern='test_postgres_state.py')
+    if operation == 'bootstrap_existing':
+        response = {'ok':True,'result':provision(dsn)}
+    elif operation == 'test_pg':
+        os.environ['POSTGRES_TEST_DSN'] = agent_dsn(dsn)
+        suite = unittest.defaultTestLoader.discover(os.path.join(controller_root,'tests'), pattern='test_postgres_state.py')
         result = unittest.TextTestRunner(stream=io.StringIO(), verbosity=0).run(suite)
         response = {'ok': True, 'result': {'tests_run':result.testsRun,'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped),'passed':result.wasSuccessful() and result.testsRun>0 and not result.skipped}}
     else:
-        state = PostgresState(dsn, schema)
+        state = PostgresState(agent_dsn(dsn), schema)
         if operation == 'health':
             response = {'ok': True, 'result': {'connected':True,'private_database':True,'schema':schema}}
         elif operation == 'rpc':
@@ -85,7 +89,7 @@ print(serialized)
 export async function loadTrustedSources() {
   const sources = {};
   for (const name of ['horizon_core/state.py', 'horizon_core/postgres_state.py',
-    'horizon_core/registry.py', 'tests/test_postgres_state.py']) {
+    'horizon_core/registry.py', 'horizon_core/existing_database.py', 'tests/test_postgres_state.py']) {
     sources[name] = await readFile(`${ROOT}${name}`, 'utf8');
   }
   sources['horizon_core/__init__.py'] = '"""Trusted private state RPC package."""\n';
@@ -115,7 +119,7 @@ export function createPostgresBridge({ Sandbox, env = process.env, sources }) {
     try {
       const marker = JSON.parse(await vm.files.read(MARKER, { length: 2048 }));
       return marker.owner === OWNER && marker.environment_id === STATE_ENVIRONMENT_ID
-        && marker.source_digest === digest && marker.version === 1;
+        && marker.version === 1;
     } catch (error) {
       if (error instanceof SyntaxError || error?.name === 'SandboxFileNotFoundError') return false;
       throw error;
@@ -125,13 +129,23 @@ export function createPostgresBridge({ Sandbox, env = process.env, sources }) {
     check(result && result.exitCode === 0 && result.timedOut === false && result.truncated === false
       && typeof result.stdout === 'string', 'PRIVATE_EXEC_FAILED');
   }
+  async function syncSources(vm) {
+    const versionRoot = `${HOME}/versions/${digest}`;
+    let ready = false;
+    try { ready = (await vm.files.read(`${versionRoot}/ready`, {length:100})) === digest; }
+    catch (error) { if (error?.name !== 'SandboxFileNotFoundError') throw error; }
+    if (!ready) {
+      for (const [path, content] of Object.entries(sources)) await vm.files.write(`${versionRoot}/${path}`, content);
+      await vm.files.write(`${versionRoot}/ready`, digest);
+    }
+  }
   async function ensure(id) {
     if (id !== undefined && id !== null) {
       check(typeof id === 'string' && ID.test(id));
       try {
         const vm = await Sandbox.connect(id, config());
         validateInfo(vm);
-        if (await managed(vm)) { await vm.heartbeat(); return { vm, created: false, reused: true }; }
+        if (await managed(vm)) { await vm.heartbeat(); await syncSources(vm); return { vm, created: false, reused: true }; }
         if (vm.status === 'RUNNING') throw new StateBridgeError('SANDBOX_NOT_MANAGED');
         if (vm.status === 'CREATING') throw new StateBridgeError('SANDBOX_NOT_READY');
       } catch (error) { if (error?.name !== 'SandboxNotFoundError') throw error; }
@@ -144,13 +158,13 @@ export function createPostgresBridge({ Sandbox, env = process.env, sources }) {
       let vm;
       try { vm = await Sandbox.connect(entry.id, config()); }
       catch (error) { if (error?.name === 'SandboxNotFoundError') continue; throw error; }
-      if (await managed(vm)) { await vm.heartbeat(); return { vm, created: false, reused: true }; }
+      if (await managed(vm)) { await vm.heartbeat(); await syncSources(vm); return { vm, created: false, reused: true }; }
     }
     const vm = await Sandbox.create({ ...config(), networkIsolation: 'PRIVATE',
       env: { HORIZON_DATABASE_URL: '${{Postgres.DATABASE_URL}}' } });
     validateInfo(vm);
     check(vm.status === 'RUNNING' && vm.networkIsolation === 'PRIVATE', 'PRIVATE_SANDBOX_NOT_READY');
-    for (const [path, content] of Object.entries(sources)) await vm.files.write(`${HOME}/${path}`, content);
+    await syncSources(vm);
     // The package installer receives no DB credential; DSN stays only with RPC.
     const installed = await vm.exec(`env -u HORIZON_DATABASE_URL python3 -m venv ${VENV} && `
       + `env -u HORIZON_DATABASE_URL ${VENV}/bin/python -m pip install --quiet --disable-pip-version-check --no-input 'psycopg[binary]==3.2.10'`,
@@ -163,7 +177,7 @@ export function createPostgresBridge({ Sandbox, env = process.env, sources }) {
   return async function handle(request) {
     try {
       check(request && typeof request === 'object' && !Array.isArray(request));
-      check(['ensure', 'health', 'rpc', 'test_pg'].includes(request.operation));
+      check(['ensure', 'health', 'rpc', 'test_pg', 'bootstrap_existing'].includes(request.operation));
       const schema = request.schema || 'horizon_agents';
       check(typeof schema === 'string' && /^[a-z][a-z0-9_]{0,62}$/.test(schema)
         && !schema.startsWith('pg_') && !['public', 'information_schema'].includes(schema));
@@ -177,8 +191,8 @@ export function createPostgresBridge({ Sandbox, env = process.env, sources }) {
         result: { private_network: true, initialized: true } };
       const wire = { operation: request.operation, schema };
       if (request.operation === 'rpc') Object.assign(wire, { method: request.method, args: request.args, kwargs: request.kwargs });
-      const handle = vm.exec(`${VENV}/bin/python -I ${HOME}/rpc.py`,
-        { stdin: true, timeoutSec: 120, maxOutputBytes: 35000000 });
+      const handle = vm.exec(`${VENV}/bin/python -I ${HOME}/versions/${digest}/rpc.py`,
+        { stdin: true, timeoutSec: request.operation === 'test_pg' ? 300 : 120, maxOutputBytes: 35000000 });
       await handle.stdin.write(JSON.stringify(wire));
       await handle.stdin.end();
       const result = await handle;

@@ -1,0 +1,100 @@
+name: Horizon - ferramentas e ponte do bate-papo
+on:
+  push:
+    branches: ['main', 'feat/horizon-chat-tools-20261018']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  database-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: horizon_test
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: horizon_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U horizon_test -d horizon_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      POSTGRES_TEST_DSN: postgresql://horizon_test:synthetic-ci-only@localhost:5432/horizon_test
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements-postgres.txt
+      - run: python -m unittest discover -s tests -p test_existing_database.py -v
+      - run: python -m unittest discover -s tests -p test_postgres_state.py -v
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: sandbox
+      - run: node --test sandbox/postgres_bridge.test.mjs
+  existing-postgres-live:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[database]')
+    needs: database-compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: sandbox
+      - name: Banco e usuário dos agentes dentro do PostgreSQL existente
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
+        run: |
+          python - <<'PY'
+          import json
+          from horizon_core.railway_postgres import RailwayPostgresState
+          state = RailwayPostgresState()
+          print(json.dumps({'provision':state.bootstrap_existing()}),flush=True)
+          print(json.dumps({'health':state.health()}),flush=True)
+          result=state._request(operation='test_pg')
+          print(json.dumps({'postgres_tests':result}),flush=True)
+          if not result.get('passed') or result.get('tests_run',0)<14: raise SystemExit(1)
+          state.remember('__runtime__','integration-proof','existing_database',{'verified':True})
+          assert state.recall('__runtime__','integration-proof')['existing_database']['verified']
+          state.close()
+          PY
+
+  visual-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
+      - run: python -m horizon_core.web_checks --root synthetic_visual/app --check browser-playwright --evidence runtime/web-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-browser-evidence
+          path: runtime/web-evidence/
+          if-no-files-found: error
+  android-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: docker build -t horizon-android:agp8.7.3 android_tools
+      - run: python -m android_tools.check --project android_tools/lab --artifacts artifacts/android
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-android-apk-tests
+          path: artifacts/android/
+          if-no-files-found: error

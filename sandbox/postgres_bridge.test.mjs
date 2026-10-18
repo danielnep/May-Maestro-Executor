@@ -95,7 +95,7 @@ test('RPC transmits JSON data on stdin, never interpolates arguments in commands
   assert.equal(response.ok, true);
   const vm = f.pool.get(response.sandbox_id);
   const rpc = vm.executions.find(call => call.options.stdin);
-  assert.equal(rpc.command, '/tmp/horizon-postgres-controller/venv/bin/python -I /tmp/horizon-postgres-controller/rpc.py');
+  assert.match(rpc.command, /^\/tmp\/horizon-postgres-controller\/venv\/bin\/python -I \/tmp\/horizon-postgres-controller\/versions\/[a-f0-9]{64}\/rpc.py$/);
   assert.equal(rpc.options.timeoutSec, 120);
   assert.equal(JSON.parse(rpc.stdin).args[3], '$(cat /proc/self/environ); pretend-code');
   assert(!rpc.command.includes('pretend-code'));
@@ -154,12 +154,12 @@ test('real PostgreSQL suite is a separate fixed trusted operation', async () => 
   const request = JSON.parse(vm.executions.find(item => item.options.stdin).stdin);
   assert.equal(request.operation, 'test_pg');
   assert.equal(request.command, undefined);
-  assert(RPC_SCRIPT.includes("os.environ['POSTGRES_TEST_DSN'] = dsn"));
+  assert(RPC_SCRIPT.includes("os.environ['POSTGRES_TEST_DSN'] = agent_dsn(dsn)"));
   assert(RPC_SCRIPT.includes("pattern='test_postgres_state.py'"));
 });
 
 test('embedded trusted Python RPC runs data-only dispatch and redacts DSN/password', () => {
-  const prelude = `import sys,types\ncore=types.ModuleType('horizon_core')\npg=types.ModuleType('horizon_core.postgres_state')\nclass FakeState:\n def __init__(self,dsn,schema): pass\n def close(self): pass\n def remember(self,*args,**kwargs): return args[-1]\npg.PostgresState=FakeState\nsys.modules['horizon_core']=core\nsys.modules['horizon_core.postgres_state']=pg\n`;
+  const prelude = `import sys,types\n__file__='/tmp/controller/rpc.py'\ncore=types.ModuleType('horizon_core')\npg=types.ModuleType('horizon_core.postgres_state')\nclass FakeState:\n def __init__(self,dsn,schema): pass\n def close(self): pass\n def remember(self,*args,**kwargs): return args[-1]\npg.PostgresState=FakeState\nexisting=types.ModuleType('horizon_core.existing_database')\nexisting.agent_dsn=lambda dsn:dsn\nexisting.provision=lambda dsn:{}\nsys.modules['horizon_core.existing_database']=existing\nsys.modules['horizon_core']=core\nsys.modules['horizon_core.postgres_state']=pg\n`;
   const dsn = 'postgresql://user:private%22password@postgres.railway.internal/database';
   const execution = spawnSync('python3', ['-c', prelude + RPC_SCRIPT], {
     input: JSON.stringify({ operation: 'rpc', method: 'remember', args: ['p', 'a', 'k',

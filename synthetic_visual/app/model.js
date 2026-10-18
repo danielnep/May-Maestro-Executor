@@ -1,0 +1,9 @@
+(function(root){
+'use strict';
+const initial=()=>({stock:{lamp:5,radio:3},orders:[],events:[],seq:0,settings:{failSync:false}});
+function create(state,input){const title=String(input.title||'').trim(),qty=Number(input.qty),sku=input.sku;if(title.length<2||title.length>120)throw Error('Informe uma descrição com pelo menos 2 caracteres.');if(!Number.isInteger(qty)||qty<1)throw Error('Informe uma quantidade inteira maior que zero.');if(!(sku in state.stock)||state.stock[sku]<qty)throw Error('Quantidade indisponível. Confira o estoque.');const row={id:'R'+(++state.seq),title,sku,qty,state:'reserved',pending:true};state.stock[sku]-=qty;state.orders.push(row);state.events.push('Reserva '+row.id+' criada');return row;}
+function cancel(state,id){const row=state.orders.find(r=>r.id===id);if(!row)throw Error('Reserva não encontrada.');if(row.state==='cancelled')return;state.stock[row.sku]+=row.qty;row.state='cancelled';row.pending=true;state.events.push('Reserva '+id+' cancelada');}
+function sync(state,online){if(!online)throw Error('Sem conexão. As alterações continuam salvas neste aparelho.');if(state.settings.failSync)throw Error('Falha na sincronização. Tente novamente; seus dados foram preservados.');const count=state.orders.filter(r=>r.pending).length;state.orders.forEach(r=>r.pending=false);if(count)state.events.push(count+' alteração(ões) sincronizada(s)');return count;}
+function load(text){try{const value=JSON.parse(text);if(!value||!Array.isArray(value.orders)||!Array.isArray(value.events)||!Number.isInteger(value.seq)||!value.stock||!value.settings)throw Error();for(const key of ['lamp','radio'])if(!Number.isInteger(value.stock[key])||value.stock[key]<0)throw Error();return value;}catch{return initial();}}
+const api={initial,create,cancel,sync,load};if(typeof module==='object')module.exports=api;else root.StationModel=api;
+})(globalThis);

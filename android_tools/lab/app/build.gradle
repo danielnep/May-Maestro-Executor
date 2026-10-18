@@ -1,0 +1,15 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.horizon.offline'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.horizon.offline'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0-lab'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    lint { abortOnError true; warningsAsErrors true }
+}
+dependencies { testImplementation 'junit:junit:4.13.2' }

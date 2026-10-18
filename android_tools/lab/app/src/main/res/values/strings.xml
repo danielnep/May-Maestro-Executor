@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Horizon Offline Lab</string>
+    <string name="description">Laboratório sintético: fila local com recuperação de interrupções.</string>
+    <string name="enqueue">Adicionar operação</string>
+    <string name="sync">Simular confirmação</string>
+    <string name="summary">Pendentes: %1$d · Em execução: %2$d · Confirmadas: %3$d</string>
+    <string name="operation">Operação de laboratório</string>
+    <string name="storage_error">Não foi possível salvar a fila.</string>
+</resources>
