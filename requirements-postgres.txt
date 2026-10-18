@@ -1,2 +1,2 @@
 # Optional dedicated agent PostgreSQL backend. No database is provisioned by install.
-psycopg[binary]>=3.2,<4
+psycopg[binary]==3.2.10

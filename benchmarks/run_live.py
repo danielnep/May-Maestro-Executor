@@ -217,11 +217,16 @@ def main(argv=None):
                 if recovered is not None:
                     (destination / 'benchmark-engine.py').write_text(recovered['content'], encoding='utf-8')
                 state.backup(destination / 'benchmark-checkpoint.sqlite3')
+            except Exception as error:
+                report['checkpoint_error_kind'] = type(error).__name__
+                report.update(status='checkpoint_error', passed=False)
             finally:
                 state.close()
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
         print(json.dumps({'status': report['status'], 'passed': report['passed'],
                           'model_calls': report['model_calls'], 'report': str(report_path)}))
+        if report['status'] == 'checkpoint_error':
+            return 2
 
 
 if __name__ == '__main__':

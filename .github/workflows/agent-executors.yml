@@ -52,7 +52,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Testar bridge do SDK
         working-directory: sandbox
-        run: node --test bridge.test.mjs
+        run: node --test bridge.test.mjs postgres_bridge.test.mjs
       - name: Inventariar especialistas
         run: python -m horizon_core.app --list
 
@@ -253,3 +253,38 @@ jobs:
             runtime/benchmark-report.json
             runtime/benchmark-engine.py
             runtime/benchmark-checkpoint.sqlite3
+
+  private-state-proof:
+    needs: verification
+    if: >-
+      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: sandbox
+      - name: Confirmar PostgreSQL privado sem copiar senha para runner
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
+        run: |
+          python - <<'PY'
+          import json
+          from horizon_core.railway_postgres import RailwayPostgresState
+          state = RailwayPostgresState()
+          first = state.health()
+          initial_id = state.sandbox_id
+          second = state.health()
+          result = state._request(operation='test_pg')
+          print(json.dumps({'health':first,'reused':initial_id==state.sandbox_id,'postgres_tests':result}))
+          if not result.get('passed') or result.get('tests_run',0)<14:
+              raise SystemExit(1)
+          state.close()
+          PY
