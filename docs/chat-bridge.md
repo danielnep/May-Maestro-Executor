@@ -69,7 +69,7 @@ inalterado. Na falta dessas condições, a entrega permanece na branch de trabal
 Nenhum deploy de produção é autorizado pela ponte. O relatório diferencia relato
 do agente, teste executado e publicação; nunca presume aprovação pelos textos.
 
-O cron de cinco minutos retoma pendências e pode sofrer atraso do GitHub. Um novo pedido em `tasks/chat/*.json` já dispara o workflow por push, sem esperar esse cron. O grupo
+O cron de cinco minutos é apenas a recuperação de segurança e pode sofrer atraso do GitHub. Um novo pedido em `tasks/chat/*.json` já dispara o workflow por push, sem esperar esse cron. Quando a sessão de 40 minutos encerra com tarefas imediatamente executáveis, o controlador salva `runtime/next-session.json`, e a última etapa do job chama a API oficial `workflow_dispatch` para iniciar a próxima execução automaticamente. O GitHub serializa essas sessões no grupo `horizon-durable-worker`; nenhuma sessão concorrente retoma a mesma fila. Trabalho em backoff, bloqueado ou ainda reservado por lease não provoca disparos em loop. Erro antes da publicação do marcador ou indisponibilidade da API deixa o cron de cinco minutos como recuperação. O handoff não reinicia o trabalho desde o início, não relança ferramentas completadas e não usa PAT permanente. O grupo
 `horizon-durable-worker` é compartilhado com o coordenador existente para evitar
 concorrência de publicações. Sem pedidos não ocorre chamada de IA.
 
