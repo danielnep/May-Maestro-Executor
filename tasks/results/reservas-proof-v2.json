@@ -1,6 +1,6 @@
 {
   "error": {
-    "kind": "ValueError"
+    "kind": "RailwayPostgresError"
   },
   "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
   "request_id": "reservas-proof-v2",
