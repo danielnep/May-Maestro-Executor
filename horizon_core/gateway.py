@@ -34,7 +34,10 @@ class GatewayError(RuntimeError):
         self.failures = failures or []
 
     def as_dict(self):
-        return {"provider": self.provider, "reason": self.reason, "status": self.status, "retryable": self.retryable}
+        result = {"provider": self.provider, "reason": self.reason, "status": self.status, "retryable": self.retryable}
+        if hasattr(self, 'shape'):
+            result['shape'] = self.shape
+        return result
 
 
 def validate_action(value, tools):
@@ -119,10 +122,19 @@ class _HTTPGateway:
             raise self._error(self.provider + " returned an invalid JSON envelope", "invalid_response", True) from None
 
     def _action(self, text, agent):
+        parsed = None
         try:
-            return validate_action(json.loads(text), agent["tools"])
+            parsed = json.loads(text)
+            return validate_action(parsed, agent["tools"])
         except (ValueError, TypeError, GatewayError):
-            raise self._error(self.provider + " did not return a valid permitted tool action", "invalid_action", True) from None
+            error = self._error(self.provider + " did not return a valid permitted tool action", "invalid_action", True)
+            # Boolean protocol diagnostics only: no output text, keys or reasoning.
+            obj = parsed if isinstance(parsed, dict) else {}
+            action = obj.get('action')
+            error.shape = {'object': isinstance(parsed, dict), 'exact_keys': set(obj) == {'action','args','summary'},
+                           'action_permitted': isinstance(action, str) and action in agent['tools'],
+                           'args_object': isinstance(obj.get('args'), dict), 'summary_text': isinstance(obj.get('summary'), str)}
+            raise error from None
 
     def _metadata(self, agent, model, usage):
         return {"agent_id": agent["id"], "provider": self.provider, "model": model, "usage": usage, "gateway_calls": self.calls}

@@ -1,6 +1,7 @@
 """Publish recovered workspace content to its authorized work branch, never merge."""
 import argparse
 import json
+import os
 import subprocess
 from .github_state import GitHubState
 from .state import State
@@ -10,7 +11,7 @@ from .worker import Worker
 
 def publish(state, root, repo, api=None):
     transport = api or GitHubState(repo)
-    tasks = [state._decode(row) for row in state.db.execute('SELECT * FROM tasks ORDER BY seq')]
+    tasks = state.tasks()
     active = [task for task in tasks if state.recall(task['project'], '__workspace__')]
     if not active:
         return {'published': False, 'reason': 'No generated workspace files'}
@@ -55,7 +56,17 @@ def main():
     parser.add_argument('--db', default='runtime/state.sqlite3')
     parser.add_argument('--root', default='.')
     args = parser.parse_args()
-    state = State(args.db)
+    backend = os.getenv('HORIZON_STATE_BACKEND', 'sqlite')
+    if backend == 'railway-postgres':
+        from .railway_postgres import RailwayPostgresState
+        state = RailwayPostgresState()
+    elif backend == 'postgres':
+        from .postgres_state import PostgresState
+        state = PostgresState(os.environ.get('HORIZON_DATABASE_URL', ''))
+    elif backend == 'sqlite':
+        state = State(args.db)
+    else:
+        raise ValueError('Unknown state backend')
     try:
         print(json.dumps(publish(state, args.root, args.repo)))
     finally:

@@ -8,7 +8,7 @@ Implementados: 17 perfis, gateway REST, fila SQLite, agendamento, dependências,
 
 **Provas reais concluídas:** 17 chamadas independentes ao DeepSeek, leitura real de arquivo, memória e checkpoint por especialista; criação e reuso de sandbox Railway; teste Python isolado em Docker dentro dessa VM; checkpoint GitHub recuperado em outro runner. Ver [Actions 39165714831](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39165714831).
 
-O fallback real usado nessa prova foi por configuração Gemini ausente (modelo/atestação), não por cota real esgotada. Falhas 401/429/5xx, transporte e respostas inválidas foram verificadas com simulação. A chamada individual prova conexão e execução de ferramenta; ainda não substitui uma entrega conjunta complexa dos 17. O fluxo periódico segue aguardando aprovação do workflow na principal e habilitação do worker. Os 10 novos perfis são agentes do runtime, não plugins privados já instalados no ChatGPT.
+O fallback real usado nessa prova foi por configuração Gemini ausente (modelo/atestação), não por cota real esgotada. Falhas 401/429/5xx, transporte e respostas inválidas foram verificadas com simulação. A chamada individual prova conexão e execução de ferramenta; ainda não substitui uma entrega conjunta complexa dos 17. A ativação periódica foi autorizada pelo proprietário em 2026-10-18. O PR #2 foi integrado; o PR #3 conecta a configuração e registra a nova validação. Só anunciar ativo após verificar uma execução do job worker na principal. Os 10 novos perfis são agentes do runtime, não plugins privados já instalados no ChatGPT.
 
 ## Especialistas
 
@@ -142,3 +142,20 @@ O código e suas conexões têm evidência real. Para produção operacional da 
 - [Limites Gemini](https://ai.google.dev/gemini-api/docs/rate-limits)
 - [Runners GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
 - [Eventos/agendamentos Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
+
+
+## Qualidade e armazenamento — atualização 2026-10-18
+
+O catálogo da chave Gemini foi consultado sem inferência: `gemini-3.8-flash` está disponível e passa a ser o padrão do workflow. A chave autoriza acesso; o campo `GEMINI_MODEL` escolhe o modelo em cada chamada. Catálogo não comprova cota nem faturamento. O proprietário confirmou em 2026-10-18 que este projeto está sem faturamento ativado. A configuração versionada registra essa atestação e habilita Gemini; isto não é uma auditoria automática do faturamento. `GEMINI_FREE_TIER_CONFIRMED=false` pode desativar o acesso. DeepSeek continua como fallback por qualquer indisponibilidade.
+
+`PostgresState` acrescenta transações, JSONB, fila com `FOR UPDATE SKIP LOCKED`, dependências, leases, memória e checkpoints. A suíte real inclui 17 trabalhadores concorrentes e não se considera aprovada quando está skipped. PostgreSQL 17 no CI passou os 14 testes de integração. Isto prova o adaptador, não capacidade, backups ou recuperação de um serviço hospedado.
+
+A solicitação de PostgreSQL 18 pelo template Railway usa exclusivamente o ambiente **Agente Remoto**, sem tocar os serviços dos clientes. O template retornou workflow, mas não criou serviço. A criação direta confirmou o bloqueio: `Free plan resource provision limit exceeded`. Nenhum banco foi provisionado e nenhum upgrade foi contratado. O worker permanece em SQLite/GitHub e dados públicos/sintéticos até nova capacidade; não trocar backend sem validar a conexão e migrar o estado deliberadamente. O adaptador `railway-postgres` usa outro sandbox **PRIVATE**, com credencial resolvida no servidor; testes de código permanecem em sandbox **ISOLATED** sem esse acesso. Falha de conexão nunca migra silenciosamente a fila para SQLite, para evitar duas fontes de verdade.
+
+A capacidade efetiva é a do volume provisionado no plano, não um número fictício por agente. Não há promessa de armazenamento ilimitado, alta disponibilidade, backup agendado ou restauração comprovada. O estado GitHub/SQLite continua restrito a dados públicos/sintéticos; para clientes é necessário armazenamento privado verificado.
+
+`benchmarks/reservations_v1` mede reparo de código com estoque multiempresa, idempotência, competição entre processos, outbox transacional e encerramento abrupto no meio da operação. São cinco testes privados densos, com milhares de transições, em duas sementes, mais exemplos públicos. O starter falha e a referência passa. O modelo só recebe contrato, starter e exemplos; a referência e o avaliador ficam fora de sua workspace. `finish` nunca aprova o benchmark. Resultado de um Backend Engineer não certifica os outros 16; os adaptadores especializados descritos acima permanecem pendentes.
+
+Isso é avaliação e aprimoramento de executor/instruções/memória, não treinamento dos pesos do Gemini/DeepSeek. Só promover métodos ao conhecimento compartilhado após resultado confirmado e regressão contra uma nova tarefa ou semente.
+
+Prova viva após a confirmação Free Tier: [Actions39168207624](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39168207624) registrou duas decisões Gemini3.8Flash, seguida de HTTP429 real; os 15 especialistas seguintes continuaram com DeepSeek automaticamente. Os 17 executaram ferramenta, recuperaram memória e salvaram checkpoint. A prova segue limitada a uma ação por perfil.

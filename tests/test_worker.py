@@ -45,6 +45,26 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.close()
         self.tmp.cleanup()
 
+    def test_invalid_model_protocol_can_correct_itself_without_replaying_tool(self):
+        def decide(agent, context):
+            if not context['history']:
+                return action('read_file', {'path': 'README.md'})
+            if len(context['history']) == 1:
+                error = GatewayError('invalid response', retryable=True, provider='deepseek', reason='invalid_action')
+                error.shape = {'object': True, 'exact_keys': False, 'action_permitted': True,
+                               'args_object': True, 'summary_text': True}
+                raise error
+            self.assertEqual([entry['action'] for entry in context['history']], ['read_file', 'protocol_error'])
+            self.assertFalse(context['history'][-1]['outcome']['shape']['exact_keys'])
+            return action('finish')
+        gateway = FakeGateway(decide)
+        self.state.enqueue('protocol', 'backend-engineer', 'fixture', 'Read and recover from invalid protocol')
+        result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['attempts'], 1)
+        self.assertEqual(len(gateway.calls), 3)
+        self.assertEqual(result['checkpoint']['step'], 2)
+
     def test_seventeen_specialists_independent_calls_tools_memory_and_restore(self):
         def decide(agent, context):
             step = len(context['history'])
