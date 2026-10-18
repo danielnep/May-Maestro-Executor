@@ -13,10 +13,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: horizon-validation-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   verification:
     runs-on: ubuntu-latest

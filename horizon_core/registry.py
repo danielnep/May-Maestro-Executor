@@ -9,6 +9,9 @@ AGENT_IDS = (
     "database-engineer", "integration-engineer", "qa-engineer", "security-engineer",
     "devops-engineer", "horizon-evolution-agent", "horizon-skills", "corregedoria-may", "may-persona",
 )
+TRANSACTIONAL_KNOWLEDGE_AGENTS = frozenset(('backend-engineer', 'database-engineer',
+    'software-architect', 'qa-engineer', 'security-engineer', 'horizon-evolution-agent',
+    'horizon-skills', 'corregedoria-may'))
 
 
 def load_agent(agent_id, root=None):
@@ -19,6 +22,9 @@ def load_agent(agent_id, root=None):
     if config.get("id") != agent_id:
         raise ValueError("Specialist identity mismatch")
     config["instructions"] = (directory / "instructions.md").read_text(encoding="utf-8")
+    knowledge = Path(root or AGENTS_ROOT) / 'knowledge' / 'transactional-integrity.md'
+    if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
+        config["instructions"] += '\n\n' + knowledge.read_text(encoding='utf-8')
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     return config
 
