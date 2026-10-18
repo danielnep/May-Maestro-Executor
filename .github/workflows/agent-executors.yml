@@ -3,9 +3,9 @@ name: Horizon - 17 especialistas via API
 on:
   push:
     branches: ['feat/**', 'fix/**', 'agent/**', 'test/**']
-    paths: ['horizon_core/**', 'agents/**', 'tests/**', 'tasks/**', '.github/workflows/agent-executors.yml']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', '.github/workflows/agent-executors.yml']
   pull_request:
-    paths: ['horizon_core/**', 'agents/**', 'tests/**', 'tasks/**', '.github/workflows/agent-executors.yml']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', '.github/workflows/agent-executors.yml']
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
@@ -48,6 +48,41 @@ jobs:
           GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
         run: python3 -m horizon_core.app --preflight
+
+  smoke-prepare:
+    needs: verification
+    if: >-
+      github.event_name == 'push' && github.actor == 'danielnep' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Publicar checkpoint sintético por API sem chamar IA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 -m horizon_core.smoke prepare --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
+
+  smoke-resume:
+    needs: smoke-prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retomar em outro runner e executar Docker real
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: python3 -m horizon_core.smoke resume --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
 
   worker:
     needs: verification
