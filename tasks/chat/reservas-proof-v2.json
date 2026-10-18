@@ -1,0 +1,13 @@
+{
+  "owner": "danielnep",
+  "repository": "danielnep/May-Maestro-Executor",
+  "task_id": "reservas-proof-v2",
+  "agent": "may-maestro",
+  "project": "chat-bridge-proof-v2",
+  "objective": "Construa um aplicativo sintético e testável de reservas em Python stdlib, trabalhando somente em apps/chat-bridge-proof-v2/. O Maestro deve DELEGAR realmente ao backend-engineer a implementação, depois ao qa-engineer testes de regressão e execução isolada e por último a um revisor independente. Ordene as dependências de forma válida. Se uma proposta de delegação for rejeitada, use o motivo e corrija o plano, sem encerrar precocemente. Implementação: capacidade finita por recurso, isolamento por cliente, chaves idempotentes, conflito de replay, cancelamento repetido sem devolver capacidade mais de uma vez, disputa concorrente pela última vaga; arquivos de código Python e tests/test_*.py DENTRO de apps/chat-bridge-proof-v2. QA deve executar run_check com name='python-unittest' e project_dir='apps/chat-bridge-proof-v2' e validar contagem real de testes. Incluir casos com threads, sequência pseudoaleatória de seed fixa e reinício quando houver persistência. Produzir README com contrato, testes, limitações e evidência. Não tocar no controlador, nos outros aplicativos, nos segredos nem em projetos reais. A entrega só pode ser considerada aprovada com testes reais atuais e evidência de publicação; se bloqueada, informar motivo verificável.",
+  "payload": {
+    "allowed_paths": [
+      "apps/chat-bridge-proof-v2/**"
+    ]
+  }
+}
