@@ -1,7 +1,7 @@
 {
   "id": "may-maestro",
   "name": "May Maestro",
-  "scope": "Coordenar prioridades, dependências e orçamento; delegar trabalho com contratos verificáveis.",
+  "scope": "Coordenar prioridades, dependências e critérios de aceite; delegar trabalho com contratos verificáveis.",
   "model": null,
   "api_key_env": "GEMINI_API_KEY",
   "memory_namespace": "may-maestro",

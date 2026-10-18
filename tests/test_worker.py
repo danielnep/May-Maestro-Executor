@@ -145,6 +145,31 @@ class WorkerIntegrationTests(unittest.TestCase):
         finally:
             reopened.close()
 
+    def test_both_providers_unavailable_preserves_checkpoint_and_safe_failure_details(self):
+        self.state.enqueue('providers', 'frontend-engineer', 'fixture', 'Keep durable history when both providers fail')
+        safe_failures = [
+            {'provider': 'gemini', 'reason': 'quota', 'status': 429, 'retryable': True},
+            {'provider': 'deepseek', 'reason': 'authentication', 'status': 401, 'retryable': False},
+        ]
+        def decide(agent, context):
+            if not context['history']:
+                return action('remember', {'key': 'saved', 'value': True})
+            failures = [dict(safe_failures[0], upstream_body='do-not-store-provider-body'), safe_failures[1]]
+            raise GatewayError('do-not-store-error-message-or-key', retryable=True,
+                               provider='all', reason='providers_unavailable', failures=failures)
+        gateway = FakeGateway(decide)
+        with patch('horizon_core.state.time.time', return_value=1000):
+            task = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(task['status'], 'queued')
+        self.assertEqual(task['checkpoint']['step'], 1)
+        self.assertEqual(task['checkpoint']['history'][0]['outcome'], {'remembered': 'saved'})
+        self.assertEqual(self.state.recall('fixture', 'frontend-engineer'), {'saved': True})
+        self.assertEqual(task['error'], {'kind': 'GatewayError', 'provider': 'all',
+            'reason': 'providers_unavailable', 'status': None, 'retryable': True, 'failures': safe_failures})
+        persisted = json.dumps(self.state.events('providers'))
+        self.assertNotIn('do-not-store', persisted)
+        self.assertNotIn('upstream_body', persisted)
+
     def test_failed_tool_stays_in_verification_even_when_model_finishes(self):
         gateway = FakeGateway(lambda agent, context: action('run_check', {'name': 'python-unittest'})
                               if not context['history'] else action('finish', summary='Could not run Docker check'))
@@ -245,6 +270,55 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state.get('completed')['status'], 'succeeded')
         self.assertEqual(self.state.get('completed')['result']['summary'], 'Completed local fixture')
         self.assertIsNone(self.state.get('completed')['error'])
+
+    def test_default_has_no_step_ceiling_and_preserves_complete_history(self):
+        self.state.enqueue('long', 'frontend-engineer', 'fixture', 'Reason through more than twelve fixture decisions')
+        observed = []
+        def decide(agent, context):
+            count = len(context['history'])
+            observed.append(count)
+            self.assertIsNone(context['remaining_steps'])
+            if count == 18:
+                self.assertEqual(context['history'][0]['outcome'], {'remembered': 'step-0'})
+                self.assertEqual(context['history'][-1]['outcome'], {'remembered': 'step-17'})
+                return action('finish')
+            return action('remember', {'key': 'step-' + str(count), 'value': count})
+        gateway = FakeGateway(decide)
+        result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['result']['steps'], 19)
+        self.assertEqual(observed, list(range(19)))
+        self.assertEqual(len(result['checkpoint']['history']), 18)
+
+    def test_time_slices_resume_fresh_workers_without_consuming_retry_attempts(self):
+        self.state.enqueue('sliced', 'frontend-engineer', 'fixture', 'Resume cooperative slices until actual completion', max_attempts=1)
+        lengths = []
+        def decide(agent, context):
+            count = len(context['history'])
+            lengths.append(count)
+            if count >= 5:
+                return action('finish')
+            return action('remember', {'key': 'step-' + str(count), 'value': count})
+        gateway = FakeGateway(decide)
+        for index in range(5):
+            reopened = State(self.path)
+            try:
+                # Each invocation may complete one action before its host timeslice ends.
+                with patch('horizon_core.worker.time.monotonic', side_effect=[0, 2]):
+                    result = Worker(reopened, gateway, self.root, slice_seconds=1).run_one()
+                self.assertEqual(result['status'], 'queued')
+                self.assertEqual(result['attempts'], 0)
+                self.assertEqual(result['checkpoint']['step'], index + 1)
+                self.assertIsNone(result['lease_owner'])
+                self.assertIsNone(result['error'])
+            finally:
+                reopened.close()
+        final = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(final['status'], 'succeeded')
+        self.assertEqual(final['attempts'], 1)
+        self.assertEqual(lengths, list(range(6)))
+        self.assertEqual(sum(event['kind'] == 'yielded' for event in self.state.events('sliced')), 5)
+        self.assertGreaterEqual(sum(event['kind'] == 'lease_renewed' for event in self.state.events('sliced')), 11)
 
     def test_remote_persistence_failure_stops_before_model_or_tool(self):
         self.state.enqueue('persist', 'frontend-engineer', 'fixture', 'Stop if remote checkpoint is unavailable')

@@ -2,12 +2,14 @@
 import argparse
 import json
 import os
+import time
 from pathlib import Path
-from .gateway import GeminiGateway
+from .gateway import ModelGateway, DEFAULT_DEEPSEEK_MODEL
 from .github_state import GitHubState
 from .registry import AGENT_IDS, load_agent
 from .state import State
 from .worker import Worker
+from .railway import RailwayBroker
 
 
 def import_tasks(state, document):
@@ -29,7 +31,8 @@ def main(argv=None):
     parser.add_argument('--root', default='.')
     parser.add_argument('--tasks', default='tasks/inbox.json')
     parser.add_argument('--remote-repo')
-    parser.add_argument('--max-tasks', type=int, default=3)
+    parser.add_argument('--max-tasks', type=int)
+    parser.add_argument('--session-seconds', type=int, default=2400)
     parser.add_argument('--report', default='runtime/report.json')
     parser.add_argument('--list', action='store_true')
     parser.add_argument('--preflight', action='store_true')
@@ -40,10 +43,17 @@ def main(argv=None):
     if args.preflight:
         ready = {name: bool(os.getenv(name)) for name in ('GEMINI_API_KEY', 'GEMINI_MODEL')}
         ready['free_tier_attested'] = os.getenv('GEMINI_FREE_TIER_CONFIRMED', '').lower() == 'true'
-        print(json.dumps({'configuration': ready, 'billing_verified': False, 'requests_sent': 0}))
-        return 0 if all(ready.values()) else 2
-    if not 1 <= args.max_tasks <= 20:
-        parser.error('max-tasks must be between 1 and 20')
+        deepseek = {'api_key_present': bool(os.getenv('DEEPSEEK_API_KEY')),
+                    'model': os.getenv('DEEPSEEK_MODEL') or DEFAULT_DEEPSEEK_MODEL}
+        railway = {'api_token_present': bool(os.getenv('RAILWAY_API_TOKEN')),
+                   'environment_present': bool(os.getenv('RAILWAY_ENVIRONMENT_ID'))}
+        print(json.dumps({'configuration': ready, 'deepseek': deepseek, 'railway': railway,
+                          'billing_verified': False, 'requests_sent': 0}))
+        return 0 if all(ready.values()) or deepseek['api_key_present'] else 2
+    if args.max_tasks is not None and args.max_tasks < 1:
+        parser.error('max-tasks must be positive when explicitly set')
+    if args.session_seconds < 1:
+        parser.error('session-seconds must be positive')
     remote = GitHubState(args.remote_repo) if args.remote_repo else None
     if remote:
         remote.pull(args.db)
@@ -52,11 +62,15 @@ def main(argv=None):
     try:
         import_tasks(state, json.loads(Path(args.tasks).read_text(encoding='utf-8')))
         persist()
-        worker = Worker(state, GeminiGateway(), args.root, persist)
+        sandbox = RailwayBroker(state, persist) if os.getenv('RAILWAY_API_TOKEN') and os.getenv('RAILWAY_ENVIRONMENT_ID') else None
+        worker = Worker(state, ModelGateway(state=state), args.root, persist, sandbox_client=sandbox)
         results = []
-        for _ in range(args.max_tasks):
-            if worker.gateway.calls >= worker.gateway.max_calls:
+        started = time.monotonic()
+        while args.max_tasks is None or len(results) < args.max_tasks:
+            remaining = args.session_seconds - (time.monotonic() - started)
+            if remaining <= 0:
                 break
+            worker.slice_seconds = min(1500, remaining)
             result = worker.run_one()
             if result is None:
                 break

@@ -13,13 +13,14 @@ import time
 
 
 class Tools:
-    def __init__(self, root, agent, allowed_paths=(), branch=None):
+    def __init__(self, root, agent, allowed_paths=(), branch=None, sandbox_client=None):
         self.root = Path(root).resolve()
         self.agent = agent
         if not isinstance(allowed_paths, (list, tuple)) or not all(isinstance(p, str) and p for p in allowed_paths):
             raise ValueError('allowed_paths must be a list of path patterns')
         self.allowed_paths = list(allowed_paths)
         self.branch = branch
+        self.sandbox_client = sandbox_client
 
     def path(self, name, write=False):
         if not isinstance(name, str) or not name or len(name) > 300:
@@ -29,7 +30,7 @@ class Tools:
             raise ValueError('Hidden, absolute and parent paths are forbidden')
         if any(p.lower() in ('secrets', 'credentials', 'node_modules', 'runtime') for p in parts):
             raise ValueError('Secret and runtime paths are forbidden')
-        if write and parts[0] in ('agents', 'horizon_core', 'maestro_exec', 'executors', 'supervisor.py', 'GEMINI.md', 'AGENTS.md'):
+        if write and parts[0] in ('agents', 'horizon_core', 'sandbox', 'maestro_exec', 'executors', 'supervisor.py', 'GEMINI.md', 'AGENTS.md'):
             raise ValueError('A specialist cannot rewrite its control plane')
         if any(re.search(r'(^|[_.-])(token|secret|credential|password|private.?key)([_.-]|$)', p, re.I) for p in parts):
             raise ValueError('Secret path is forbidden')
@@ -95,6 +96,8 @@ class Tools:
     def run_check(self, args):
         if args.get('name') != 'python-unittest':
             raise ValueError('Only the approved python-unittest check is available')
+        if self.sandbox_client is not None:
+            return self.sandbox_client.run_check(self.root, self)
         if not shutil.which('docker'):
             raise RuntimeError('Docker unavailable: untrusted tests cannot run on credentialed host')
         # No host credentials, no Docker socket, no network, no shell interpolation.

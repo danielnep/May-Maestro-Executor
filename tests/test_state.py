@@ -110,6 +110,33 @@ class StateTests(unittest.TestCase):
         self.assertEqual(self.state.get('three')['status'], 'blocked')
         self.assertIn('retry_scheduled', [e['kind'] for e in self.state.events('one')])
 
+    def test_renewal_fencing_and_yield_preserve_checkpoint_and_retry_budget(self):
+        self.enqueue('renew', max_attempts=1)
+        self.state.claim('a', now=100, lease_seconds=10)
+        with self.assertRaises(LeaseError):
+            self.state.renew_lease('renew', 'other', now=101)
+        self.assertEqual(self.state.renew_lease('renew', 'a', lease_seconds=20, now=109), 129)
+        self.state.checkpoint('renew', 'a', {'step': 7}, now=120)
+        with self.assertRaises(LeaseError):
+            self.state.yield_task('renew', 'other', now=121)
+        self.state.yield_task('renew', 'a', now=121)
+        task = self.state.get('renew')
+        self.assertEqual(task['status'], 'queued')
+        self.assertEqual(task['attempts'], 0)
+        self.assertEqual(task['not_before'], 121)
+        self.assertEqual(task['checkpoint'], {'step': 7})
+        self.assertIsNone(task['lease_until'])
+        self.assertIsNone(task['error'])
+        with self.assertRaises(LeaseError):
+            self.state.renew_lease('renew', 'a', now=122)
+        resumed = self.state.claim('b', now=122, lease_seconds=5)
+        self.assertEqual(resumed['attempts'], 1)
+        with self.assertRaises(LeaseError):
+            self.state.renew_lease('renew', 'b', now=127)
+        with self.assertRaises(LeaseError):
+            self.state.yield_task('renew', 'b', now=127)
+        self.assertIn('yielded', [event['kind'] for event in self.state.events('renew')])
+
     def test_permanent_failure_does_not_retry(self):
         self.enqueue('one')
         self.state.claim('a', now=100)

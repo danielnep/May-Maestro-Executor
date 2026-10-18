@@ -3,3 +3,4 @@ __pycache__/
 runtime/
 evidencias/
 .env
+node_modules/

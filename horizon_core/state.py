@@ -158,6 +158,28 @@ class State:
             raise LeaseError("worker does not hold an unexpired lease")
         return row
 
+    def renew_lease(self, task_id, worker, lease_seconds=1800, now=None):
+        """Extend a live lease; a stale worker can never reacquire through renewal."""
+        now = time.time() if now is None else now
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+        with self._tx():
+            row = self._owned(task_id, worker, now)
+            until = max(row["lease_until"], now + lease_seconds)
+            self.db.execute("UPDATE tasks SET lease_until=? WHERE task_id=?", (until, task_id))
+            self._event(task_id, "lease_renewed", {"worker": worker, "lease_until": until}, now)
+            return until
+
+    def yield_task(self, task_id, worker, now=None):
+        """Release at a safe checkpoint without consuming a failure/retry attempt."""
+        now = time.time() if now is None else now
+        with self._tx():
+            self._owned(task_id, worker, now)
+            self.db.execute("""UPDATE tasks SET status='queued',attempts=MAX(0,attempts-1),
+                lease_owner=NULL,lease_until=NULL,error=NULL,not_before=? WHERE task_id=?""",
+                (now, task_id))
+            self._event(task_id, "yielded", {"worker": worker}, now)
+
     def checkpoint(self, task_id, worker, data, now=None):
         now = time.time() if now is None else now
         encoded = _json(data)

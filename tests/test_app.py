@@ -13,7 +13,7 @@ from horizon_core.state import State
 class AppTests(unittest.TestCase):
     def test_list_all_specialists_without_starting_gateway(self):
         output = io.StringIO()
-        with patch('horizon_core.app.GeminiGateway') as gateway, redirect_stdout(output):
+        with patch('horizon_core.app.ModelGateway') as gateway, redirect_stdout(output):
             self.assertEqual(main(['--list']), 0)
         self.assertEqual({agent['id'] for agent in json.loads(output.getvalue())}, set(AGENT_IDS))
         gateway.assert_not_called()
@@ -23,13 +23,27 @@ class AppTests(unittest.TestCase):
         with patch.dict('os.environ', {'GEMINI_API_KEY': 'SENSITIVE-KEY-FIXTURE',
                                       'GEMINI_MODEL': 'fixture-model',
                                       'GEMINI_FREE_TIER_CONFIRMED': 'true'}, clear=True), \
-                patch('horizon_core.app.GeminiGateway') as gateway, redirect_stdout(output):
+                patch('horizon_core.app.ModelGateway') as gateway, redirect_stdout(output):
             self.assertEqual(main(['--preflight']), 0)
         document = json.loads(output.getvalue())
         self.assertNotIn('SENSITIVE-KEY-FIXTURE', output.getvalue())
         self.assertEqual(document['requests_sent'], 0)
         self.assertFalse(document['billing_verified'])
         self.assertTrue(all(document['configuration'].values()))
+        gateway.assert_not_called()
+
+    def test_preflight_accepts_deepseek_only_without_starting_any_provider(self):
+        output = io.StringIO()
+        with patch.dict('os.environ', {'DEEPSEEK_API_KEY': 'DEEPSEEK-PRIVATE-FIXTURE'}, clear=True), \
+                patch('horizon_core.app.ModelGateway') as gateway, redirect_stdout(output):
+            self.assertEqual(main(['--preflight']), 0)
+        document = json.loads(output.getvalue())
+        self.assertFalse(any(document['configuration'].values()))
+        self.assertTrue(document['deepseek']['api_key_present'])
+        self.assertTrue(document['deepseek']['model'])
+        self.assertEqual(document['requests_sent'], 0)
+        self.assertFalse(document['billing_verified'])
+        self.assertNotIn('DEEPSEEK-PRIVATE-FIXTURE', output.getvalue())
         gateway.assert_not_called()
 
     def test_preflight_missing_configuration_is_not_ready(self):
