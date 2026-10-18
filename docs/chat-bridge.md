@@ -6,8 +6,10 @@ telefone, PAT permanente, OAuth adicional nem credencial dentro do pedido.
 
 O controlador é código confiável da principal. Valida proprietário, repositório,
 especialista e namespace; transforma o JSON em tarefa na fila PostgreSQL privada.
-Cada pedido recebe projeto isolado e branch `agent/chat-<id>`. Os especialistas
-editam somente o namespace `apps/<project>/`, herdado nas delegações. A fila é
+Cada pedido recebe projeto isolado e branch `agent/chat-<id>`. Em `new_product`
+(padrão), os especialistas editam somente o namespace `apps/<project>/`. Em
+`existing_product`, editam a lista explícita de arquivos/padrões autorizados.
+Esse escopo é herdado nas delegações e nunca ampliado pelo modelo. A fila é
 reivindicada atomicamente por projeto; retomar não consome tarefa de outro checkout.
 
 Exemplo para `tasks/chat/reservas-proof-v1.json`:
@@ -25,6 +27,32 @@ Exemplo para `tasks/chat/reservas-proof-v1.json`:
   }
 }
 ```
+
+Para corrigir um produto existente, use `delivery_type: "existing_product"` e
+declare `payload.allowed_paths` obrigatoriamente. Exemplo:
+
+```json
+{
+  "owner": "danielnep",
+  "repository": "danielnep/app-hondas-maxvel",
+  "task_id": "ronda-interface-001",
+  "delivery_type": "existing_product",
+  "agent": "may-maestro",
+  "project": "ronda-pro",
+  "objective": "Revisar e corrigir a interface somente nos caminhos aprovados; preservar backend, testar e entregar evidências verificáveis na branch de trabalho.",
+  "payload": { "allowed_paths": ["src/**", "index.html"] }
+}
+```
+
+Os caminhos acima são exemplo de contrato: May deve conferir os arquivos reais
+do repositório antes de enviar. Essa modalidade **sempre entrega em branch de
+trabalho**, mesmo se todos os testes passarem. Publicar na principal depende da
+aprovação separada e da ação do host; o pedido não cria essa autorização.
+Não são aceitos caminhos ocultos, absolutos, com `..`, segredos ou glob na raiz
+(`**`, `*.js`). No repositório do controlador também são protegidos seus agentes,
+runtime, SDK/sandbox, ferramentas Android, workflows, testes e fila de controle.
+Aplicativos Android externos podem autorizar `android/...` explicitamente;
+configurações locais, keystores e credenciais permanecem proibidos.
 
 O ID identifica pedido imutável: repetir o arquivo não cria outra tarefa. Alterar
 seu conteúdo depois da importação é rejeitado; uma mudança de objetivo usa ID novo.
@@ -46,10 +74,10 @@ O cron horário retoma pendências e pode sofrer atraso do GitHub. O grupo
 concorrência de publicações. Sem pedidos não ocorre chamada de IA.
 
 `repository` pode indicar outro repositório **público** de `danielnep`. O controlador
-prepara um checkout separado e verifica a identidade real antes de trabalhar;
-continua limitado a um namespace novo `apps/<project>/`. Repositórios privados,
-outras contas e alterações livres de aplicativos existentes não fazem parte desta
-ponte inicial. O token temporário do Actions geralmente escreve apenas no repo do
+prepara um checkout separado e verifica a identidade real antes de trabalhar.
+Produtos novos usam namespace novo; produtos existentes exigem escopo explícito.
+Repositórios privados e outras contas não fazem parte desta ponte inicial.
+O token temporário do Actions geralmente escreve apenas no repo do
 workflow. Quando o GitHub recusa escrita no destino externo com 403/404, o resultado
 fica `awaiting_host_publication`, com arquivos completos em `publication.patch_files`,
 hash anterior, alvo e commit base. May deve verificar o destino e publicar usando

@@ -1,7 +1,8 @@
 """Chat -> versioned request -> private queue -> agents -> versioned result.
 
 The controller runs from trusted main; task JSON is DATA, never code/policy.
-Only new apps/<project>/ files are writable. No persistent GitHub PAT or CLI.
+New apps use apps/<project>/; existing products require exact authorized paths.
+Existing-product changes remain on a work branch. No persistent PAT or CLI.
 GitHub's short-lived workflow token publishes results and authorized branches.
 """
 import argparse
@@ -21,6 +22,7 @@ from .publication_policy import restore_controller_baseline
 from .publish import publish
 from .railway import RailwayBroker
 from .registry import AGENT_IDS
+from .tools import Tools
 from .worker import Worker
 
 REPOSITORY = 'danielnep/May-Maestro-Executor'
@@ -28,11 +30,36 @@ OWNER = 'danielnep'
 IDENTIFIER = re.compile(r'[a-z0-9][a-z0-9-]{0,69}')
 
 
+def _validate_path_pattern(path, repo):
+    if (not isinstance(path, str) or not path or len(path) > 300 or path.startswith('/')
+            or '\\' in path or any(ord(char) < 32 for char in path)
+            or str(PurePosixPath(path)) != path
+            or any(part in ('.', '..') or part.startswith('.') for part in path.split('/'))):
+        raise ValueError('Allowed paths must be canonical nonhidden relative paths')
+    parts = path.split('/')
+    # A concrete root prevents globs from reaching hidden/control-plane roots.
+    if any(char in parts[0] for char in '*?['):
+        raise ValueError('An authorized path requires a concrete root')
+    forbidden = {'secrets', 'credentials', 'node_modules', 'runtime', '__pycache__'}
+    if any(part.lower() in forbidden or re.search(
+            r'(^|[_.-])(tokens?|secrets?|credentials?|passwords?|private.?key)([_.-]|$)', part, re.I)
+            for part in parts):
+        raise ValueError('Secrets and runtime paths cannot enter task scope')
+    control = {'agents', 'horizon_core', 'sandbox', 'android_tools', 'maestro_exec', 'executors',
+               'supervisor.py', 'GEMINI.md', 'AGENTS.md'}
+    if repo == REPOSITORY:
+        control |= {'android', 'chat_bridge', 'tasks', 'tests', 'benchmarks', 'requirements-postgres.txt'}
+    if parts[0] in control or parts[-1] == 'local.properties' or Path(path).suffix.lower() in (
+            '.pem', '.key', '.sqlite', '.sqlite3', '.db', '.keystore', '.jks', '.env'):
+        raise ValueError('Controller and credential paths cannot enter task scope')
+    return path
+
+
 def validate_request(document, request_id, repo=REPOSITORY):
     if not isinstance(request_id, str) or not IDENTIFIER.fullmatch(request_id):
         raise ValueError('Invalid request identifier')
     fields = {'owner', 'repository', 'task_id', 'agent', 'project', 'objective', 'payload',
-              'initiative', 'initiative_reason'}
+              'initiative', 'initiative_reason', 'delivery_type'}
     if not isinstance(document, dict) or set(document) - fields:
         raise ValueError('Request must contain only declared task data')
     target_repo = document.get('repository')
@@ -47,25 +74,29 @@ def validate_request(document, request_id, repo=REPOSITORY):
         raise ValueError('Unknown specialist')
     project = document.get('project')
     if not isinstance(project, str) or not IDENTIFIER.fullmatch(project):
-        raise ValueError('A new application namespace is required')
+        raise ValueError('A valid application/project identifier is required')
+    delivery_type = document.get('delivery_type', 'new_product')
+    if delivery_type not in ('new_product', 'existing_product'):
+        raise ValueError('delivery_type must be new_product or existing_product')
     objective = document.get('objective')
     if not isinstance(objective, str) or not 5 <= len(objective.strip()) <= 20000 or '\x00' in objective:
         raise ValueError('A bounded objective is required')
     payload = document.get('payload', {})
     if not isinstance(payload, dict) or set(payload) - {'branch', 'allowed_paths'}:
         raise ValueError('Task payload cannot override controller policy')
-    namespace = 'apps/' + project
+    namespace = 'apps/' + project if delivery_type == 'new_product' else None
     branch = 'agent/chat-' + request_id
     if 'branch' in payload and payload['branch'] != branch:
         raise ValueError('Work branch is assigned by the controller')
-    paths = payload.get('allowed_paths', [namespace + '/**'])
+    if delivery_type == 'existing_product' and 'allowed_paths' not in payload:
+        raise ValueError('Existing products require explicit allowed_paths')
+    paths = payload.get('allowed_paths', [namespace + '/**'] if namespace else None)
     if (not isinstance(paths, list) or not paths or len(paths) > 100
             or not all(isinstance(path, str) for path in paths) or len(set(paths)) != len(paths)):
-        raise ValueError('A bounded allowlist inside the application namespace is required')
+        raise ValueError('A bounded explicit allowlist is required')
     for path in paths:
-        if (not isinstance(path, str) or len(path) > 300 or not path.startswith(namespace + '/')
-                or '\\' in path or '\x00' in path or str(PurePosixPath(path)) != path
-                or any(part in ('.', '..') or part.startswith('.') for part in path.split('/'))):
+        _validate_path_pattern(path, target_repo)
+        if namespace and not path.startswith(namespace + '/'):
             raise ValueError('Allowed paths escape the authorized application namespace')
     initiative = document.get('initiative', False)
     reason = document.get('initiative_reason', '')
@@ -76,11 +107,11 @@ def validate_request(document, request_id, repo=REPOSITORY):
     task = {'task_id': 'chat-' + request_id, 'agent': agent,
             'project': 'chat:' + request_id, 'objective': objective,
             'payload': {'repository': target_repo, 'branch': branch, 'allowed_paths': paths,
-                        'application_namespace': namespace, 'initiative': initiative,
+                        **({'application_namespace': namespace} if namespace else {}), 'initiative': initiative,
                         **({'initiative_reason': reason} if initiative else {})}}
     canonical = json.dumps(document, sort_keys=True, separators=(',', ':'), ensure_ascii=False, allow_nan=False)
     return {'id': request_id, 'task': task, 'request_digest': hashlib.sha256(canonical.encode()).hexdigest(),
-            'namespace': namespace, 'branch': branch}
+            'namespace': namespace, 'branch': branch, 'delivery_type': delivery_type}
 
 
 class ScopedState:
@@ -193,12 +224,17 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
         return summarize(validated['id'], tasks, previous.get('publication'))
     # This authorization originates from the controller, NEVER request JSON.
     target_repo = task['payload']['repository']
-    policy = {'delivery_type': 'new_product', 'target_repo': target_repo, 'target_branch': 'main',
-              'allow_new_product_main': True, 'new_project_namespace': validated['namespace']}
+    existing_product = validated.get('delivery_type', 'new_product') == 'existing_product'
+    policy = ({'delivery_type': 'existing_product_update', 'target_repo': target_repo,
+               'target_branch': validated['branch'], 'allowed_paths': task['payload']['allowed_paths']}
+              if existing_product else {'delivery_type': 'new_product', 'target_repo': target_repo,
+               'target_branch': 'main', 'allow_new_product_main': True,
+               'new_project_namespace': validated['namespace']})
     target_api = api if target_repo == REPOSITORY else GitHubState(target_repo)
     with prepare(target_repo, validated['branch'], operator_policy=policy, api=target_api) as project:
         default_branch = getattr(project, 'default_branch', 'main')
-        policy['target_branch'] = default_branch
+        if not existing_product:
+            policy['target_branch'] = default_branch
         stored = state.recall(task['project'], '__operator__')
         baseline = restore_controller_baseline(stored['baseline']) if stored.get('baseline') else project.baseline
         if not stored.get('baseline'):
@@ -214,11 +250,11 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
                 break
         # Main publication is conditional on current real checks and immutable
         # baseline. Work branch remains the recoverable fallback, never force-push.
-        publication_target = default_branch
+        publication_target = validated['branch'] if existing_product else default_branch
         try:
             publication = publisher(state, project.root, target_repo, api=target_api, operator_policy=policy,
-                                    baseline=baseline, target_branch=default_branch, project=task['project'])
-            if not publication.get('published'):
+                                    baseline=baseline, target_branch=publication_target, project=task['project'])
+            if not existing_product and not publication.get('published'):
                 main_reason = publication.get('reason')
                 publication_target = validated['branch']
                 publication = publisher(state, project.root, target_repo, api=target_api, operator_policy={},
@@ -228,9 +264,11 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
             if target_repo == REPOSITORY or str(error) not in ('GitHub HTTP 403', 'GitHub HTTP 404'):
                 raise
             files = []
+            validator = Tools(project.root, {'tools': ['write_file']}, task['payload']['allowed_paths'], validated['branch'])
             for name, mutation in state.recall(task['project'], '__workspace__').items():
-                if (not name.startswith(validated['namespace'] + '/') or str(PurePosixPath(name)) != name
-                        or '..' in name.split('/') or mutation.get('branch') != validated['branch']
+                _validate_path_pattern(name, target_repo)
+                validator.path(name, write=True)
+                if (mutation.get('branch') != validated['branch']
                         or not isinstance(mutation.get('content'), str)):
                     raise ValueError('Recovered host patch is outside authorized scope')
                 files.append({'path': name, 'content': mutation['content'],

@@ -243,6 +243,77 @@ class CommitBridgeTests(unittest.TestCase):
             worker_factory=NoWork, gateway_factory=lambda **kwargs: None, publisher=publisher)
         self.assertEqual(len(calls), 1)
 
+    def test_existing_product_requires_explicit_scope_and_accepts_portfolio_paths(self):
+        document = {**request(), 'delivery_type': 'existing_product', 'repository': 'danielnep/ronda-pro'}
+        document.pop('payload')
+        with self.assertRaisesRegex(ValueError, 'explicit allowed_paths'):
+            validate_request(document, 'proof-request')
+        document['payload'] = {'allowed_paths': ['src/**', 'index.html', 'android/app/build.gradle']}
+        validated = validate_request(document, 'proof-request')
+        self.assertEqual(validated['delivery_type'], 'existing_product')
+        self.assertIsNone(validated['namespace'])
+        self.assertNotIn('application_namespace', validated['task']['payload'])
+        self.assertEqual(validated['task']['payload']['allowed_paths'], document['payload']['allowed_paths'])
+
+    def test_existing_product_cannot_authorize_controller_or_sensitive_roots(self):
+        for path in ['**', '*.py', 'src/../other.py', 'src//ui.py', '.github/workflows/x.yml',
+                     'src/.env', 'credentials.json', 'src/private_key.pem', 'runtime/state.sqlite3',
+                     'horizon_core/**', 'agents/**', 'sandbox/**', 'android/**', 'android_tools/**',
+                     'chat_bridge/**', 'tasks/**', 'tests/**', 'supervisor.py']:
+            document = {**request(), 'delivery_type': 'existing_product', 'payload': {'allowed_paths': [path]}}
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                validate_request(document, 'proof-request')
+
+    def test_existing_product_publication_never_attempts_main(self):
+        validated = validate_request({**request(), 'delivery_type': 'existing_product',
+            'payload': {'allowed_paths': ['apps/sample-app/**']}}, 'proof-request')
+        @contextmanager
+        def prepare(repo, branch, operator_policy=None, **kwargs):
+            self.assertEqual(operator_policy['delivery_type'], 'existing_product_update')
+            self.assertEqual(operator_policy['target_branch'], 'agent/chat-proof-request')
+            self.assertNotIn('allow_new_product_main', operator_policy)
+            self.assertNotIn('allow_existing_product_main', operator_policy)
+            self.assertNotIn('new_project_namespace', operator_policy)
+            yield SimpleNamespace(root=self.root, baseline=self.baseline, default_branch='main')
+        class FixtureWorker:
+            def __init__(self, state, *args, **kwargs): self.state = state
+            def run_one(self):
+                task = self.state.claim('existing-worker')
+                if task is None: return None
+                self.state.complete(task['task_id'], 'existing-worker', {'summary': 'Existing product review'})
+                return self.state.get(task['task_id'])
+        calls = []
+        def publisher(*args, **kwargs):
+            calls.append(kwargs['target_branch'])
+            return {'published': False, 'reason': 'Nothing changed'}
+        process_request(self.state, validated, api=ContentAPI(), prepare=prepare, worker_factory=FixtureWorker,
+                        gateway_factory=lambda **kwargs: None, publisher=publisher)
+        self.assertEqual(calls, ['agent/chat-proof-request'])
+
+    def test_existing_external_host_patch_uses_allowlist_not_new_app_namespace(self):
+        validated = validate_request({**request(), 'delivery_type': 'existing_product',
+            'repository': 'danielnep/ronda-pro', 'payload': {'allowed_paths': ['src/ui.js']}}, 'proof-request')
+        @contextmanager
+        def prepare(*args, **kwargs):
+            yield SimpleNamespace(root=self.root, baseline=self.baseline, default_branch='main')
+        class FixtureWorker:
+            def __init__(self, state, *args, **kwargs): self.state = state
+            def run_one(self):
+                task = self.state.claim('external-worker')
+                if task is None: return None
+                self.state.remember(task['project'], '__workspace__', 'src/ui.js',
+                    {'content': 'export const title = "Ronda Pro";', 'branch': task['payload']['branch']})
+                self.state.complete(task['task_id'], 'external-worker', {'summary': 'Updated authorized source'})
+                return self.state.get(task['task_id'])
+        def denied(*args, **kwargs):
+            self.assertEqual(kwargs['target_branch'], 'agent/chat-proof-request')
+            raise GitHubStateError('GitHub HTTP 403')
+        result = process_request(self.state, validated, api=ContentAPI(), prepare=prepare,
+            worker_factory=FixtureWorker, gateway_factory=lambda **kwargs: None, publisher=denied)
+        self.assertEqual(result['status'], 'awaiting_host_publication')
+        self.assertEqual(result['publication']['target_branch'], 'agent/chat-proof-request')
+        self.assertEqual(result['publication']['patch_files'][0]['path'], 'src/ui.js')
+
 
 if __name__ == '__main__':
     unittest.main()

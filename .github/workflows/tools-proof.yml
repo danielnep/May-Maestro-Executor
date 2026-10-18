@@ -77,6 +77,29 @@ jobs:
         with: {python-version: '3.12'}
       - run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
       - run: python -m horizon_core.web_checks --root synthetic_visual/app --check browser-playwright --evidence runtime/web-evidence
+      - name: Revisão da captura por modelo visual real
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_FREE_TIER_CONFIRMED: 'true'
+        run: |
+          python - <<'PYTHON'
+          import hashlib,json
+          from pathlib import Path
+          from horizon_core.gateway import GeminiGateway,GatewayError
+          from horizon_core.registry import load_agent
+          manifest=next(Path('runtime/web-evidence').glob('*/manifest.json'))
+          evidence=json.loads(manifest.read_text())['screenshots'][0]
+          data=(manifest.parent/evidence['file']).read_bytes()
+          assert hashlib.sha256(data).hexdigest()==evidence['sha256']
+          try:
+              report=GeminiGateway().inspect_image(load_agent('horizon-ui-guardian'),data,'Evaluate visible layout, typography, density and any overlap. Mention only observations supported by this screenshot.')
+              report['verified']=True
+          except GatewayError as error:
+              report={'verified':False,'error':error.as_dict(),'note':'Browser evidence remains real; vision API unavailable for this attempt.'}
+          (manifest.parent/'vision-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False))
+          PYTHON
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -100,3 +123,49 @@ jobs:
           name: real-android-apk-tests
           path: artifacts/android/
           if-no-files-found: error
+
+  public-research-proof:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[research]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Pesquisa e leitura públicas reais, sem credenciais
+        run: |
+          python - <<'PYTHON'
+          import json
+          from horizon_core.research import search_web,fetch_public
+          page=fetch_public('https://docs.python.org/3/library/sqlite3.html')
+          assert page['text'] and page['untrusted']
+          result=search_web('Python sqlite3 transactions official documentation')
+          assert result['results'] and result['untrusted']
+          print(json.dumps({'page':{'url':page['url'],'characters':len(page['text'])},'search':result}))
+          PYTHON
+
+  queue-progress:
+    if: contains(github.event.head_commit.message, '[queue]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: sandbox
+      - name: Consultar execução sintética na fila privada sem chamar IA
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
+        run: |
+          python - <<'PYTHON'
+          import json
+          from horizon_core.railway_postgres import RailwayPostgresState
+          state=RailwayPostgresState()
+          rows=state.tasks(project='chat:reservas-proof-v1')
+          print(json.dumps({'tasks':[{'id':r['task_id'],'agent':r['agent'],'status':r['status'],'step':(r.get('checkpoint') or {}).get('step'), 'error':r.get('error')} for r in rows]},ensure_ascii=False))
+          state.close()
+          PYTHON
