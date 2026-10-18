@@ -69,7 +69,7 @@ inalterado. Na falta dessas condições, a entrega permanece na branch de trabal
 Nenhum deploy de produção é autorizado pela ponte. O relatório diferencia relato
 do agente, teste executado e publicação; nunca presume aprovação pelos textos.
 
-O cron horário retoma pendências e pode sofrer atraso do GitHub. O grupo
+O cron de cinco minutos retoma pendências e pode sofrer atraso do GitHub. Um novo pedido em `tasks/chat/*.json` já dispara o workflow por push, sem esperar esse cron. O grupo
 `horizon-durable-worker` é compartilhado com o coordenador existente para evitar
 concorrência de publicações. Sem pedidos não ocorre chamada de IA.
 
