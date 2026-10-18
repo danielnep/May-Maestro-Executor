@@ -1,0 +1,9 @@
+{
+  "id": "devops-engineer",
+  "name": "DevOps Engineer",
+  "scope": "Implementar CI, ambientes, observabilidade e entrega reversível.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "devops-engineer",
+  "independent_reasoning": true
+}

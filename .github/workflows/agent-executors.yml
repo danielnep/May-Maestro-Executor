@@ -1,53 +1,26 @@
-name: May Maestro - Sete executores (branch)
+name: Horizon - 17 especialistas via API
 
 on:
   push:
-    branches:
-      - 'feat/**'
-      - 'fix/**'
-      - 'agent/**'
-      - 'test/**'
-    paths:
-      - 'maestro_exec/**'
-      - 'executors/**'
-      - 'tests/**'
-      - '.github/workflows/agent-executors.yml'
+    branches: ['feat/**', 'fix/**', 'agent/**', 'test/**']
+    paths: ['horizon_core/**', 'agents/**', 'tests/**', 'tasks/**', '.github/workflows/agent-executors.yml']
   pull_request:
-    paths:
-      - 'maestro_exec/**'
-      - 'executors/**'
-      - 'tests/**'
-      - '.github/workflows/agent-executors.yml'
+    paths: ['horizon_core/**', 'agents/**', 'tests/**', 'tasks/**', '.github/workflows/agent-executors.yml']
   workflow_dispatch:
-    inputs:
-      agent:
-        description: 'Agente individual ou all'
-        required: false
-        default: 'all'
-        type: string
+  schedule:
+    - cron: '17 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: agents-${{ github.ref }}
+  group: horizon-durable-worker
   cancel-in-progress: false
 
 jobs:
-  isolated-agents:
+  verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    strategy:
-      fail-fast: false
-      matrix:
-        agent:
-          - may-maestro
-          - corregedoria-may
-          - may-persona
-          - horizon-skills
-          - horizon-evolution-agent
-          - horizon-project-studio
-          - horizon-ui-guardian
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,29 +28,66 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Testes unitarios e de seguranca
-        run: python3 -m unittest discover -s tests -v
-      - name: Executar especialidade isolada
-        env:
-          SELECTED: ${{ inputs.agent || 'all' }}
-          CURRENT_BRANCH: ${{ github.head_ref || github.ref_name }}
-          AGENT: ${{ matrix.agent }}
-        run: |
-          if [ "$SELECTED" != "all" ] && [ "$SELECTED" != "$AGENT" ]; then
-            echo "Pulando executor nao selecionado: $AGENT"
-            exit 0
-          fi
-          python3 -m maestro_exec.runner --agent "$AGENT" --mode audit \
-            --root . --branch "$CURRENT_BRANCH" --evidence evidencias
-          python3 -m maestro_exec.runner --agent "$AGENT" --mode test \
-            --root . --branch "$CURRENT_BRANCH" --evidence evidencias
-          python3 -m maestro_exec.runner --verify "evidencias/$AGENT/checkpoint.json"
-      - name: Publicar checkpoints
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: maestro-${{ matrix.agent }}-${{ github.run_id }}
-          path: evidencias/${{ matrix.agent }}/
-          if-no-files-found: warn
-          retention-days: 14
+      - name: Validar runtime, 17 identidades e retomada sem chamar API
+        run: python -m unittest discover -s tests -v
+      - name: Inventariar especialistas
+        run: python -m horizon_core.app --list
 
+  configuration:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Conferir configuração sem chamar IA e sem revelar credenciais
+        continue-on-error: true
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+        run: python3 -m horizon_core.app --preflight
+
+  worker:
+    needs: verification
+    # No live calls on PRs. Operator must attest a no-billing Google project.
+    # Scheduling starts only when this workflow is approved onto the default branch.
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
+      vars.HORIZON_WORKER_ENABLED == 'true' && vars.GEMINI_FREE_TIER_CONFIRMED == 'true' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ vars.HORIZON_WORK_BRANCH || 'feat/horizon-team-runtime-20261018' }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Executar fila persistente com orçamento limitado
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED }}
+          GEMINI_MAX_CALLS: '12'
+          GEMINI_MAX_OUTPUT_TOKENS: '2048'
+        run: >-
+          python -m horizon_core.app --remote-repo danielnep/May-Maestro-Executor
+          --max-tasks 3
+      - name: Publicar arquivos recuperáveis somente na branch de trabalho
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m horizon_core.publish --repo danielnep/May-Maestro-Executor
+      - name: Resumo da execução
+        if: always()
+        run: |
+          if [ -f runtime/report.json ]; then
+            cat runtime/report.json
+          fi

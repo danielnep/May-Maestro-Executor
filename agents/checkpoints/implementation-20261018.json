@@ -1,0 +1,57 @@
+{
+  "objective": "Implementar 17 especialistas independentes sem CLI de agente nem hospedagem paga",
+  "repository": "danielnep/May-Maestro-Executor",
+  "branch": "feat/horizon-team-runtime-20261018",
+  "base_commit": "399ca2adda087d6e857d0f403a3bf86b447ab249",
+  "stage": "implemented_and_locally_tested",
+  "authors": {
+    "coordinator": "May via Work",
+    "delegated_workers": [
+      "specialists_gateway",
+      "durable_queue",
+      "github_persistence"
+    ]
+  },
+  "checks": [
+    {
+      "command": "python3 -m unittest discover -s tests -q",
+      "result": "passed",
+      "tests": 71
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "check": "workflow YAML parsed",
+      "result": "passed"
+    },
+    {
+      "check": "Gemini local preflight",
+      "result": "blocked",
+      "api_key_present": false,
+      "model_present": false,
+      "free_tier_attested": false,
+      "requests_sent": 0
+    }
+  ],
+  "implemented": [
+    "17 identities and scoped model calls",
+    "direct Gemini REST",
+    "SQLite queue leases DAG retries",
+    "scoped memory",
+    "GitHub CAS snapshots",
+    "workspace recovery and feature-branch publisher",
+    "bounded isolated Python check tool",
+    "hourly schedule gated by configuration"
+  ],
+  "not_proven": [
+    "real Gemini calls for all 17",
+    "live remote persistence roundtrip",
+    "Docker execution on runner",
+    "real joint task and runner restart",
+    "native Android build",
+    "interactive browser/vision"
+  ],
+  "next_action": "Publish branch and PR, inspect remote CI and configuration preflight; keep main untouched. Activation requires validated free-tier configuration; hourly schedule requires approved workflow on default branch."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "qa-engineer",
+  "name": "QA Engineer",
+  "scope": "Verificar comportamento e regressões por testes executáveis.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "qa-engineer",
+  "independent_reasoning": true
+}

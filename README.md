@@ -1,52 +1,111 @@
-# May Maestro | Sete executores Horizon
+# Horizon | Equipe de 17 especialistas
 
-Projeto de execucao real para os sete plugins privados da Horizon. Python 3.11+, sem dependencias de execucao para as auditorias. Cada agente possui entrada independente, escopo, testes, politica de edicao, checkpoint e evidencias.
+Runtime Python 3.11+ com chamadas diretas à API Gemini. Não instala nem depende de Codex CLI, Gemini CLI, VPS ou servidor pago. Os 17 agentes têm configuração, instruções, ferramentas, contexto de chamada e memória próprios. Compartilham código de infraestrutura e podem compartilhar uma chave; o Maestro delega tarefas, não escreve as conclusões dos especialistas.
 
-## Agentes e responsabilidades
+## Estado da entrega
 
-- **May Maestro:** roteamento, dependencias, registro e estado das tarefas.
-- **Corregedoria May:** valida integridade dos checkpoints, rastreia faltas de evidencia e detecta risco de segredos.
-- **May Persona:** revisa microcopy e consistencia de idioma de interfaces.
-- **Horizon Skills:** inventaria arquitetura, scripts e testes de integracao.
-- **Horizon Evolution Agent:** testa regressoes, estado de trabalho e integridade de edicoes.
-- **Horizon Project Studio:** cataloga recursos e elabora dependencias entre tarefas.
-- **Horizon UI Guardian:** verifica CSS, breakpoints, acessibilidade estaticamente e screenshots reais quando o navegador existe.
+Implementados: 17 perfis, gateway REST, fila SQLite, agendamento, dependências, memória por agente/projeto, checkpoints com retomada, ferramentas de leitura/escrita, testes isolados em Docker, persistência GitHub por API e publicação em branch de trabalho. A suíte usa HTTP simulado para verificar o contrato sem consumir API.
 
-Cada arquivo executors/NOME.py pode ser invocado sozinho. Um processo tambem pode executar os sete papeis por meio de maestro_exec.runner --agent all. Essas execucoes compartilham motor comum, mas sao processos enderecaveis independentes; habilidades privadas nao viram processos autonomos sem runtime.
+**Não declarar a equipe operacional por esta suíte.** Ainda exigem prova externa: chamada Gemini real para cada perfil; worker autenticado usando estado remoto; execução Docker real; tarefa conjunta real e retomada em outro runner. O `--preflight` verifica presença de configuração, não valida chave nem situação de cobrança Google. A implantação de plugins do ChatGPT é separada deste runtime: os 10 novos especialistas são agentes do executor, não plugins privados já instalados na conta.
 
-## Comandos verificaveis
+## Especialistas
 
-    python3 -m unittest discover -s tests -v
-    python3 -m maestro_exec.runner --list
-    python3 -m maestro_exec.runner --agent all --root . --mode audit --branch feat/minha-tarefa
-    python3 executors/horizon-ui-guardian.py --root . --mode audit --branch feat/minha-tarefa
-    python3 executors/horizon-skills.py --root . --mode test --branch feat/minha-tarefa
-    python3 -m maestro_exec.runner --verify evidencias/horizon-skills/checkpoint.json
+| Agente | Responsabilidade | ID executável |
+| --- | --- | --- |
+| May Maestro | Coordenar prioridades, dependências e orçamento; delegar trabalho com contratos verificáveis. | `may-maestro` |
+| Horizon Project Studio | Converter o pedido em requisitos e critérios de aceite sem implementar engenharia de todas as áreas. | `horizon-project-studio` |
+| Software Architect | Definir limites de componentes, contratos e decisões arquiteturais. | `software-architect` |
+| Frontend Engineer | Implementar interface web acessível e responsiva preservando contratos. | `frontend-engineer` |
+| Backend Engineer | Implementar APIs, autenticação e regras de negócio com integridade. | `backend-engineer` |
+| Mobile App Builder | Desenvolver recursos Android nativos e integração com o dispositivo. | `mobile-app-builder` |
+| UI/UX Designer | Projetar fluxos, hierarquia e interfaces para tarefas reais. | `ui-ux-designer` |
+| Horizon UI Guardian | Auditar interface real, acessibilidade, consistência e fidelidade visual. | `horizon-ui-guardian` |
+| Database Engineer | Modelar dados, consultas e migrações com integridade e desempenho. | `database-engineer` |
+| Integration Engineer | Integrar APIs externas, webhooks, MCP e automações com contratos explícitos. | `integration-engineer` |
+| QA Engineer | Verificar comportamento e regressões por testes executáveis. | `qa-engineer` |
+| Security Engineer | Revisar limites de confiança, autorização e exposição de dados. | `security-engineer` |
+| DevOps Engineer | Implementar CI, ambientes, observabilidade e entrega reversível. | `devops-engineer` |
+| Horizon Evolution Agent | Diagnosticar e priorizar melhorias com prova antes/depois. | `horizon-evolution-agent` |
+| Horizon Skills | Pesquisar e manter conhecimento técnico reutilizável com fontes e validade. | `horizon-skills` |
+| Corregedoria May | Fiscalizar veracidade, conformidade e rastreabilidade das entregas. | `corregedoria-may` |
+| May Persona | Revisar linguagem e diretrizes editoriais preservando precisão técnica. | `may-persona` |
 
-Cada execucao registra evidencias/NOME/checkpoint.json com hash SHA-256. O GitHub Actions publica os resultados como artifacts persistentes por execucao. Nao sao commits automaticos.
+`agents/<id>/agent.json` seleciona modelo/chave; `instructions.md` define critérios próprios; `tools.json` restringe capacidades. Não há geração automática de 17 pareceres numa chamada do Maestro. Cada ação de cada agente passa pelo seu próprio pedido `generateContent`. Skills privadas do ChatGPT não transferem automaticamente seu texto ou suas conexões para um processo externo; os contratos deste repositório são a fonte que o runtime realmente lê.
 
-Captura visual opcional: executar o Guardian com --url http://localhost:3050/ depois de iniciar um servidor local seguro. O runner aceita somente URLs localhost ou 127.0.0.1 e usa Chromium se disponivel. As capturas estaticas nao comprovam a interacao, autentificacao ou recursos Android.
+## Operação sem terminal do usuário
 
-## Execucao de codigo mediante aprovacao
+1. As tarefas ficam em `tasks/inbox.json` **na branch de trabalho**, editáveis pela interface do GitHub. `tasks/example.json` é um exemplo pronto de análise somente leitura. IDs são idempotentes; para alterar um pedido já importado, criar ID novo.
+2. Em Actions, abrir **Horizon - 17 especialistas via API** (arquivo `agent-executors.yml`, workflow já existente no repositório) e selecionar a branch de trabalho no botão Run workflow.
+3. O worker só será liberado quando houver secret `GEMINI_API_KEY` e variables `GEMINI_MODEL` com modelo disponível na conta, `GEMINI_FREE_TIER_CONFIRMED=true`, `HORIZON_WORKER_ENABLED=true`. A branch pode ser escolhida em `HORIZON_WORK_BRANCH`; o padrão é `feat/horizon-team-runtime-20261018`.
+4. A atestação de free tier deve corresponder a um projeto Google **sem billing associado**. O cliente não possui API que comprove isso e nunca habilita billing nem troca para outro provedor. Uma assinatura Gemini/ChatGPT não configura este secret.
+5. A tarefa roda com no máximo 12 chamadas por execução, 2048 tokens de saída por chamada e 3 tarefas por lote. Cota/429 resulta em retry com backoff; erro permanente fica registrado. Se o orçamento de chamadas acabar, preserva o checkpoint para outro lote.
+6. Fila, memória e conteúdo de arquivos gerados são salvos em `agent-state/runtime`, via snapshot SQLite consistente. Checkpoint é confirmado remotamente depois de cada ação. O worker publica arquivos somente na branch autorizada, sem merge, sem deploy e sem force push. Se a branch mudou, para em conflito.
 
-Se o Codex CLI estiver **instalado e autenticado de verdade**, o executor com permissao de implementacao pode receber um arquivo de tarefa existente dentro do repositorio:
+O workflow de verificação roda em push/PR sem API. A checagem de configuração em push informa apenas se chave/modelo/atestação existem, sem revelar valores. Chamadas reais não rodam em PRs. O agendamento horário (`17 * * * *`, UTC) só passa a existir depois da aprovação deste workflow na branch padrão. GitHub pode atrasar agendamentos; não há promessa de execução pontual ou processo 24/7. Sem tarefas não há chamada de IA. Não foi contratado nenhum recurso de hospedagem.
 
-    python3 executors/horizon-skills.py --root . --branch feat/minha-tarefa --mode implement --task-file docs/tarefa.md --approve-branch-edits
+O runner padrão de um repositório público não cobra minutos de execução; não usamos runners maiores nem criamos serviços de nuvem. O workflow novo não cria artifacts de armazenamento: as evidências ficam nos logs e no estado versionado. Não se pode prometer gratuidade de uma chave Google associada a projeto pago; por isso a execução real fica bloqueada sem a verificação do operador.
 
-Essa acao exige Git, worktree autenticada na branch permitida, autorizacao explicita e sandbox workspace-write; nao realiza push, merge ou deploy. Revisar as alteracoes e testes antes de publicar a branch. Os papeis Maestro e Corregedoria sao somente leitura.
+## Contrato da tarefa
 
-A infraestrutura nao instala Codex, nao fornece credenciais de API nem permite que um plugin do ChatGPT convoque outro de forma implicita. Habilitar o runner remoto requer configurar os servicos que realmente o acionarao.
+```json
+[
+  {
+    "task_id": "revisao-publica-001",
+    "agent": "may-maestro",
+    "project": "demo-publica",
+    "objective": "Ler README.md, delegar a análise dos requisitos e a revisão de evidências a especialistas distintos. Informar bloqueios reais.",
+    "payload": {
+      "branch": "feat/horizon-team-runtime-20261018",
+      "allowed_paths": []
+    },
+    "priority": 10,
+    "max_attempts": 3
+  }
+]
+```
 
-## Controle operacional
+`not_before` aceita timestamp Unix para agendamento individual. Dependências `depends_on` precisam apontar a tarefas já importadas. O Maestro cria DAGs limitados a 17 etapas; revisores recebem resultados das dependências. Ferramentas e arquivos permitidos são herdados, nunca ampliados pelo plano. `allowed_paths=[]` implica somente leitura. Para edição, dar a lista de arquivos/padrões aprovada no pedido. Cada processo atualmente trabalha num checkout e numa branch; multi-repositório requer outro checkout/coordenação e token dedicado, não é herdado da conexão GitHub do ChatGPT.
 
-- NUNCA integrar a main, master, production ou release sem autorizacao especifica.
-- Sem force push, deploy, exclusao de banco ou modificacao de segredos automaticos.
-- O workflow usa somente contents: read e testa as branches isoladas.
-- Checkpoints registram o que foi testado; indisponibilidade de Git, Chrome ou modelo nao e sucesso.
-- Codigos/dados de cliente nao sao usados nos testes unitarios; somente fixtures temporarias.
-- GitHub Actions trabalha por disparo e nao e um daemon 24/7. Um executor persistente exigira runtime e fila apropriados.
+## Ferramentas e limites atuais
 
-## Envolvimento no projeto de restaurantes
+- `list_files` e `read_file`: arquivos de projeto, com limites; sem `.git`, arquivos ocultos, symlinks, runtime, bancos e caminhos sensíveis.
+- `write_file`: somente especialista com capacidade, branch Git real correspondente e allowlist da tarefa. Não altera seu próprio control plane, workflows, credenciais nem branch principal. Conflitos de conteúdo podem usar SHA-256. Escritas ficam no estado para reconstrução após perda do runner.
+- `run_check`: inicialmente `python-unittest`. Copia arquivos permitidos para snapshot sanitizado e roda em Docker sem rede, credenciais, privilégios ou escrita no projeto; tempo, CPU, memória e saída limitados. Docker indisponível ou comando não suportado é bloqueio explícito. Não executa shell enviado pelo modelo no host.
+- `remember`: memória isolada por projeto e agente. Dependências compartilham entregas por contrato, não acesso irrestrito a todas as memórias.
+- `delegate`: exclusivo do Maestro; IDs determinísticos, sem recursão, sem ciclos, sem expandir escopo.
+- `finish`: registra relatório. `status=succeeded` significa **etapa reportada**, não teste aprovado, código perfeito ou aprovação humana. O campo `verification` guarda retorno real das ferramentas, inclusive falhas.
 
-A branch feat/fluxo-mobile-premium-20261018 de danielnep/sistema-fluxo-restaurantes contem o novo CSS operacional. Nesta entrega, o fluxo de restaurantes foi testado em navegador com troca de perfis, confirmacao de turno e abertura de pedido, e a suite original teve 2 testes aprovados. A branch de executores e outro repositorio e nao deve ser confundida com o app.
+Os especialistas Mobile, UI Guardian e DevOps podem analisar e implementar arquivos dentro do escopo; este primeiro motor ainda não fornece build Android/Gradle, navegação interativa ou screenshots com visão multimodal. Não anunciar APK, revisão visual ou deploy comprovados até integrar e testar esses adaptadores. Testes Python não substituem testes desses recursos.
 
+## Segurança e durabilidade
+
+Este repositório é público. O estado remoto contém objetivos, decisões, histórico e arquivos gerados: usar **somente projetos públicos e dados sintéticos**, nunca dados de clientes, dados pessoais ou segredos. Não existe classificação automática infalível de conteúdo. Para projetos privados, mover estado e execução para destino privado com controle de acesso antes de importar esses dados.
+
+SQLite usa transações e leases para dois workers locais não pegarem o mesmo trabalho. Snapshots de instâncias SQLite em runners diferentes não são uma fila distribuída: o workflow usa um único grupo `concurrency`, e o transporte usa compare-and-swap. Não criar um segundo coordenador sobre a mesma branch de estado. Na VPS, manter a mesma máquina de estados e trocar o armazenamento por banco compartilhado antes de aumentar concorrência.
+
+Falha de persistência interrompe o coordenador. A última ação sem confirmação remota pode precisar de reconciliação; as ferramentas de escrita/memória são repetíveis, e a publicação verifica a referência remota. Não há atomicidade mágica entre GitHub, disco e provedor de IA; uma chamada que perdeu resposta pode consumir cota mesmo sem resultado recuperado. O snapshot preserva progresso entre execuções; o agente não continua processando enquanto não houver worker ativo.
+
+## Verificações reproduzíveis
+
+Comandos usados pelo runner (não exigem instalação de CLI de agente no seu telefone):
+
+```sh
+python3 -m unittest discover -s tests -v
+python3 -m horizon_core.app --list
+python3 -m horizon_core.app --preflight
+python3 -m horizon_core.app --tasks tasks/example.json --db runtime/state.sqlite3
+```
+
+A suíte verifica identidades e requisições independentes, leitura/memória por 17 perfis, ferramentas reais em fixtures Git, retomada SQLite após interrupção, DAG, dependências, falhas de QA preservadas, lease expirado, concorrência, orçamento, snapshot remoto simulado, proteção de caminhos e Docker simulado sem credenciais. Os sete auditores estáticos em `maestro_exec/` e `executors/` permanecem para compatibilidade; o caminho de codificação via Codex CLI foi retirado. `supervisor.py` encaminha ao runtime ativo; não contém mais o retorno antecipado desativando Gemini.
+
+## Critério de ativação
+
+Aprovar código na principal e confirmar a configuração gratuita não substituem a prova de operação. Para aceite final: executar um pedido pequeno com Gemini real; comprovar individualmente ferramenta, memória e checkpoint por especialista; executar uma cadeia real; interromper e retomar em outro runner; conferir branch, commit e resultados. Só então declarar os agentes operacionais. Até lá: código implementado e suíte automatizada, ativação externa pendente.
+
+## Referências oficiais verificadas
+
+- [Gemini generateContent](https://ai.google.dev/api/generate-content)
+- [Billing Gemini](https://ai.google.dev/gemini-api/docs/billing)
+- [Limites Gemini](https://ai.google.dev/gemini-api/docs/rate-limits)
+- [Runners GitHub Actions](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
+- [Eventos/agendamentos Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)

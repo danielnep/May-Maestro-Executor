@@ -1,0 +1,9 @@
+{
+  "id": "frontend-engineer",
+  "name": "Frontend Engineer",
+  "scope": "Implementar interface web acessível e responsiva preservando contratos.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "frontend-engineer",
+  "independent_reasoning": true
+}

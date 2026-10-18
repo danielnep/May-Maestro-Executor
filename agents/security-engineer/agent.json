@@ -1,0 +1,9 @@
+{
+  "id": "security-engineer",
+  "name": "Security Engineer",
+  "scope": "Revisar limites de confiança, autorização e exposição de dados.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "security-engineer",
+  "independent_reasoning": true
+}

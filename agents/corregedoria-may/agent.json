@@ -1,0 +1,9 @@
+{
+  "id": "corregedoria-may",
+  "name": "Corregedoria May",
+  "scope": "Fiscalizar veracidade, conformidade e rastreabilidade das entregas.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "corregedoria-may",
+  "independent_reasoning": true
+}

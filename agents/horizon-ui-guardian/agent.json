@@ -1,0 +1,9 @@
+{
+  "id": "horizon-ui-guardian",
+  "name": "Horizon UI Guardian",
+  "scope": "Auditar interface real, acessibilidade, consistência e fidelidade visual.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "horizon-ui-guardian",
+  "independent_reasoning": true
+}

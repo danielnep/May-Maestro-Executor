@@ -1,0 +1,10 @@
+[
+  {
+    "task_id": "example-readiness-v1",
+    "agent": "may-maestro",
+    "project": "horizon-runtime-public-demo",
+    "objective": "Leia README.md. Delegue uma análise dos requisitos ao Project Studio, uma revisão dos contratos ao Software Architect e uma verificação das evidências à Corregedoria, dependente das duas primeiras. Cada especialista deve ler um arquivo real, guardar uma decisão em memória e relatar somente o que verificou. Não alterar arquivos.",
+    "payload": {"allowed_paths": [], "branch": "feat/horizon-team-runtime-20261018"},
+    "max_attempts": 3
+  }
+]

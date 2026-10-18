@@ -1,0 +1,9 @@
+{
+  "id": "horizon-project-studio",
+  "name": "Horizon Project Studio",
+  "scope": "Converter o pedido em requisitos e critérios de aceite sem implementar engenharia de todas as áreas.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "horizon-project-studio",
+  "independent_reasoning": true
+}

@@ -1,0 +1,9 @@
+{
+  "id": "ui-ux-designer",
+  "name": "UI/UX Designer",
+  "scope": "Projetar fluxos, hierarquia e interfaces para tarefas reais.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "ui-ux-designer",
+  "independent_reasoning": true
+}

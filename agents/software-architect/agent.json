@@ -1,0 +1,9 @@
+{
+  "id": "software-architect",
+  "name": "Software Architect",
+  "scope": "Definir limites de componentes, contratos e decisões arquiteturais.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "software-architect",
+  "independent_reasoning": true
+}
