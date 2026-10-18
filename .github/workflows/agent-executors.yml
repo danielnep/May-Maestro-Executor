@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: agents-${{ github.ref }
+  group: agents-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -59,9 +59,9 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Executar especialidade isolada
         env:
-          SELECTED: ${{ inputs.agent || 'all' }
-          CURRENT_BRANCH: ${{ github.head_ref || github.ref_name }
-          AGENT: ${{ matrix.agent }
+          SELECTED: ${{ inputs.agent || 'all' }}
+          CURRENT_BRANCH: ${{ github.head_ref || github.ref_name }}
+          AGENT: ${{ matrix.agent }}
         run: |
           if [ "$SELECTED" != "all" ] && [ "$SELECTED" != "$AGENT" ]; then
             echo "Pulando executor nao selecionado: $AGENT"
@@ -76,8 +76,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: maestro-${{ matrix.agent }-${{ github.run_id }
-          path: evidencias/${{ matrix.agent }/
+          name: maestro-${{ matrix.agent }}-${{ github.run_id }}
+          path: evidencias/${{ matrix.agent }}/
           if-no-files-found: warn
           retention-days: 14
 
