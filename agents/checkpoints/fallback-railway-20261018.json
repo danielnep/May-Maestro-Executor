@@ -36,11 +36,6 @@
     "full_history": true,
     "technical_slice": "cooperative resume, not failure"
   },
-  "pending": [
-    "main approval and periodic-worker enablement",
-    "complex joint autonomous delivery",
-    "visual/native adapters"
-  ],
   "final_hardening": "Lease renewed after model response and before tools, tested with synthetic 1200s model plus 800s tool",
   "final_code_commit": "d245f86967769770c623f8bdabfefe8c286bfc84",
   "final_actions_run": 39166060299,
@@ -51,5 +46,11 @@
     "railway_proof": "success",
     "remote_resume": "success",
     "periodic_worker": "not_enabled; awaiting main approval"
-  }
+  },
+  "pending_as_of_initial_proof": [
+    "main approval and periodic-worker enablement",
+    "complex joint autonomous delivery",
+    "visual/native adapters"
+  ],
+  "current_followup": "quality-20261018.json; owner approved activation and main PR2/PR3 merged; worker actual success run39168533083"
 }
