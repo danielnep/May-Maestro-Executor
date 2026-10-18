@@ -99,6 +99,59 @@ class WorkerIntegrationTests(unittest.TestCase):
         finally:
             restored.close()
 
+    def test_maestro_recovers_invalid_delegation_without_losing_task(self):
+        def decide(agent, context):
+            history = context['history']
+            if not history:
+                # First proposal references a dependency that has not been created.
+                return action('delegate', {'tasks': [
+                    {'id': 'qa', 'agent': 'qa-engineer',
+                     'objective': 'Test a newly implemented synthetic app',
+                     'depends_on': ['backend']}
+                ]})
+            if len(history) == 1:
+                outcome = history[0]['outcome']
+                self.assertEqual(outcome['reason'], 'invalid_delegation')
+                self.assertEqual(outcome['tool_error'], 'ValueError')
+                self.assertNotIn('delegated', outcome)
+                self.assertEqual(self.state.tasks(project='recoverable'), [self.state.get('fix-plan')])
+                # Correct the dependency ordering on the next independent call.
+                return action('delegate', {'tasks': [
+                    {'id': 'backend', 'agent': 'backend-engineer',
+                     'objective': 'Implement synthetic app with deterministic tests',
+                     'depends_on': []},
+                    {'id': 'qa', 'agent': 'qa-engineer',
+                     'objective': 'Execute genuine checks after implementation',
+                     'depends_on': ['backend']}
+                ]})
+            self.assertEqual(len(history), 2)
+            self.assertEqual(len(history[-1]['outcome']['delegated']), 2)
+            return action('finish', summary='Plan corrected and specialist tasks enqueued')
+        self.state.enqueue('fix-plan', 'may-maestro', 'recoverable',
+                           'Delegate validated backend and QA responsibilities')
+        gateway = FakeGateway(decide)
+        result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['attempts'], 1)
+        self.assertEqual(len(gateway.calls), 3)
+        self.assertEqual(result['checkpoint']['step'], 2)
+        self.assertEqual(result['result']['delegated'], ['fix-plan:backend', 'fix-plan:qa'])
+        self.assertEqual(self.state.get('fix-plan:backend')['status'], 'queued')
+        self.assertEqual(self.state.get('fix-plan:qa')['status'], 'queued')
+
+    def test_maestro_recovers_bad_plan_shape_from_model(self):
+        def decide(agent, context):
+            if not context['history']:
+                return action('delegate', {'tasks': [None]})
+            self.assertEqual(context['history'][0]['outcome']['reason'], 'invalid_delegation')
+            return action('finish', summary='Rejected malformed delegation without external effects')
+        self.state.enqueue('bad-shape', 'may-maestro', 'synthetic',
+                           'Reject structurally malformed plan without crashing')
+        result = Worker(self.state, FakeGateway(decide), self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['checkpoint']['step'], 1)
+        self.assertEqual(len(self.state.tasks(project='synthetic')), 1)
+
     def test_maestro_delegates_dag_frontend_qa_corregedoria_results(self):
         plan = [
             {'id': 'frontend', 'agent': 'frontend-engineer', 'objective': 'Write sample UI fixture'},
