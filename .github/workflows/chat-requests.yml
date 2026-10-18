@@ -9,7 +9,8 @@ on:
       - 'horizon_core/commit_bridge.py'
   workflow_dispatch:
   schedule:
-    - cron: '47 * * * *'
+    # Retomar checkpoints a cada 5 min; novos pedidos disparam via push imediatamente.
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
