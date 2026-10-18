@@ -1,22 +1,8 @@
 {
-  "delivery_mode": "read_result_in_chat",
-  "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
-  "publication": {
-    "main_pending_reason": "No generated workspace files",
-    "published": false,
-    "reason": "No generated workspace files"
+  "error": {
+    "kind": "RailwayPostgresError"
   },
+  "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
   "request_id": "reservas-proof-v1",
-  "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/reservas-proof-v1.json",
-  "status": "needs_attention",
-  "tasks": [
-    {
-      "agent": "may-maestro",
-      "attempts": 1,
-      "status": "failed",
-      "summary": "",
-      "task_id": "chat-reservas-proof-v1",
-      "verification": []
-    }
-  ]
+  "status": "blocked"
 }
