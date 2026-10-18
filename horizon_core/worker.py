@@ -150,6 +150,15 @@ class Worker:
                 elif name == 'delegate':
                     outcome = self.delegate(task, args)
                     delegated.extend(outcome['delegated'])
+                elif name == 'inspect_image':
+                    question=args.get('question','Assess layout, readability, overlap and obvious visual defects.')
+                    if not isinstance(question,str) or len(question)>5000:
+                        raise ValueError('A bounded visual question is required')
+                    try:
+                        outcome=self.gateway.inspect_image(agent,tools.evidence_image(args.get('index')),question)
+                    except (ValueError,OSError) as error:
+                        outcome={'tool_error':type(error).__name__,'message':str(error)[:300],
+                                 'next_action':'Run the browser check again if the current execution has no retained images.'}
                 else:
                     try:
                         before = None

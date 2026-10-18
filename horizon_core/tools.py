@@ -21,6 +21,7 @@ class Tools:
         self.allowed_paths = list(allowed_paths)
         self.branch = branch
         self.sandbox_client = sandbox_client
+        self.evidence = []
 
     def path(self, name, write=False):
         if not isinstance(name, str) or not name or len(name) > 300:
@@ -28,13 +29,15 @@ class Tools:
         parts = PurePosixPath(name).parts
         if '\\' in name or name.startswith('/') or any(p in ('.', '..') or p.startswith('.') for p in parts):
             raise ValueError('Hidden, absolute and parent paths are forbidden')
-        if any(p.lower() in ('secrets', 'credentials', 'node_modules', 'runtime') for p in parts):
+        if any(p.lower() in ('secrets', 'credentials', 'node_modules', 'runtime', '__pycache__') for p in parts):
             raise ValueError('Secret and runtime paths are forbidden')
-        if write and parts[0] in ('agents', 'horizon_core', 'sandbox', 'maestro_exec', 'executors', 'supervisor.py', 'GEMINI.md', 'AGENTS.md'):
+        if write and parts[0] in ('agents', 'horizon_core', 'sandbox', 'android_tools', 'maestro_exec', 'executors', 'supervisor.py', 'GEMINI.md', 'AGENTS.md'):
             raise ValueError('A specialist cannot rewrite its control plane')
         if any(re.search(r'(^|[_.-])(token|secret|credential|password|private.?key)([_.-]|$)', p, re.I) for p in parts):
             raise ValueError('Secret path is forbidden')
-        if Path(name).suffix.lower() in ('.pem', '.key', '.sqlite', '.sqlite3', '.db'):
+        if parts[-1] == 'local.properties':
+            raise ValueError('Local Android configuration is forbidden')
+        if Path(name).suffix.lower() in ('.pem', '.key', '.sqlite', '.sqlite3', '.db', '.keystore', '.jks', '.env'):
             raise ValueError('Sensitive file type')
         target = self.root.joinpath(*parts)
         if any(p.is_symlink() for p in [target, *target.parents] if p != self.root.parent):
@@ -91,38 +94,129 @@ class Tools:
             return {'path': args['path'], 'sha256': new_hash, 'bytes': len(content.encode())}
         if action == 'run_check':
             return self.run_check(args)
+        if action == 'search_web':
+            from .research import search_web
+            return search_web(args.get('query'))
+        if action == 'fetch_public':
+            from .research import fetch_public
+            return fetch_public(args.get('url'))
         raise ValueError('Unknown local tool')
 
+    def evidence_image(self, index):
+        if not isinstance(index,int) or isinstance(index,bool) or not 0 <= index < len(self.evidence):
+            raise ValueError('Select an image index from the current browser check')
+        item=self.evidence[index]
+        path=Path(item['path'])
+        data=path.read_bytes()
+        if path.is_symlink() or hashlib.sha256(data).hexdigest()!=item['sha256']:
+            raise ValueError('Browser evidence changed after capture')
+        return data
+
+    def snapshot_files(self):
+        """Exact credential-filtered full-root inputs used for runtime evidence."""
+        files = {}
+        size = 0
+        for source in sorted(self.root.rglob('*')):
+            if not source.is_file():
+                continue
+            name = source.relative_to(self.root).as_posix()
+            try:
+                self.path(name)
+            except ValueError:
+                continue
+            data = source.read_bytes()
+            size += len(data)
+            if size > 20_000_000 or len(files) >= 2000:
+                raise ValueError('Test snapshot exceeds safety bound')
+            files[name] = data
+        return files
+
+    def _project_root(self, value):
+        if value == '.':
+            return self.root
+        if not isinstance(value, str) or str(PurePosixPath(value)) != value:
+            raise ValueError('project_dir must be a canonical repository-relative directory')
+        result = self.path(value)
+        if not result.is_dir():
+            raise ValueError('project_dir is not an existing directory')
+        return result
+
+    def _evidence_directory(self, kind):
+        target = self.root / 'runtime' / kind
+        for component in (self.root / 'runtime', target):
+            if component.is_symlink():
+                raise ValueError('Evidence output cannot use linked directories')
+        if not target.resolve().is_relative_to(self.root):
+            raise ValueError('Evidence output must remain in the worktree')
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
     def run_check(self, args):
-        if args.get('name') != 'python-unittest':
-            raise ValueError('Only the approved python-unittest check is available')
-        if self.sandbox_client is not None:
-            return self.sandbox_client.run_check(self.root, self)
-        if not shutil.which('docker'):
-            raise RuntimeError('Docker unavailable: untrusted tests cannot run on credentialed host')
-        # No host credentials, no Docker socket, no network, no shell interpolation.
-        with tempfile.TemporaryDirectory(prefix='horizon-check-') as directory:
-            snapshot = Path(directory)
-            snapshot.chmod(0o755)
-            size = 0
+        name = args.get('name')
+        if name not in ('python-unittest', 'browser-playwright', 'node-test', 'android-gradle'):
+            raise ValueError('Only approved isolated checks are available')
+        project_dir = args.get('project_dir', '.')
+        project_root = self._project_root(project_dir)
+        from .publication_policy import workspace_fingerprint
+        digest = workspace_fingerprint(self.snapshot_files())
+        started = time.time()
+        execution_id = uuid.uuid4().hex
+        scoped = Tools(project_root, self.agent, sandbox_client=self.sandbox_client)
+        if name in ('browser-playwright', 'node-test'):
+            from .web_checks import run_web_check
+            raw = run_web_check(project_root, scoped, name,
+                evidence_dir=self._evidence_directory('web-evidence'))
+            self.evidence.extend(raw.get('screenshots', []))
+            backend = 'docker-web'
+        elif name == 'android-gradle':
+            from android_tools.check import isolated_check
+            raw = isolated_check(project_root,
+                artifacts_dir=self._evidence_directory('android-evidence') / execution_id)
+            backend = 'docker-android'
+        elif self.sandbox_client is not None:
+            raw = self.sandbox_client.run_check(project_root, scoped)
+            backend = raw.get('backend', 'railway-sdk')
+        else:
+            if not shutil.which('docker'):
+                raise RuntimeError('Docker unavailable: untrusted tests cannot run on credentialed host')
+            # Snapshot bytes captured before execution, not live credentialed host files.
+            with tempfile.TemporaryDirectory(prefix='horizon-check-') as directory:
+                snapshot = Path(directory)
+                snapshot.chmod(0o755)
+                for relative, data in scoped.snapshot_files().items():
+                    target = snapshot / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(data)
+                    target.chmod(0o644)
+                raw = self._docker_check(snapshot)
+            backend = 'docker-python'
+        if not isinstance(raw, dict):
+            raise ValueError('Isolated checker returned an invalid result')
+        output = raw.get('output', '')
+        if not isinstance(output, str):
+            raise ValueError('Isolated checker output must be text')
+        count = raw.get('tests_run', raw.get('tests'))
+        if count is None:
+            counts = re.findall(r'^Ran (\d+) tests? in ', output, re.M)
+            count = int(counts[-1]) if counts else 0
+        if type(count) is not int or count < 0:
             count = 0
-            for source in self.root.rglob('*'):
-                if not source.is_file():
-                    continue
-                name = source.relative_to(self.root).as_posix()
-                try:
-                    self.path(name)
-                except ValueError:
-                    continue
-                size += source.stat().st_size
-                count += 1
-                if size > 20_000_000 or count > 2000:
-                    raise ValueError('Test snapshot exceeds budget')
-                target = snapshot / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
-                target.chmod(0o644)
-            return self._docker_check(snapshot)
+        timed_out = raw.get('timed_out', raw.get('timedOut', raw.get('timeout', False)))
+        truncated = raw.get('truncated', False)
+        cleanup = raw.get('cleanup_ok', raw.get('cleanup', False))
+        exit_code = raw.get('exit_code', raw.get('exitCode'))
+        unchanged = workspace_fingerprint(self.snapshot_files()) == digest
+        result = {**raw, 'check': name, 'project_dir': project_dir, 'backend': backend,
+                  'source': 'runtime', 'simulated': False, 'workspace_digest': digest,
+                  'execution_id': execution_id, 'executed_at': started, 'tests_run': count, 'exit_code': exit_code,
+                  'timed_out': timed_out is not False, 'truncated': truncated is not False,
+                  'cleanup_ok': cleanup is True, 'workspace_unchanged': unchanged,
+                  'passed': raw.get('passed') is True and type(exit_code) is int and exit_code == 0
+                            and count > 0 and timed_out is False and truncated is False
+                            and cleanup is True and unchanged}
+        if not unchanged:
+            result['reason'] = 'Workspace changed during check; rerun the final snapshot'
+        return result
 
     def _docker_check(self, snapshot):
         container = 'horizon-check-' + uuid.uuid4().hex
@@ -157,7 +251,8 @@ class Tools:
             if process is not None and process.poll() is None:
                 process.kill()
                 process.wait(timeout=5)
-            subprocess.run(['docker', 'rm', '-f', container], capture_output=True, timeout=10,
+            cleanup = subprocess.run(['docker', 'rm', '-f', container], capture_output=True, timeout=10,
                            env={k: v for k, v in os.environ.items() if k in ('PATH', 'HOME')})
         return {'check': 'python-unittest', 'exit_code': exit_code,
-                'passed': exit_code == 0, 'output': output.decode('utf-8', errors='replace')[-12000:]}
+                'passed': exit_code == 0, 'cleanup_ok': cleanup.returncode == 0 or (cleanup.returncode == 1 and b'No such' in cleanup.stderr),
+                'timed_out': False, 'truncated': False, 'output': output.decode('utf-8', errors='replace')[-12000:]}

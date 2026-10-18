@@ -1,0 +1,44 @@
+{
+  "interface": {
+    "brandColor": "#1F98FF",
+    "capabilities": [
+      "Interactive"
+    ],
+    "category": "Productivity",
+    "composerIcon": "./assets/tool-icon-small.png",
+    "defaultPrompt": [
+      "Use $maestro-delegacao sempre que um projeto exigir desenvolvimento por especialistas: delegue implementacao e QA com ferramentas reais, verificando branch e resultados; nao apenas sugestoes.",
+      "Para telas do Rondas Pro/Maxvel, leia $maestro-rondas-pro-qa e preserve COI e vigia/vistoriador.",
+      "Use $maestro-proativo para continuidade com o supervisor Maestro e a May executora.",
+      "Descubra e coordene ferramentas acessiveis; verifique o resultado.",
+      "Use $agente-editor: especialistas autorizados podem editar codigo e arquivos diretamente, em branches de trabalho."
+    ],
+    "developerName": "Daniel Xavier",
+    "displayName": "May Maestro | Orquestrador",
+    "logo": "./assets/tool-icon.png",
+    "longDescription": "Orquestrador Horizon: seleciona especialistas executores, coordena implementacao, QA e melhoria continua com evidencias; May opera conectores e reporta ao proprietario.",
+    "shortDescription": "Orquestra agentes executores e QA"
+  },
+  "name": "may-maestro",
+  "version": "1.3.16",
+  "description": "Orquestrador privado de tarefas e especialistas para desenvolvimento, testes e verificacao dos sistemas Horizon.",
+  "author": {
+    "name": "Daniel Xavier",
+    "email": "danielnep.2011@gmail.com"
+  },
+  "keywords": [
+    "orquestracao",
+    "execucao",
+    "plugins",
+    "agentes",
+    "automacao",
+    "horizon",
+    "ferramentas",
+    "delegacao",
+    "codigo",
+    "qa",
+    "rondas-pro"
+  ],
+  "skills": "./skills"
+}
+

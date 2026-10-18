@@ -25,6 +25,9 @@ def load_agent(agent_id, root=None):
     knowledge = Path(root or AGENTS_ROOT) / 'knowledge' / 'transactional-integrity.md'
     if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
         config["instructions"] += '\n\n' + knowledge.read_text(encoding='utf-8')
+    policy = Path(root or AGENTS_ROOT) / 'knowledge' / 'delivery-principles.md'
+    if policy.is_file():
+        config["instructions"] += '\n\n' + policy.read_text(encoding='utf-8')
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     return config
 

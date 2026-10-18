@@ -1,0 +1,248 @@
+"""Real SQLite/git fixtures, fake provider/publisher; no live credentials."""
+import base64
+from contextlib import contextmanager
+import copy
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+from horizon_core.commit_bridge import (REPOSITORY, ScopedState, import_request,
+    process_request, publish_result, summarize, validate_request)
+from horizon_core.github_state import GitHubStateError
+from horizon_core.publication_policy import capture_git_baseline
+from horizon_core.state import State
+
+
+def request(identifier='proof-request', project='sample-app'):
+    return {'owner': 'danielnep', 'repository': REPOSITORY, 'task_id': identifier,
+            'agent': 'may-maestro', 'project': project, 'objective': 'Implement a synthetic reservation engine',
+            'payload': {'allowed_paths': ['apps/' + project + '/**']}}
+
+
+class ContentAPI:
+    def __init__(self):
+        self.calls = []
+        self.content = None
+        self.fail = None
+
+    def _request(self, method, endpoint, body=None):
+        self.calls.append((method, endpoint, body))
+        if self.fail:
+            raise GitHubStateError('GitHub HTTP ' + str(self.fail))
+        if method == 'GET':
+            if self.content is None:
+                raise GitHubStateError('GitHub HTTP 404')
+            return {'sha': 'observed-sha', 'content': base64.b64encode(self.content).decode()}
+        self.content = base64.b64decode(body['content'])
+        return {'content': {'sha': 'new-sha'}}
+
+
+class CommitBridgeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.state = State(Path(self.temporary.name) / 'state.sqlite3')
+        self.addCleanup(self.state.close)
+        self.root = Path(self.temporary.name) / 'repo'
+        self.root.mkdir()
+        self.git('init')
+        self.git('switch', '-c', 'main')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        self.git('config', 'user.name', 'Synthetic fixture')
+        self.git('remote', 'add', 'origin', 'https://github.com/' + REPOSITORY + '.git')
+        (self.root / 'README.md').write_text('Synthetic controller fixture')
+        self.git('add', 'README.md')
+        self.git('commit', '-m', 'fixture')
+        self.baseline = capture_git_baseline(self.root, REPOSITORY)
+        self.git('switch', '-c', 'agent/chat-proof-request')
+        self.validated = validate_request(request(), 'proof-request')
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.root), *args], check=True,
+                              text=True, capture_output=True).stdout
+
+    @contextmanager
+    def prepare(self, repo, branch, operator_policy=None, api=None):
+        self.assertEqual(repo, REPOSITORY)
+        self.assertEqual(branch, 'agent/chat-proof-request')
+        self.assertTrue(operator_policy['allow_new_product_main'])
+        yield SimpleNamespace(root=self.root, baseline=self.baseline)
+
+    def test_controller_assigns_branch_project_and_bounded_namespace(self):
+        value = self.validated
+        self.assertEqual(value['task']['project'], 'chat:proof-request')
+        self.assertEqual(value['branch'], 'agent/chat-proof-request')
+        self.assertEqual(value['namespace'], 'apps/sample-app')
+        self.assertEqual(value['task']['payload']['repository'], REPOSITORY)
+        self.assertNotIn('publication_policy', value['task']['payload'])
+
+    def test_rejects_owner_repo_agent_filename_and_permission_escalation(self):
+        invalid = [dict(owner='other'), dict(repository='customer/private'), dict(task_id='other-id'),
+                   dict(agent='not-an-agent'), dict(project='../escape'), dict(publication_policy={'allow_main': True}),
+                   dict(payload={'branch': 'main'}), dict(payload={'allowed_paths': ['horizon_core/app.py']}),
+                   dict(payload={'allowed_paths': ['apps/sample-app/../other.py']}),
+                   dict(payload={'allowed_paths': ['apps/sample-app/.env']}),
+                   dict(payload={'allowed_paths': ['apps/sample-app//engine.py']}),
+                   dict(payload={'allowed_paths': [{}]}), dict(payload={'env': {'SECRET': 'not-allowed'}})]
+        for changes in invalid:
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                validate_request({**request(), **changes}, 'proof-request')
+
+    def test_initiative_requires_reason_and_keeps_same_permissions(self):
+        document = {**request(), 'initiative': True}
+        with self.assertRaises(ValueError):
+            validate_request(document, 'proof-request')
+        document['initiative_reason'] = 'Improve deterministic verification of a new synthetic app'
+        value = validate_request(document, 'proof-request')
+        self.assertEqual(value['task']['payload']['allowed_paths'], ['apps/sample-app/**'])
+
+    def test_import_is_idempotent_across_reopen_and_changed_request_rejected(self):
+        import_request(self.state, self.validated)
+        import_request(self.state, self.validated)
+        self.assertEqual(len(self.state.tasks()), 1)
+        self.assertEqual(len(self.state.events('chat-proof-request')), 1)
+        path = self.state.path
+        self.state.close()
+        self.state = State(path)
+        self.addCleanup(self.state.close)
+        import_request(self.state, self.validated)
+        self.assertEqual(len(self.state.tasks()), 1)
+        changed = request()
+        changed['objective'] += ' And expand the scope'
+        with self.assertRaisesRegex(ValueError, 'Immutable'):
+            import_request(self.state, validate_request(changed, 'proof-request'))
+
+    def test_scoped_claim_never_consumes_another_project(self):
+        self.state.enqueue('other', 'backend-engineer', 'another-project', 'Must remain queued', priority=100)
+        import_request(self.state, self.validated)
+        scope = ScopedState(self.state, 'chat:proof-request')
+        task = scope.claim('owner')
+        self.assertEqual(task['task_id'], 'chat-proof-request')
+        self.assertEqual(self.state.get('other')['status'], 'queued')
+        self.assertEqual(len(scope.tasks()), 1)
+
+    def test_result_writer_is_idempotent_cas_and_cannot_escape_main_result_path(self):
+        api = ContentAPI()
+        report = {'status': 'pending', 'request_id': 'proof-request'}
+        self.assertTrue(publish_result(api, 'proof-request', report)['written'])
+        self.assertFalse(publish_result(api, 'proof-request', report)['written'])
+        self.assertEqual(len([call for call in api.calls if call[0] == 'PUT']), 1)
+        report['status'] = 'reported_complete'
+        publish_result(api, 'proof-request', report)
+        self.assertEqual(api.calls[-1][2]['sha'], 'observed-sha')
+        self.assertEqual(api.calls[-1][2]['branch'], 'main')
+        self.assertEqual(api.calls[-1][1], '/contents/tasks/results/proof-request.json')
+        for identifier in ('../outside', 'app/results.json'):
+            with self.assertRaises(ValueError):
+                publish_result(api, identifier, {})
+        api.fail = 403
+        with self.assertRaisesRegex(GitHubStateError, '403'):
+            publish_result(api, 'proof-request', report)
+
+    def test_process_worker_uses_real_project_claim_and_falls_back_to_branch(self):
+        calls = []
+        class FixtureWorker:
+            def __init__(self, state, gateway, root, **kwargs):
+                self.state = state
+            def run_one(self):
+                task = self.state.claim('fixture-worker')
+                if task is None:
+                    return None
+                self.state.complete(task['task_id'], 'fixture-worker', {'summary': 'Fixture implemented', 'verification': []})
+                return self.state.get(task['task_id'])
+        def publisher(*args, **kwargs):
+            calls.append(kwargs)
+            return {'published': False, 'reason': 'real_current_checks_missing'} if kwargs['target_branch'] == 'main' else {
+                'published': True, 'branch': kwargs['target_branch'], 'commit': 'fixture-commit'}
+        result = process_request(self.state, self.validated, api=ContentAPI(), session_seconds=10,
+            prepare=self.prepare, gateway_factory=lambda **kwargs: None, worker_factory=FixtureWorker, publisher=publisher)
+        self.assertEqual(result['status'], 'reported_complete')
+        self.assertEqual([call['target_branch'] for call in calls], ['main', 'agent/chat-proof-request'])
+        self.assertEqual(result['publication']['main_pending_reason'], 'real_current_checks_missing')
+        # Replay does not run the worker or publish again.
+        replay = process_request(self.state, self.validated, api=ContentAPI(),
+            prepare=lambda *args, **kwargs: self.fail('Terminal request must not execute again'))
+        self.assertEqual(replay, result)
+
+    def test_checkpoint_after_interruption_resumes_without_duplicate_task(self):
+        class InterruptedWorker:
+            def __init__(self, state, *args, **kwargs): self.state = state
+            def run_one(self):
+                task = self.state.claim('first-worker', now=0, lease_seconds=1)
+                self.state.checkpoint(task['task_id'], 'first-worker', {'step': 3, 'fixture': 'durable'}, now=0)
+                raise OSError('simulated runner interruption')
+        with self.assertRaises(OSError):
+            process_request(self.state, self.validated, api=ContentAPI(), prepare=self.prepare,
+                gateway_factory=lambda **kwargs: None, worker_factory=InterruptedWorker)
+        class ResumedWorker:
+            def __init__(inner, state, *args, **kwargs): inner.state = state
+            def run_one(inner):
+                task = inner.state.claim('second-worker')
+                if task is None: return None
+                self.assertEqual(task['checkpoint'], {'step': 3, 'fixture': 'durable'})
+                inner.state.complete(task['task_id'], 'second-worker', {'summary': 'Resumed fixture'})
+                return inner.state.get(task['task_id'])
+        result = process_request(self.state, self.validated, api=ContentAPI(), prepare=self.prepare,
+            gateway_factory=lambda **kwargs: None, worker_factory=ResumedWorker,
+            publisher=lambda *args, **kwargs: {'published': True, 'branch': 'main'})
+        self.assertEqual(len(self.state.tasks()), 1)
+        self.assertEqual(self.state.get('chat-proof-request')['attempts'], 2)
+        self.assertEqual(result['status'], 'reported_complete')
+
+    def test_summarize_keeps_verification_failure_without_raw_logs_or_keys(self):
+        result = summarize('proof-request', [{'task_id': 'x', 'agent': 'qa-engineer', 'status': 'succeeded',
+            'result': {'summary': 'Finished investigation', 'verification': [{'passed': False, 'exit_code': 1,
+                'output': 'SECRET-RAW-LOGS', 'check': 'python-unittest'}]}}])
+        self.assertEqual(result['status'], 'reported_complete')
+        self.assertFalse(result['tasks'][0]['verification'][0]['passed'])
+        self.assertNotIn('SECRET', json.dumps(result))
+
+    def test_external_public_repo_rewrites_target_and_returns_host_patch_on_denied_write(self):
+        document = {**request(), 'repository': 'danielnep/public-fixture'}
+        validated = validate_request(document, 'proof-request')
+        self.assertEqual(validated['task']['payload']['repository'], 'danielnep/public-fixture')
+        @contextmanager
+        def prepare(repo, branch, **kwargs):
+            self.assertEqual(repo, 'danielnep/public-fixture')
+            yield SimpleNamespace(root=self.root, baseline=self.baseline, default_branch='main')
+        class FixtureWorker:
+            def __init__(self, state, *args, **kwargs): self.state = state
+            def run_one(self):
+                task = self.state.claim('fixture-worker')
+                if task is None: return None
+                self.state.remember(task['project'], '__workspace__', 'apps/sample-app/engine.py',
+                    {'content': 'VALUE = 1\n', 'branch': task['payload']['branch'], 'expected_sha256': 'empty-file-hash'})
+                self.state.complete(task['task_id'], 'fixture-worker', {'summary': 'Implemented synthetic app'})
+                return self.state.get(task['task_id'])
+        def denied(*args, **kwargs):
+            self.assertEqual(args[2], 'danielnep/public-fixture')
+            raise GitHubStateError('GitHub HTTP 403')
+        result = process_request(self.state, validated, api=ContentAPI(), prepare=prepare,
+            worker_factory=FixtureWorker, gateway_factory=lambda **kwargs: None, publisher=denied)
+        self.assertEqual(result['status'], 'awaiting_host_publication')
+        self.assertFalse(result['publication']['published'])
+        self.assertEqual(result['publication']['target_repo'], 'danielnep/public-fixture')
+        self.assertEqual(result['publication']['patch_files'][0]['content'], 'VALUE = 1\n')
+
+    def test_terminal_task_without_publication_record_still_attempts_delivery(self):
+        import_request(self.state, self.validated)
+        task = ScopedState(self.state, 'chat:proof-request').claim('fixture-worker')
+        self.state.complete(task['task_id'], 'fixture-worker', {'summary': 'Completed before interrupted publication'})
+        class NoWork:
+            def __init__(self, *args, **kwargs): pass
+            def run_one(self): return None
+        calls = []
+        def publisher(*args, **kwargs):
+            calls.append(True)
+            return {'published': True, 'branch': 'main'}
+        process_request(self.state, self.validated, api=ContentAPI(), prepare=self.prepare,
+            worker_factory=NoWork, gateway_factory=lambda **kwargs: None, publisher=publisher)
+        self.assertEqual(len(calls), 1)
+
+
+if __name__ == '__main__':
+    unittest.main()

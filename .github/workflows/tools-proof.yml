@@ -67,6 +67,7 @@ jobs:
           PY
 
   visual-proof:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[visual]')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -83,6 +84,7 @@ jobs:
           path: runtime/web-evidence/
           if-no-files-found: error
   android-proof:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[android]')
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:

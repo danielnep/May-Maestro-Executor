@@ -4,5 +4,7 @@
   "run_check",
   "write_file",
   "remember",
-  "finish"
+  "finish",
+  "search_web",
+  "fetch_public"
 ]

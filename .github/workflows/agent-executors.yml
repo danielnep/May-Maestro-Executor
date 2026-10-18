@@ -167,11 +167,11 @@ jobs:
       cancel-in-progress: false
     needs: verification
     # User-authorized providers; no inference on pull requests.
-    # Scheduling starts only when this workflow is approved onto the default branch.
+    # Legacy inbox is opt-in; chat-requests.yml owns the durable project-scoped queue.
     if: >-
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
-      vars.HORIZON_WORKER_ENABLED != 'false' &&
+      vars.HORIZON_LEGACY_WORKER_ENABLED == 'true' &&
       github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -202,7 +202,7 @@ jobs:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           HORIZON_STATE_BACKEND: ${{ vars.HORIZON_STATE_BACKEND || 'sqlite' }}
-          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
         run: >-
           python -m horizon_core.app --remote-repo danielnep/May-Maestro-Executor
           --session-seconds 2400
@@ -211,7 +211,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
           HORIZON_STATE_BACKEND: ${{ vars.HORIZON_STATE_BACKEND || 'sqlite' }}
         run: python -m horizon_core.publish --repo danielnep/May-Maestro-Executor
       - name: Resumo da execução
@@ -275,7 +275,7 @@ jobs:
       - name: Confirmar PostgreSQL privado sem copiar senha para runner
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
         run: |
           python - <<'PY'
           import json

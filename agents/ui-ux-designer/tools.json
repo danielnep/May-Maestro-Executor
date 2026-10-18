@@ -3,5 +3,8 @@
   "list_files",
   "write_file",
   "remember",
-  "finish"
+  "finish",
+  "search_web",
+  "fetch_public",
+  "inspect_image"
 ]

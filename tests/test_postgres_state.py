@@ -197,6 +197,14 @@ class PostgresStateIntegrationTests(unittest.TestCase):
         self.assertNotIn('specification', self.state.tasks()[0])
         json.dumps(self.state.list_tasks_snapshot())
 
+    def test_atomic_project_filter_never_claims_another_project(self):
+        self.state.enqueue('other', 'qa-engineer', 'other', 'Other project', priority=100)
+        self.state.enqueue('selected', 'qa-engineer', 'selected', 'Selected project', priority=0)
+        self.assertEqual(self.peer().claim('worker', now=100, project='selected')['task_id'], 'selected')
+        self.assertEqual(self.state.get('other')['status'], 'queued')
+        self.assertIsNone(self.state.claim('same-project', now=100, project='selected'))
+        self.assertEqual(self.state.claim('other-worker', now=100, project='other')['task_id'], 'other')
+
     def test_schema_isolation_and_rejected_unsafe_identifiers(self):
         for schema in ('public', 'pg_catalog', 'information_schema', 'x;DROP SCHEMA public', '../other'):
             with self.assertRaises(ValueError):

@@ -2,5 +2,7 @@
   "read_file",
   "list_files",
   "remember",
-  "finish"
+  "finish",
+  "search_web",
+  "fetch_public"
 ]

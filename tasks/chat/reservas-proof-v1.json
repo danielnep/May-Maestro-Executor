@@ -1,0 +1,13 @@
+{
+  "owner": "danielnep",
+  "repository": "danielnep/May-Maestro-Executor",
+  "task_id": "reservas-proof-v1",
+  "agent": "may-maestro",
+  "project": "chat-bridge-proof",
+  "objective": "Coordene Backend Engineer e QA Engineer em etapas dependentes para criar apps/chat-bridge-proof, um motor Python stdlib de reservas com capacidade finita por recurso, chave idempotente por cliente, rejeição de replay conflitante e cancelamento sem duplicar devolução. Escreva testes determinísticos de conservação de capacidade, idempotência, conflito, isolamento entre clientes e cancelamento repetido. Use somente arquivos no namespace aprovado. O QA deve executar testes reais por run_check no diretório do aplicativo quando suportado; informe bloqueio em vez de inventar aprovação. Registre entrega, testes e pendências. Não mexa no controlador, credenciais ou sistemas de clientes. Critérios adicionais: testes com threads concorrentes disputando a última capacidade, sequência pseudoaleatória com seed fixo e invariantes após cada operação, reinício/reabertura quando houver persistência. QA usa run_check {name:\"python-unittest\",project_dir:\"apps/chat-bridge-proof\"}; não basta escrever ou descrever testes. Maestro deve delegar em ordem Backend, QA dependente do Backend e Corregedoria dependente do QA para conferir as evidências. Todos os arquivos produzidos dentro do namespace. Crie README com execução e limites comprovados.",
+  "payload": {
+    "allowed_paths": [
+      "apps/chat-bridge-proof/**"
+    ]
+  }
+}

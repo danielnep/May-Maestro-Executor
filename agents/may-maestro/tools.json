@@ -3,5 +3,7 @@
   "list_files",
   "remember",
   "finish",
-  "delegate"
+  "delegate",
+  "search_web",
+  "fetch_public"
 ]

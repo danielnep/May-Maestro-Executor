@@ -117,10 +117,12 @@ class State:
             self._event(task_id, "enqueued", {})
             return self._decode(self.db.execute("SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone())
 
-    def claim(self, worker, now=None, lease_seconds=300):
+    def claim(self, worker, now=None, lease_seconds=300, project=None):
         now = time.time() if now is None else now
         if not worker or lease_seconds <= 0:
             raise ValueError("worker and positive lease_seconds required")
+        if project is not None and (not isinstance(project, str) or not project):
+            raise ValueError("project filter must be a nonempty string")
         with self._tx():
             expired = self.db.execute("SELECT * FROM tasks WHERE status='running' AND lease_until<=?", (now,)).fetchall()
             for row in expired:
@@ -142,7 +144,13 @@ class State:
                         changed = True
                 if not changed:
                     break
-            for row in self.db.execute("SELECT * FROM tasks WHERE status='queued' AND not_before<=? ORDER BY priority DESC,seq", (now,)).fetchall():
+            ready_sql = "SELECT * FROM tasks WHERE status='queued' AND not_before<=?"
+            ready_args = [now]
+            if project is not None:
+                ready_sql += " AND project=?"
+                ready_args.append(project)
+            ready_sql += " ORDER BY priority DESC,seq"
+            for row in self.db.execute(ready_sql, ready_args).fetchall():
                 if any(self.db.execute("SELECT status FROM tasks WHERE task_id=?", (dep,)).fetchone()[0] != "succeeded"
                        for dep in json.loads(row["depends_on"])):
                     continue

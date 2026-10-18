@@ -86,7 +86,7 @@ class RailwayBroker:
                 'sandbox_id': identity['sandbox_id'], 'reused': identity.get('reused', False),
                 'exit_code': exit_code,
                 'passed': result.get('passed') is True and result.get('cleanup_ok') is True and isinstance(result.get('tests_run'), int) and result['tests_run'] > 0 and exit_code == 0 and not result.get('timedOut', result.get('timed_out', False)) and not result.get('truncated', False),
-                'tests_run': result.get('tests_run', 0),
+                'tests_run': result.get('tests_run', 0), 'cleanup_ok': result.get('cleanup_ok') is True,
                 'timed_out': result.get('timedOut', result.get('timed_out', False)),
                 'truncated': result.get('truncated', False),
                 'output': (result.get('stdout', '') + result.get('stderr', ''))[-64000:]}

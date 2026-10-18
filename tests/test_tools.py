@@ -108,7 +108,7 @@ class ToolsBoundaryTests(unittest.TestCase):
             self.assertTrue((snapshot / 'tests/test_ok.py').exists())
             for name in ['.env', '.git', 'runtime', 'credentials', 'app_token.txt', 'db.sqlite', 'link.txt']:
                 self.assertFalse((snapshot / name).exists(), name)
-            return {'passed': True, 'exit_code': 0, 'output': 'mocked Docker'}
+            return {'passed': True, 'exit_code': 0, 'tests_run': 1, 'cleanup_ok': True, 'output': 'mocked Docker'}
         with patch('horizon_core.tools.shutil.which', return_value='/usr/bin/docker'), patch.object(
                 Tools, '_docker_check', side_effect=inspect_snapshot):
             result = Tools(self.root, load_agent('qa-engineer')).execute('run_check', {'name': 'python-unittest'})

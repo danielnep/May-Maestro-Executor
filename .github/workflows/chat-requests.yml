@@ -1,0 +1,56 @@
+name: Horizon - pedidos do chat por commit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tasks/chat/*.json'
+      - '.github/workflows/chat-requests.yml'
+      - 'horizon_core/commit_bridge.py'
+  workflow_dispatch:
+  schedule:
+    - cron: '47 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: horizon-durable-worker
+  cancel-in-progress: false
+
+jobs:
+  process-chat-requests:
+    if: github.repository == 'danielnep/May-Maestro-Executor' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Instalar biblioteca oficial Railway (sem CLI)
+        working-directory: sandbox
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Validar contrato do controlador sem chamadas externas
+        run: python -m unittest discover -s tests -p test_commit_bridge.py -v
+      - name: Importar pedidos, retomar especialistas e registrar resultados
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.8-flash' }}
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'true' }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_STATE_ENVIRONMENT_ID: da638584-8400-44f8-9b93-3c3d343a6022
+          HORIZON_STATE_BACKEND: railway-postgres
+        run: python -m horizon_core.commit_bridge --session-seconds 2400

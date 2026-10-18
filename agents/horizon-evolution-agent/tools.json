@@ -3,5 +3,8 @@
   "list_files",
   "run_check",
   "remember",
-  "finish"
+  "finish",
+  "search_web",
+  "fetch_public",
+  "inspect_image"
 ]

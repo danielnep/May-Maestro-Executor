@@ -160,10 +160,12 @@ class PostgresState:
             self._event(task_id, 'enqueued', {})
             return self._decode(row)
 
-    def claim(self, worker, now=None, lease_seconds=300):
+    def claim(self, worker, now=None, lease_seconds=300, project=None):
         now = self._now(now)
         if not isinstance(worker, str) or not worker or lease_seconds <= 0:
             raise ValueError('worker and positive lease_seconds required')
+        if project is not None and (not isinstance(project, str) or not project):
+            raise ValueError('project filter must be a nonempty string')
         with self._tx():
             expired = self.db.execute("SELECT * FROM tasks WHERE status='running' AND lease_until<=%s FOR UPDATE SKIP LOCKED", (now,)).fetchall()
             for row in expired:
@@ -186,10 +188,15 @@ class PostgresState:
                     self.db.execute("UPDATE tasks SET status='blocked',error=%s WHERE task_id=%s",
                                     (self._jsonb({'failed_dependencies': failures}), row['task_id']))
                     self._event(row['task_id'], 'blocked', {'dependencies': failures}, now)
-            row = self.db.execute('''SELECT t.* FROM tasks t WHERE t.status='queued' AND t.not_before<=%s
+            ready_sql = '''SELECT t.* FROM tasks t WHERE t.status='queued' AND t.not_before<=%s
                 AND NOT EXISTS (SELECT 1 FROM task_dependencies d JOIN tasks p ON p.task_id=d.dependency_id
-                    WHERE d.task_id=t.task_id AND p.status<>'succeeded')
-                ORDER BY t.priority DESC,t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED''', (now,)).fetchone()
+                    WHERE d.task_id=t.task_id AND p.status<>'succeeded')'''
+            ready_args = [now]
+            if project is not None:
+                ready_sql += ' AND t.project=%s'
+                ready_args.append(project)
+            ready_sql += ' ORDER BY t.priority DESC,t.seq LIMIT 1 FOR UPDATE OF t SKIP LOCKED'
+            row = self.db.execute(ready_sql, ready_args).fetchone()
             if row is None:
                 return None
             claimed = self.db.execute("""UPDATE tasks SET status='running',attempts=attempts+1,
