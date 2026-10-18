@@ -6,7 +6,9 @@ Runtime Python 3.11+ com chamadas diretas às APIs Gemini e DeepSeek e SDK ofici
 
 Implementados: 17 perfis, gateway REST, fila SQLite, agendamento, dependências, memória por agente/projeto, checkpoints com retomada, ferramentas de leitura/escrita, testes isolados em Docker, persistência GitHub por API e publicação em branch de trabalho. A suíte usa HTTP simulado para verificar o contrato sem consumir API.
 
-**Não declarar a equipe operacional por esta suíte.** Provas externas concluídas no [Actions 39162318353](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39162318353): 71 testes, checkpoint GitHub por API, memória recuperada em outro runner e teste Docker real sem credenciais. Ainda exigem prova: chamada Gemini real para cada perfil e tarefa conjunta com decisões reais e retomada. O `--preflight` verifica presença de configuração, não valida chave nem situação de cobrança Google. A implantação de plugins do ChatGPT é separada deste runtime: os 10 novos especialistas são agentes do executor, não plugins privados já instalados na conta.
+**Provas reais concluídas:** 17 chamadas independentes ao DeepSeek, leitura real de arquivo, memória e checkpoint por especialista; criação e reuso de sandbox Railway; teste Python isolado em Docker dentro dessa VM; checkpoint GitHub recuperado em outro runner. Ver [Actions 39165714831](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39165714831).
+
+O fallback real usado nessa prova foi por configuração Gemini ausente (modelo/atestação), não por cota real esgotada. Falhas 401/429/5xx, transporte e respostas inválidas foram verificadas com simulação. A chamada individual prova conexão e execução de ferramenta; ainda não substitui uma entrega conjunta complexa dos 17. O fluxo periódico segue aguardando aprovação do workflow na principal e habilitação do worker. Os 10 novos perfis são agentes do runtime, não plugins privados já instalados no ChatGPT.
 
 ## Especialistas
 
@@ -112,20 +114,29 @@ python3 -m horizon_core.app --preflight
 python3 -m horizon_core.app --tasks tasks/example.json --db runtime/state.sqlite3
 ```
 
-A suíte verifica identidades e requisições independentes, leitura/memória por 17 perfis, ferramentas reais em fixtures Git, retomada SQLite após interrupção, DAG, dependências, falhas de QA preservadas, lease expirado, concorrência, orçamento, snapshot remoto simulado, proteção de caminhos e Docker simulado sem credenciais. O novo ciclo tem 97 testes Python e 17 testes Node com transportes simulados, além das provas externas indicadas no checkpoint. Os sete auditores estáticos em `maestro_exec/` e `executors/` permanecem para compatibilidade; o caminho de codificação via Codex CLI foi retirado. `supervisor.py` encaminha ao runtime ativo; não contém mais o retorno antecipado desativando Gemini.
+A suíte verifica identidades e requisições independentes, leitura/memória por 17 perfis, ferramentas reais em fixtures Git, retomada SQLite após interrupção, DAG, dependências, falhas de QA preservadas, lease expirado, concorrência, orçamento, snapshot remoto simulado, proteção de caminhos e Docker simulado sem credenciais. O novo ciclo tem 98 testes Python e 17 testes Node com transportes simulados, além das provas externas indicadas no checkpoint. Os sete auditores estáticos em `maestro_exec/` e `executors/` permanecem para compatibilidade; o caminho de codificação via Codex CLI foi retirado. `supervisor.py` encaminha ao runtime ativo; não contém mais o retorno antecipado desativando Gemini.
 
 ## Evidências da execução remota
 
-Commit de código verificado: `df1a65a9ac7ff7007da970d1fb8a7fde4f9d5318`. Jobs `verification`, `smoke-prepare` e `smoke-resume` concluíram com sucesso. O último publicou `remote_resume=true`, `docker_passed=true`, `memory_recovered=true`, `model_calls=0`. A leitura independente do SQLite na branch `agent-state/smoke-39162318353` confirmou tarefa `succeeded`, duas tentativas e eventos `enqueued → claimed → checkpoint → lease_expired → claimed → succeeded`. O snapshot tem SHA Git `30a34534674e1c5e98a8138341ae51be3337cba9`.
+[Actions 39165714831](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39165714831), código `01fcce127cd0894dab2837f8e99ba734366315a5`:
 
-O preflight remoto confirmou `GEMINI_API_KEY=true`, `GEMINI_MODEL=false`, `free_tier_attested=false`. A chave existe no GitHub e não foi extraída. Naquela prova o worker de IA permaneceu pulado; nenhum pedido de geração foi enviado. As provas de API e SDK adicionadas depois estão registradas no checkpoint atualizado.
+- `verification`: suíte Python e 17 testes Node aprovados.
+- `providers-proof`: 17 perfis, 17 chamadas reais `deepseek-flash`, 17 leituras de arquivo, memória recuperada e checkpoints. Snapshot em `agent-state/providers-proof-39165714831`; leitura independente confirmou 17 IDs distintos e motivo primário `configuration`.
+- `railway-proof`: VM `9de2a58a-27c9-42fc-966c-6b577a65ba00` criada e reutilizada; `python-unittest` passou com um teste real, sem timeout/truncamento e com limpeza confirmada. Estado em `agent-state/railway-proof-39165714831`.
+- `smoke-prepare` e `smoke-resume`: checkpoint remoto e retomada em outro runner aprovados.
+- `configuration`: Gemini key presente, modelo/atestação ausentes; DeepSeek key presente; Railway token e ambiente presentes. Nenhum valor secreto foi extraído.
+
+A VM pode já ter expirado por inatividade quando este documento for lido. O broker recria uma VM gerenciada quando necessário; estes IDs são evidência histórica, não promessa de VM viva.
 
 ## Critério de ativação
 
-Aprovar código na principal e confirmar a configuração gratuita não substituem a prova de operação. Para aceite final: executar um pedido pequeno com Gemini real; comprovar individualmente ferramenta, memória e checkpoint por especialista; executar uma cadeia real; interromper e retomar em outro runner; conferir branch, commit e resultados. Só então declarar os agentes operacionais. Até lá: código implementado e suíte automatizada, ativação externa pendente.
+O código e suas conexões têm evidência real. Para produção operacional da equipe, ainda falta aprovar o workflow na branch principal, habilitar o coordenador periódico e comprovar uma entrega conjunta completa com revisão independente. Na configuração atual o DeepSeek atende a equipe; Gemini volta a ser preferido quando seu modelo e projeto gratuito forem configurados. Não anunciar testes visuais, APK ou deploy sem os respectivos adaptadores e provas.
 
 ## Referências oficiais verificadas
 
+- [SDK Railway](https://docs.railway.com/sandboxes)
+- [DeepSeek thinking](https://api-docs.deepseek.com/guides/thinking_mode/)
+- [DeepSeek API](https://api-docs.deepseek.com/api/create-chat-completion/)
 - [Gemini generateContent](https://ai.google.dev/api/generate-content)
 - [Billing Gemini](https://ai.google.dev/gemini-api/docs/billing)
 - [Limites Gemini](https://ai.google.dev/gemini-api/docs/rate-limits)

@@ -290,6 +290,32 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(observed, list(range(19)))
         self.assertEqual(len(result['checkpoint']['history']), 18)
 
+    def test_long_model_then_tool_renews_before_tool_and_finishes_with_live_lease(self):
+        from horizon_core.tools import Tools
+        self.state.enqueue('long-lease', 'frontend-engineer', 'fixture', 'Keep lease across slow model and slow tool')
+        clock = [1000]
+        def decide(agent, context):
+            clock[0] += 1200
+            return action('read_file', {'path': 'README.md'}) if not context['history'] else action('finish')
+        original_execute = Tools.execute
+        tool_lease = []
+        def slow_tool(tools, name, args):
+            task = self.state.get('long-lease')
+            tool_lease.append(task['lease_until'])
+            self.assertEqual(task['lease_until'], clock[0] + 1800)
+            clock[0] += 800
+            self.assertGreater(task['lease_until'], clock[0])
+            return original_execute(tools, name, args)
+        with patch('horizon_core.state.time.time', side_effect=lambda: clock[0]), patch.object(
+                Tools, 'execute', autospec=True, side_effect=slow_tool):
+            result = Worker(self.state, FakeGateway(decide), self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['checkpoint']['step'], 1)
+        self.assertEqual(tool_lease, [4000])
+        self.assertEqual(clock[0], 4200)
+        renewals = [event for event in self.state.events('long-lease') if event['kind'] == 'lease_renewed']
+        self.assertTrue(any(event['created_at'] == 2200 for event in renewals))
+
     def test_time_slices_resume_fresh_workers_without_consuming_retry_attempts(self):
         self.state.enqueue('sliced', 'frontend-engineer', 'fixture', 'Resume cooperative slices until actual completion', max_attempts=1)
         lengths = []
