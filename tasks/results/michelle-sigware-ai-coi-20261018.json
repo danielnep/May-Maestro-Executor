@@ -1,0 +1,8 @@
+{
+  "error": {
+    "kind": "RailwayPostgresError"
+  },
+  "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
+  "request_id": "michelle-sigware-ai-coi-20261018",
+  "status": "blocked"
+}
