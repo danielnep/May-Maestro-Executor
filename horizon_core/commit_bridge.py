@@ -292,16 +292,19 @@ def main(argv=None):
     if os.getenv('GITHUB_REPOSITORY', REPOSITORY) != REPOSITORY:
         raise ValueError('This controller is bound to its own repository')
     from .railway_postgres import RailwayPostgresState
+    from .handoff import ready_request_ids, write_marker
     state = RailwayPostgresState()
     api = GitHubState(REPOSITORY)
     processed = rejected = 0
     started = time.monotonic()
+    unprocessed = []
     try:
         directory = Path(args.root).resolve() / 'tasks' / 'chat'
         if not directory.exists():
             print(json.dumps({'processed': 0, 'rejected': 0}))
             return 0
-        for path in sorted(directory.glob('*.json')):
+        paths = sorted(directory.glob('*.json'))
+        for index, path in enumerate(paths):
             if not IDENTIFIER.fullmatch(path.stem):
                 rejected += 1
                 continue
@@ -311,6 +314,9 @@ def main(argv=None):
                 validated = validate_request(json.loads(path.read_text(encoding='utf-8')), path.stem)
                 remaining = args.session_seconds - (time.monotonic() - started)
                 if remaining <= 0:
+                    # The next run must import requests we have not reached yet.
+                    unprocessed = [item.stem for item in paths[index:]
+                                   if IDENTIFIER.fullmatch(item.stem)]
                     break
                 report = process_request(state, validated, api=api, session_seconds=remaining)
             except Exception as error:
@@ -320,7 +326,15 @@ def main(argv=None):
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
             publish_result(api, path.stem, report)
             processed += 1
-        print(json.dumps({'processed': processed, 'rejected': rejected}))
+        # Durable state has already been updated. Dispatch once, in a separate
+        # workflow step, only when a task is immediately claimable or an incoming
+        # request was not reached. Delayed retries use the scheduled watchdog.
+        waiting = ready_request_ids(state, [path.stem for path in paths
+                                             if IDENTIFIER.fullmatch(path.stem)])
+        continuation = sorted(set(waiting + unprocessed))
+        write_marker(continuation)
+        print(json.dumps({'processed': processed, 'rejected': rejected,
+                          'ready_for_continuation': len(continuation)}))
         return 1 if rejected else 0
     finally:
         state.close()
