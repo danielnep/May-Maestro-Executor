@@ -291,9 +291,13 @@ def main(argv=None):
         parser.error('session-seconds must be positive')
     if os.getenv('GITHUB_REPOSITORY', REPOSITORY) != REPOSITORY:
         raise ValueError('This controller is bound to its own repository')
-    from .railway_postgres import RailwayPostgresState
     from .handoff import ready_request_ids, write_marker
-    state = RailwayPostgresState()
+    if os.getenv('HORIZON_STATE_BACKEND') == 'embedded-postgres':
+        from .embedded_state import HorizonEmbeddedState
+        state = HorizonEmbeddedState()
+    else:
+        from .railway_postgres import RailwayPostgresState
+        state = RailwayPostgresState()
     api = GitHubState(REPOSITORY)
     processed = rejected = 0
     started = time.monotonic()
