@@ -293,7 +293,25 @@ class ModelGateway:
             action = self.deepseek.complete(agent, messages)
         except GatewayError as exc:
             failures = [primary, exc.as_dict()]
-            message = "Model providers unavailable: Gemini " + str(primary["reason"]) + "; DeepSeek " + exc.reason + ". Checkpoint and retry without replaying completed tools."
+            # Zero-cost third route, explicitly enabled only after a real
+            # free-tier probe. Never opt into paid model inference.
+            backup_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
+            if (backup_model == "gemini-3.5-flash-lite" and
+                    self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
+                    and self.gemini is not None):
+                try:
+                    alternate = dict(agent, model=backup_model)
+                    action = self.gemini.complete(alternate, messages)
+                    action["metadata"].update(
+                        fallback_from="gemini_and_deepseek",
+                        fallback_reasons=failures,
+                        free_tier_model=True)
+                    return action
+                except GatewayError as free_error:
+                    failures.append(free_error.as_dict())
+            message = ("Model providers unavailable: Gemini " + str(primary["reason"]) +
+                       "; DeepSeek " + exc.reason +
+                       "; free fallback exhausted/unavailable. Checkpoint and retry without replaying completed tools.")
             raise GatewayError(message, retryable=True, provider="all", reason="providers_unavailable", failures=failures) from None
         action["metadata"].update(fallback_from="gemini", fallback_reason=primary, gemini_cooldown_skipped=skipped)
         return action
