@@ -300,9 +300,12 @@ class ModelGateway:
                 return action
             except GatewayError as exc:
                 primary = exc.as_dict()
-                self._save_circuit({"retry_after": now + self.cooldown_seconds, "failure": primary})
+                self._save_circuit(dict(self._circuit, retry_after=now + self.cooldown_seconds, failure=primary))
                 skipped = False
         try:
+            if now < self._circuit.get("deepseek_retry_after", 0):
+                raise GatewayError("DeepSeek payment block cooldown", provider="deepseek",
+                                   reason="insufficient_balance", status=402)
             if "deepseek" in self._init_errors:
                 raise self._init_errors["deepseek"]
             action = self.deepseek.complete(agent, messages)
@@ -311,6 +314,8 @@ class ModelGateway:
             # A payment-required response is not transient. Preserve its precise
             # classification for incident reporting; do not retry it blindly.
             deepseek_payment_blocked = exc.status == 402
+            if deepseek_payment_blocked:
+                self._save_circuit(dict(self._circuit, deepseek_retry_after=now + 3600))
             # Zero-cost third route, explicitly enabled only after a real
             # free-tier probe. Never opt into paid model inference.
             backup_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
@@ -330,7 +335,7 @@ class ModelGateway:
             message = ("Model providers unavailable: Gemini " + str(primary["reason"]) +
                        "; DeepSeek " + exc.reason +
                        "; free fallback exhausted/unavailable. Checkpoint and retry without replaying completed tools.")
-            raise GatewayError(message, retryable=not deepseek_payment_blocked,
+            raise GatewayError(message, retryable=True,
                                provider="all", reason="providers_unavailable", failures=failures) from None
         action["metadata"].update(fallback_from="gemini", fallback_reason=primary, gemini_cooldown_skipped=skipped)
         return action
