@@ -193,6 +193,42 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertEqual(self.state.get('chat-proof-request')['attempts'], 2)
         self.assertEqual(result['status'], 'reported_complete')
 
+    def test_may_review_packet_never_invents_live_link(self):
+        # A completed model job is not a verified public page or an audit.
+        tasks = [{'task_id': 'fixture', 'agent': 'qa-engineer', 'status': 'succeeded',
+                  'result': {'verification': [
+                      {'check': 'browser-playwright', 'passed': True, 'tests_run': 3}]}}]
+        publication = {
+            'published': True, 'target_repo': 'danielnep/app-hondas-maxvel',
+            'branch': 'agent/demo-patch', 'commit': 'a' * 40,
+            'pages_preview': {'status': 'needs_pages_admin_token', 'page_url': 'https://example.test/'}}
+        result = summarize('proof-request', tasks, publication)
+        self.assertEqual(result['status'], 'reported_complete')
+        self.assertTrue(result['quality']['approved'])
+        self.assertIsNone(result['may_review']['preview_url'])
+        self.assertEqual(result['may_review']['status'], 'preview_unavailable')
+        self.assertEqual(result['may_review']['handoff_mode'],
+                         'durable_github_result_not_chat_push')
+        publication['pages_preview'] = {'status': 'verified', 'branch': 'agent/demo-patch',
+                                        'page_url': 'https://danielnep.github.io/app-hondas-maxvel/'}
+        result = summarize('proof-request', tasks, publication)
+        self.assertEqual(result['may_review']['status'], 'ready_for_may_review')
+        self.assertEqual(result['may_review']['preview_url'],
+                         'https://danielnep.github.io/app-hondas-maxvel/')
+        self.assertEqual(result['may_review']['commit_url'],
+                         'https://github.com/danielnep/app-hondas-maxvel/commit/' + 'a' * 40)
+        # If workflow marks job pending or QA failed, link remains for diagnosis
+        # but never claims a completed review packet.
+        tasks[0]['status'] = 'queued'
+        pending = summarize('proof-request', tasks, publication)
+        self.assertEqual(pending['may_review']['status'], 'in_progress')
+        tasks[0]['status'] = 'succeeded'
+        tasks[0]['result']['verification'][0]['passed'] = False
+        failed = summarize('proof-request', tasks, publication)
+        self.assertEqual(failed['may_review']['status'], 'quality_blocked')
+        publication['pages_preview']['branch'] = 'agent/different'
+        self.assertIsNone(summarize('proof-request', tasks, publication)['may_review']['preview_url'])
+
     def test_pending_and_failed_work_never_have_qa_approved_true(self):
         for state in ("queued", "running", "blocked", "failed"):
             with self.subTest(state=state):
