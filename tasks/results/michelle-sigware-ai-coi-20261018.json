@@ -2,12 +2,24 @@
   "delivery_mode": "read_result_in_chat",
   "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
   "publication": {
+    "awaiting_host_publication": true,
+    "base_sha": "3f05bcd93fc2ecba3cf3c380b81914a6bbc96049",
+    "host_action": "May must verify the remote base and publish via the connected GitHub tool; do not claim publication before confirmation.",
+    "patch_files": [
+      {
+        "content": "# Arquitetura Técnica e Contratos de Dados — Pipeline Sigware, Visual Plan IA e Módulo COI\n\n**Data:** 19/10/2026  \n**Status:** Aprovado para implementação  \n**Branch de trabalho:** `agent/chat-michelle-sigware-ai-coi-20261018`  \n**Contexto:** Missão `michelle-sigware-ai-coi-20261018` — Power BI | Painel Completo / Michelle Cândido\n\n---\n\n## 1. Visão Geral e Decisões de Arquitetura\n\n### 1.1 O Problema Real\nAtualmente, o fluxo de arquivos é desacoplado da inteligência visual:\n1. O binário bruto da planilha é salvo no bucket S3 via `PUT /api/files/:id` (validado por SHA-256 e registrado em `mc_files`).\n2. O parse para geração de lotes (`lots`) ocorre no cliente, dependendo de rotinas em `app.js` e `data-core.js`, sem acionamento determinístico e automático dos modos de IA (`interpret-batch` e `plan`).\n3. O cliente possui o motor `source-agent.js` e a rota `POST /api/michelle-ai` (com modos `interpret`, `interpret-batch`, `plan`), mas não há um pipeline unificado ponta a ponta: envio de planilha → identificação e perfilamento de abas/cabeçalhos deslocados → inferência de classificação → geração do plano visual → renderização orientada ao plano sem números inventados.\n4. Falta uma página e navegação de primeiro nível para o setor **COI** com tratamento de estados (vazio, carregando, erro recuperável com retry, dados insuficientes e modo degradado local).\n\n### 1.2 Comparação de Alternativas Arquiteturais\n\n| Critério | Alternativa A (Híbrida: Cliente com Worker/Engine local + IA Server) [SELECIONADA] | Alternativa B (Processamento 100% no Servidor com worker XLSX) |\n| :--- | :--- | :--- |\n| **Privacidade e PII** | **Alta**: O binário permanece restrito; para a IA trafegam apenas nomes de colunas, contagens e formas (`columnShapes`), nunca linhas com PII (nomes, CPF, telefones). | **Média**: O servidor precisa decodificar XLSX e filtrar rigorosamente qualquer vazamento antes de despachar para IA. |\n| **Consumo de Recursos do Servidor** | **Baixo/Controlado**: O servidor Railway atua como guardião de autorização, integridade e proxy de IA com validação de esquema. Não sofre exaustão de memória em picos de concorrência com planilhas grandes. | **Alto**: Parsing de arquivos XLSX complexos de 50MB em Node.js com `xlsx` consome muita RAM (podendo causar OOM na instância). |\n| **Resiliência a Falhas de IA** | **Excelente**: Se a IA falhar (429/500/timeout), o motor local já possui o catálogo estruturado e renderiza o painel no modo `degraded_ready` (\"Plano local (IA indisponível)\"). | **Complexa**: Exige fila durável (ex: BullMQ/Redis ou polling em tabela) e recuperação de jobs assíncronos. |\n| **Compatibilidade com Base Existente** | **Alta**: Reutiliza `vendor/xlsx.full.min.js`, `data-core.js`, `source-agent.js` e `server/michelle-ai.mjs` sem exigir novas bibliotecas de sistema no runtime Node. | **Baixa**: Exige adicionar dependência de parsing no `package.json` de produção. |\n| **Decisão e Reversibilidade** | **Adotamos a Alternativa A** como arquitetura canônica imediata. O contrato de dados do Visual Plan e dos lotes é idêntico em ambas, tornando viável no futuro extrair o worker para o servidor caso o navegador reporte limites de memória. |\n\n---\n\n## 2. Pipeline de Ingestão e Inferência Estrutural (Sigware e Planilhas Arbitrárias)\n\n### 2.1 Fases do Pipeline\nO pipeline é executado em 6 etapas monotônicas e idempotentes:\n\n```\n[1. Upload do Binário] \n       │  (Cálculo SHA-256 no cliente; PUT /api/files/:id com x-file-name)\n       ▼\n[2. Parsing e Profiler Estrutural Multi-Aba]\n       │  (Varrer abas; detectar cabeçalho em offset 0..29; mescladas; rodapés/totais)\n       ▼\n[3. Inferência de Tipos e Shapes de Colunas (Sanitização Anti-PII)]\n       │  (Geração de `ColumnProfile` e `Shape`: texto, numero, data, horario, percentual)\n       ▼\n[4. Classificação Semântica (Heurística Local + IA `interpret-batch`)]\n       │  (Envio estrito de {id, sheet, headers, columnShapes, allowedFields, allowedSectors})\n       ▼\n[5. Geração e Validação Estrita do Visual Plan (IA `plan`)]\n       │  (Filtragem server-side: validação de colunas existentes, operações e blocos permitidos)\n       ▼\n[6. Renderização Orientada ao Plano + Armazenamento Versionado]\n          (Cálculo determinístico local de métricas; persistência em mc_records; swap atômico)\n```\n\n### 2.2 Tratamento Estrutural Específico (Heurísticas Sigware)\n1. **Detecção Dinâmica de Cabeçalho (`headerRow: 0..29`):**\n   - A linha de cabeçalho é inferida buscando a primeira linha com maior densidade de células textuais não-nulas e ausência de padrão de título unificado ou metadados de sistema.\n   - Linhas prévias (0 até `headerRow - 1`) são marcadas como metadados/títulos e descartadas da tabela de dados.\n2. **Exclusão de Rodapés e Subtotais:**\n   - Linhas ao final contendo termos como `Total`, `Subtotal`, `Média`, `Soma` ou vazias em colunas-chave não entram no array de registros operacionais, prevenindo duplicidade de agregação.\n3. **Células Mescladas (`!merges`):**\n   - Quando a biblioteca expõe o mapa de mesclagens, o valor da célula superior esquerda é propagado para o cabeçalho equivalente, sem corromper as colunas subsequentes.\n4. **Normalização de CSVs e Caracteres:**\n   - Suporte a delimitadores `;`, `,` e `\\t`, remoção de BOM UTF-8 e parsing de números no formato PT-BR (`1.234,56` ou `45%`).\n\n---\n\n## 3. Schema Formal do Visual Plan e Contratos de Dados\n\nO plano gerado pela IA é estritamente uma **proposta estrutural de apresentação**. A IA **nunca** calcula números finais. Todos os valores exibidos são agregados no momento da renderização pelo motor analítico local sobre os registros do lote.\n\n### 3.1 JSON Schema — Visual Plan (`VisualPlan`)\n\n```json\n{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"title\": \"VisualPlan\",\n  \"type\": \"object\",\n  \"required\": [\"version\", \"summary\", \"sources\", \"groups\", \"dashboard\"],\n  \"properties\": {\n    \"version\": {\n      \"type\": \"string\",\n      \"enum\": [\"1.0.0\"]\n    },\n    \"summary\": {\n      \"type\": \"string\",\n      \"maxLength\": 600,\n      \"description\": \"Resumo executivo do plano e propósito analítico.\"\n    },\n    \"sources\": {\n      \"type\": \"array\",\n      \"maxItems\": 24,\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"id\", \"subject\", \"grain\", \"purpose\", \"metrics\", \"chart\", \"warnings\"],\n        \"properties\": {\n          \"id\": { \"type\": \"string\", \"maxLength\": 120 },\n          \"subject\": { \"type\": \"string\", \"maxLength\": 140 },\n          \"grain\": { \"type\": \"string\", \"maxLength\": 170, \"description\": \"Entidade representada por uma linha (ex: ligação, chamado, evento).\" },\n          \"purpose\": { \"type\": \"string\", \"maxLength\": 260 },\n          \"metrics\": {\n            \"type\": \"array\",\n            \"maxItems\": 5,\n            \"items\": {\n              \"type\": \"object\",\n              \"required\": [\"name\", \"operation\", \"column\", \"unit\", \"reason\"],\n              \"properties\": {\n                \"name\": { \"type\": \"string\", \"maxLength\": 90 },\n                \"operation\": {\n                  \"type\": \"string\",\n                  \"enum\": [\"count\", \"sum\", \"average\", \"distinct\", \"none\"]\n                },\n                \"column\": { \"type\": \"string\", \"maxLength\": 120, \"description\": \"Deve coincidir estritamente com uma coluna existente.\" },\n                \"unit\": { \"type\": \"string\", \"maxLength\": 55 },\n                \"reason\": { \"type\": \"string\", \"maxLength\": 180 }\n              }\n            }\n          },\n          \"chart\": { \"type\": \"string\", \"maxLength\": 140 },\n          \"warnings\": {\n            \"type\": \"array\",\n            \"maxItems\": 4,\n            \"items\": { \"type\": \"string\", \"maxLength\": 180 }\n          }\n        }\n      }\n    },\n    \"groups\": {\n      \"type\": \"array\",\n      \"maxItems\": 12,\n      \"items\": {\n        \"type\": \"object\",\n        \"required\": [\"sourceIds\", \"classification\", \"confidence\", \"reason\", \"requiresReview\"],\n        \"properties\": {\n          \"sourceIds\": {\n            \"type\": \"array\",\n            \"minItems\": 2,\n            \"items\": { \"type\": \"string\" }\n          },\n          \"classification\": {\n            \"type\": \"string\",\n            \"enum\": [\"mesmo_assunto\", \"complementares\", \"independentes\", \"sobreposicao_possivel\"]\n          },\n          \"confidence\": {\n            \"type\": \"string\",\n            \"enum\": [\"Alta\", \"Moderada\", \"Baixa\"]\n          },\n          \"reason\": { \"type\": \"string\", \"maxLength\": 300 },\n          \"requiresReview\": { \"type\": \"boolean\", \"const\": true }\n        }\n      }\n    },\n    \"dashboard\": {\n      \"type\": \"object\",\n      \"required\": [\"order\", \"rationale\"],\n      \"properties\": {\n        \"order\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"string\",\n            \"enum\": [\"insights\", \"metrics\", \"reading\", \"trend\", \"status\", \"sectors\", \"ranking\", \"records\"]\n          }\n        },\n        \"rationale\": { \"type\": \"string\", \"maxLength\": 360 }\n      }\n    },\n    \"questions\": {\n      \"type\": \"array\",\n      \"maxItems\": 5,\n      \"items\": { \"type\": \"string\", \"maxLength\": 170 }\n    }\n  }\n}\n```\n\n### 3.2 Invariantes de Segurança e Proveniência do Plano\n1. **Invariante de Proveniência:** Cada valor calculado e exibido em um card ou gráfico DEVE obrigatoriamente possuir ponteiro de rastreio:  \n   `fileId` (SHA-256) → `fileName` → `sheetName` → `columnName` → `rowsFilter`.\n2. **Invariante Anti-Alucinação Numérica:** O servidor rejeita qualquer operação `sum` ou `average` se o `inferredShape` da coluna não for categorizado como `numero` ou `percentual`. Se o campo for desconhecido, a operação é coagida no servidor para `none` ou `count`.\n3. **Isolamento de Cruzamentos (`verifiedCrossing = false`):** Nenhuma IA tem autorização para habilitar o bloco `crossings` automaticamente. Relações entre planilhas exigem revisão e confirmação humana explícita.\n\n---\n\n## 4. Contratos de Endpoints Backend e Isolamento de Estado\n\nO backend opera sobre o Express montado em `server/index.mjs` com banco PostgreSQL (via `Pool`) e S3 para originais.\n\n### 4.1 Endpoints Existentes e Extensões\n\n1. **`PUT /api/files/:id`** (Existente, mantido):\n   - **Header:** `Content-Type: application/octet-stream`, `x-file-name: <url-encoded>`.\n   - **Body:** Binário do arquivo (até 50MB).\n   - **Validação:** SHA-256 do corpo deve ser rigorosamente igual a `:id`.\n   - **Permissão:** Requer direito `filesUpload`.\n\n2. **`POST /api/store/batch`** (Existente, mantido para lotes e metadados):\n   - Salva coleções em `mc_records` sob namespaces autorizados (`lots`, `presentations`, `meta`).\n   - **Novo Namespace Permitido:** `plans` (armazena os planos visuais versionados vinculados a um lote ou setor).\n   - **Regra de Setor:** A gravação e leitura no namespace `plans` respeita a autorização do setor (`hasSector(req, sector)`).\n\n3. **`POST /api/michelle-ai`** (Existente, mantido):\n   - Rota autenticada (`ai`). Suporta modos: `chat`, `insights`, `interpret`, `interpret-batch`, `plan`, `review`.\n   - **Timeout unificado:** Alinhado para 35s no servidor e 40s no cliente para evitar cancelamentos desnecessários em chamadas complexas de lote.\n   - **Sanitização de PII:** `context.sources` contém apenas metadados das colunas (`name`, `inferredShape`, contagens), nunca dados de linhas.\n\n4. **`GET /api/coi/overview` (Novo Endpoint Opcional / Especializado de COI):**\n   - **Permissão:** Exige `hasSector(req, 'coi')`.\n   - **Retorno:** Lote ativo do setor COI, metadados do plano visual e lista de arquivos de origem.\n   - *Nota de Isolamento:* Pode ser atendido de forma compatível através de `GET /api/store/lots` com filtro `sector = 'coi'`, mantendo a arquitetura enxuta.\n\n### 4.2 Isolamento de Dados e Esquema no Banco\n- **Tabela `mc_records`:** Utilizada para persistência de documentos JSONB por `namespace` (`lots`, `plans`, `meta`).\n- **Garantia de Isolamento Multi-tenant / Setorial:** Usuários sem papel `owner` só leem registros cujo `content->>'sector'` faça parte de seu array `sectors` autorizado em `mc_collaborators`.\n- **Integridade Transacional:** Atualizações de lotes e arquivamento de lotes anteriores (`supersededBy`) são executados sob transação `BEGIN ... COMMIT` com rollback automático em caso de erro.\n- **Regra Inegociável:** Dados de telemetria ou estado de agentes internos nunca são gravados no banco de dados da cliente.\n\n---\n\n## 5. Especificação Arquitetural da Página COI (Nível 1 de Navegação)\n\n### 5.1 Hierarquia e Acesso\n- **Localização:** Item de navegação principal no menu lateral (`href=\"#coi\"`), acompanhado de atalho na Visão Geral.\n- **Controle de Acesso:** Renderizado apenas se `user.sectors.includes('coi')` ou `user.owner === true`. Se acessado via rota direta sem permissão, redireciona amigavelmente para `#overview` com mensagem de acesso não autorizado.\n\n### 5.2 Máquina de Estados da Página COI (`COI_STATES`)\n\n| Estado | Gatilho | Apresentação na Interface | Ações Disponíveis |\n| :--- | :--- | :--- | :--- |\n| **`E1: EMPTY`** | Sem lote do COI cadastrado | Mensagem explícita: *\"Ainda não há relatórios do COI\"*. Descrição orientando envio. Sem números ou zeros fictícios. | Botão primário: *\"Enviar planilha do COI\"* (dispara modal/input com setor pré-selecionado 'coi'). |\n| **`E2: FILTER_EMPTY`**| Filtro de período sem eventos | Mensagem: *\"Nenhum resultado no período selecionado\"*. | Botão: *\"Limpar filtros\"*. Preserva o lote ativo. |\n| **`E3: INSUFFICIENT`**| Arquivo sem colunas de COI | Mensagem: *\"Recebemos o arquivo, mas não foi possível identificar dados do COI\"*. | Botões: *\"Reenviar\"*, *\"Conferir importação\"*, *\"Ver detalhes técnicos\"*. |\n| **`E4: DEGRADED`**    | IA offline (429/500/timeout) | Dashboard gerado por heurística local. Selo de alerta: *\"Plano local (IA indisponível)\"*. | Botão: *\"Tentar novamente com IA\"*. |\n| **`E5: ERROR`**       | Falha no upload/processamento | Alerta de erro recuperável com descrição honesta e código de status. | Botão: *\"Tentar novamente\"* (idempotente por SHA-256). |\n| **`E6: LOADING`**     | Ingestão em andamento | Indicador de progresso com etapas auditáveis (`aria-live=\"polite\"`): *\"Enviando original\"* → *\"Lendo estrutura\"* → *\"Interpretando dados\"* → *\"Montando visual\"*. | Navegação não é bloqueada. |\n| **`E7: READY`**       | Lote e plano prontos | Renderização dinâmica dos blocos na ordem do plano (Métricas, Gráficos, Proveniência). | Filtros de competência, exportação de relatório, drill-down de registros. |\n\n---\n\n## 6. Plano de Ação e Delegação aos Engenheiros\n\n1. **Integration Engineer (`sigware-parser`):** Implementar e refinar o profiler em `analysis/profiler.js` e `data-core.js` para parsing resiliente a cabeçalhos deslocados e criação das fixtures sintéticas `FX-SIG-01` a `FX-SIG-06`.\n2. **Backend Engineer (`backend-core`):** Atualizar `server/index.mjs` e `server/michelle-ai.mjs` garantindo validação de esquemas, timeouts consistentes e suporte ao namespace `plans`.\n3. **Database Engineer (`db-store`):** Assegurar migrações não-destrutivas e isolamento no `mc_records` para persistência dos planos visuais versionados.\n4. **Frontend & UI/UX Engineers (`ui-design` / `frontend-impl`):** Criar a página de nível 1 do COI com estados E1–E7 e integração ao renderizador de dashboards orientados a planos.\n5. **QA Engineer (`qa-validation`):** Criar e rodar a suíte `tests/sigware-pipeline.test.cjs` e validações Playwright com simulação de cenários normais e degradados.\n",
+        "expected_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "path": "docs/arquitetura-sigware-ai-coi.md"
+      }
+    ],
     "published": false,
-    "reason": "No generated workspace files"
+    "reason": "Workflow token cannot publish to this external repository",
+    "target_branch": "agent/chat-michelle-sigware-ai-coi-20261018",
+    "target_repo": "danielnep/michelle-preview"
   },
   "request_id": "michelle-sigware-ai-coi-20261018",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/michelle-sigware-ai-coi-20261018.json",
-  "status": "needs_attention",
+  "status": "pending",
   "tasks": [
     {
       "agent": "may-maestro",
@@ -27,8 +39,8 @@
     },
     {
       "agent": "software-architect",
-      "attempts": 3,
-      "status": "failed",
+      "attempts": 4,
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:arch",
       "verification": []
@@ -36,7 +48,7 @@
     {
       "agent": "integration-engineer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:sigware-parser",
       "verification": []
@@ -44,7 +56,7 @@
     {
       "agent": "backend-engineer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:backend-core",
       "verification": []
@@ -52,7 +64,7 @@
     {
       "agent": "database-engineer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:db-store",
       "verification": []
@@ -60,7 +72,7 @@
     {
       "agent": "security-engineer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:security-check",
       "verification": []
@@ -68,7 +80,7 @@
     {
       "agent": "ui-ux-designer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:ui-design",
       "verification": []
@@ -76,7 +88,7 @@
     {
       "agent": "frontend-engineer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:frontend-impl",
       "verification": []
@@ -84,7 +96,7 @@
     {
       "agent": "qa-engineer",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:qa-validation",
       "verification": []
@@ -92,7 +104,7 @@
     {
       "agent": "corregedoria-may",
       "attempts": 0,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:audit-corregedoria",
       "verification": []
