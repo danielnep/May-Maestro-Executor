@@ -104,6 +104,17 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
         self.assertNotIn("michelle", issue["body"])
         self.assertNotIn("private-client", issue["body"])
 
+    def test_public_ronda_issue_contains_browser_url_but_no_image_data(self):
+        api = FakeIssues()
+        task = dict(self.task, project="ronda-pro", task_id="ronda-public-visual-qa",
+                    agent="horizon-ui-guardian")
+        result = request_consultation(task, "providers_unavailable", api=api)
+        self.assertEqual(result["status"], "requested")
+        body = api.issues[0]["body"]
+        self.assertIn("https://danielnep.github.io/app-hondas-maxvel/", body)
+        self.assertNotIn("NEVER ALLOW THIS TEXT", body)
+        self.assertNotIn("data:image/", body)
+
     def test_model_question_requires_operator_public_approval(self):
         api = FakeIssues()
         task = dict(self.task, agent="qa-engineer")
