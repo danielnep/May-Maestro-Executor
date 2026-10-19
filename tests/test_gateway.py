@@ -215,14 +215,48 @@ class FallbackTests(unittest.TestCase):
             return self.secondary_response()
         result = DeepSeekGateway(self.env, opener).complete(load_agent("frontend-engineer"), self.messages)
         payload = json.loads(self.requests[0].data)
-        self.assertEqual(payload["thinking"], {"type": "enabled"})
-        self.assertEqual(payload["reasoning_effort"], "max")
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertEqual(payload["temperature"], 0.2)
+        self.assertEqual(result["metadata"]["reasoning_level"], "low")
         self.assertEqual(payload["response_format"], {"type": "json_object"})
         self.assertEqual(self.requests[0].get_header("Authorization"), "Bearer deepseek-test-secret")
         self.assertNotIn("deepseek-test-secret", self.requests[0].full_url)
         self.assertNotIn("max_tokens", payload)
         self.assertNotIn("private reasoning", json.dumps(result))
         self.assertEqual(result["metadata"]["model"], "deepseek-flash")
+
+    def test_maestro_approved_high_effort_uses_correct_model_parameters(self):
+        calls = []
+        def opener(request, timeout):
+            calls.append(request)
+            return self.secondary_response() if 'deepseek' in request.full_url else envelope()
+        agent = dict(load_agent('qa-engineer'), _reasoning_level='high')
+        ds = DeepSeekGateway(self.env, opener).complete(agent, self.messages)
+        ds_payload = json.loads(calls[-1].data)
+        self.assertEqual(ds_payload['thinking'], {'type': 'enabled'})
+        self.assertEqual(ds_payload['reasoning_effort'], 'high')
+        self.assertNotIn('temperature', ds_payload)
+        self.assertEqual(ds['metadata']['reasoning_level'], 'high')
+        env = dict(self.env, GEMINI_MODEL='gemini-3.6-flash')
+        gemini = GeminiGateway(env, opener).complete(agent, self.messages)
+        config = json.loads(calls[-1].data)['generationConfig']
+        self.assertEqual(config['thinkingConfig'], {'thinkingLevel':'high'})
+        self.assertEqual(gemini['metadata']['reasoning_level'], 'high')
+
+    def test_routine_gemini_low_and_flash_lite_minimal(self):
+        calls = []
+        def opener(request, timeout):
+            calls.append(request)
+            return envelope()
+        env = dict(self.env, GEMINI_MODEL='gemini-3.6-flash')
+        GeminiGateway(env, opener).complete(load_agent('frontend-engineer'), self.messages)
+        self.assertEqual(json.loads(calls[-1].data)['generationConfig']['thinkingConfig'],
+                         {'thinkingLevel':'low'})
+        lite = dict(load_agent('frontend-engineer'), model='gemini-3.5-flash-lite')
+        GeminiGateway(env, opener).complete(lite, self.messages)
+        self.assertEqual(json.loads(calls[-1].data)['generationConfig']['thinkingConfig'],
+                         {'thinkingLevel':'minimal'})
 
     def test_no_default_call_or_output_caps_but_explicit_override_available(self):
         gateway = GeminiGateway(self.env, lambda req, timeout: envelope())
