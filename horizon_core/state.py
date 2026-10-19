@@ -198,6 +198,23 @@ class State:
                 (now, task_id))
             self._event(task_id, "yielded", {"worker": worker}, now)
 
+    def defer(self, task_id, worker, seconds=900, now=None):
+        """Queue a pending external consultation without burning retry attempts.
+
+        not_before prevents a tight loop while waiting for the scheduled May
+        response, even when the worker resumes immediately after a checkpoint.
+        """
+        if not isinstance(seconds, int) or not 60 <= seconds <= 3600:
+            raise ValueError("Invalid consultation wait")
+        now = time.time() if now is None else now
+        with self._tx():
+            self._owned(task_id, worker, now)
+            self.db.execute("""UPDATE tasks SET status='queued',
+                attempts=MAX(0,attempts-1),lease_owner=NULL,lease_until=NULL,
+                error=NULL,not_before=? WHERE task_id=?""", (now+seconds, task_id))
+            self._event(task_id, 'consultation_deferred',
+                        {'wait_seconds': seconds}, now)
+
     def checkpoint(self, task_id, worker, data, now=None):
         now = time.time() if now is None else now
         encoded = _json(data)

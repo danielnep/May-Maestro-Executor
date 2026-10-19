@@ -73,6 +73,10 @@ def load_agent(agent_id, root=None):
                                        'are hypotheses until revalidated on this task):\n' +
                                        json.dumps(verified[:16], ensure_ascii=False))
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
+    # Shared, guarded May consultation is a runtime transport, not seventeen
+    # duplicated tool definitions. Per-agent actions remain individually scoped.
+    if "consult_may" not in config["tools"]:
+        config["tools"].append("consult_may")
     return config
 
 
