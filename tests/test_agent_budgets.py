@@ -37,6 +37,9 @@ class GuardTests(unittest.TestCase):
         (self.root/'README.md').write_text('fixture\n')
         self.state = State(':memory:')
         self.addCleanup(self.state.close)
+        self._fixture_visual = patch('horizon_core.worker.requires_visual_review', return_value=False)
+        self._fixture_visual.start()
+        self.addCleanup(self._fixture_visual.stop)
 
     def test_three_repeated_invalid_actions_stop_without_fourth_request(self):
         def bad(context):
