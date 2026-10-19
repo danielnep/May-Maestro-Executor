@@ -117,3 +117,22 @@ Na próxima tarefa, **antes de consultar Gemini/DeepSeek**, comparar projeto, ag
 - Configurar `horizon.browser.json` para aguardar o elemento real em `ready` e executar os fluxos exigidos. Capturar a homepage vazia, um carregamento ou um roteiro sintético não prova que o sistema do cliente funciona. O teste falho gera diagnóstico verificável, não sucesso fictício.
 - **Fallback do modelo:** Gemini 3.6 Flash prioritário; DeepSeek secundário; Gemini 3.5 Flash-Lite apenas depois de resposta primária HTTP 429 (quota) e DeepSeek indisponível, desde que a conta tenha free tier confirmado. Outras falhas do Gemini não autorizam ativar Flash-Lite. Respeitar cotas reais dos provedores sem impor limites artificiais de chamadas aos agentes.
 - O agente não pode declarar revisão UI concluída com apenas previsões. Comparar hipótese determinística com navegador real, corrigir a causa na origem, executar novamente o cenário relevante e preservar relatórios por viewport. Não converter testes web em alegações sobre câmera, GPS ou recursos nativos de APK.
+
+
+## Consulta May para os 17 especialistas (contrato V2, 19/10/2026)
+
+O especialista pode invocar consult_may com uma pergunta técnica quando houver
+contexto público previamente autorizado pelo proprietário. Se Gemini e
+DeepSeek falharem simultaneamente, o worker também pede uma ação estruturada
+à May para prosseguir sem outro LLM, sempre limitada pelas ferramentas e
+permissões de branch do próprio especialista. Uma resposta que não é ação
+executável não substitui raciocínio quando os modelos estão indisponíveis.
+
+O Maestro coordena prioridades e incidentes, sem responder no lugar dos
+especialistas. Todos identificam o agente e ticket. Há somente UM chat
+reutilizável, sem criar chats por especialista. O transporte durável usa GitHub
+Issues com marcadores V2 e respostas verificadas do proprietário. Nenhum
+conteúdo privado de cliente, segredo ou código não público passa pelas
+Issues. Falha ou demora no ChatGPT preserva o checkpoint sem simular entrega.
+A tarefa ChatGPT é horária e não promete tempo real. Ver
+docs/may-shared-chat.md e tests/test_may_consultation.py.
