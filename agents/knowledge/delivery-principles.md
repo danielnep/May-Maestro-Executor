@@ -134,5 +134,12 @@ reutilizável, sem criar chats por especialista. O transporte durável usa GitHu
 Issues com marcadores V2 e respostas verificadas do proprietário. Nenhum
 conteúdo privado de cliente, segredo ou código não público passa pelas
 Issues. Falha ou demora no ChatGPT preserva o checkpoint sem simular entrega.
+Há quatro consultas por agente numa janela móvel de 60 minutos; a quinta
+fica no checkpoint, sem consumir nova chamada de IA nem tentativa de falha, e
+é enviada ao liberar espaço na janela. Não há limite permanente por tarefa.
+Resposta deve ser concisa e escolher UMA ação JSON tecnicamente pertinente,
+validada pelas permissões reais do agente; sem provas suficientes, propor
+leitura ou teste concreto, nunca simular correção. O histórico do GitHub é a
+fonte durável de contagem entre tarefas e reinícios.
 A tarefa ChatGPT é horária e não promete tempo real. Ver
 docs/may-shared-chat.md e tests/test_may_consultation.py.

@@ -152,6 +152,69 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertTrue(self.state.recall('fixture', 'qa-engineer')['reviewed'])
         self.assertEqual(job['attempts'], 1)
 
+    def test_consultation_cooldown_keeps_question_until_sent_without_extra_llm(self):
+        self.state.enqueue('cooldown-specialist', 'qa-engineer', 'fixture',
+                           'Ask for a safe test action',
+                           payload={'may_public_context_allowed': True})
+        gateway = FakeGateway(
+            lambda agent, context: action('consult_may',
+                {'question': 'Which isolated regression check should run first?'})
+            if not context['history'] else action('finish', summary='Consultation consumed'))
+        calls = []
+        def fake_request(task, reason, *, round_index=0, question=None):
+            calls.append((reason, question, round_index))
+            if len(calls) == 1:
+                return {'status': 'cooldown', 'retry_after_seconds': 180}
+            return {'status': 'requested', 'ticket': 'resumed-consult', 'issue': 42}
+
+        with patch('horizon_core.worker.request_consultation', side_effect=fake_request):
+            first = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(first['status'], 'queued')
+        self.assertEqual(first['attempts'], 0)
+        self.assertEqual(first['checkpoint']['step'], 0)
+        self.assertEqual(first['checkpoint']['deferred_may_request']['question'],
+                         'Which isolated regression check should run first?')
+        self.assertEqual(len(gateway.calls), 1)
+        self.assertIsNone(Worker(self.state, gateway, self.root).run_one())
+
+        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
+             patch('horizon_core.worker.request_consultation', side_effect=fake_request):
+            resumed = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(resumed['checkpoint']['pending_may'],
+                         {'ticket': 'resumed-consult', 'round': 0})
+        self.assertNotIn('deferred_may_request', resumed['checkpoint'])
+        self.assertEqual([row['action'] for row in resumed['checkpoint']['history']],
+                         ['consult_may'])
+        self.assertEqual(len(gateway.calls), 1)
+        self.assertEqual(calls[0], calls[1])
+
+    def test_provider_outage_cooldown_resumes_without_repeating_failed_apis(self):
+        self.state.enqueue('cooldown-provider', 'qa-engineer', 'fixture',
+                           'Recover safely when upstream models fail')
+        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(
+            GatewayError('both unavailable', provider='all',
+                         reason='providers_unavailable', retryable=True)))
+        calls = []
+        def fake_request(task, reason, *, round_index=0, question=None):
+            calls.append((reason, round_index))
+            if len(calls) == 1:
+                return {'status': 'cooldown', 'retry_after_seconds': 120}
+            return {'status': 'requested', 'ticket': 'resumed-provider', 'issue': 43}
+
+        with patch('horizon_core.worker.request_consultation', side_effect=fake_request):
+            first = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(first['status'], 'queued')
+        self.assertEqual(first['attempts'], 0)
+        self.assertEqual(first['checkpoint']['deferred_may_request'],
+                         {'reason': 'providers_unavailable', 'round': 0})
+        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
+             patch('horizon_core.worker.request_consultation', side_effect=fake_request):
+            second = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(second['checkpoint']['pending_may']['ticket'], 'resumed-provider')
+        self.assertEqual(second['attempts'], 0)
+        self.assertEqual(len(gateway.calls), 1)
+        self.assertEqual(calls, [('providers_unavailable', 0)] * 2)
+
     def test_unapproved_may_response_cannot_execute_unauthorized_tool(self):
         self.state.enqueue('bad-reply', 'qa-engineer', 'fixture',
                            'No permissions expansion')

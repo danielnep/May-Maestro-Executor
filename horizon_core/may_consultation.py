@@ -11,6 +11,7 @@ import json
 import os
 import re
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 from .registry import AGENT_IDS
 
@@ -24,7 +25,8 @@ API_URL = "https://api.github.com/repos/" + REPOSITORY
 REASONS = frozenset(("providers_unavailable", "specialist_question"))
 MAX_QUESTION = 1400
 MAX_ADVICE = 3000
-MAX_CONSULTATIONS_PER_TASK = 3
+CONSULTATIONS_PER_WINDOW = 4
+CONSULTATION_WINDOW_SECONDS = 3600
 SAFE_QUESTION = re.compile(r"^[\w \t.,:;!?()[\]{}+=/#\-À-ÿ\n]*$", re.UNICODE)
 BLOCKED = re.compile(r"(?:\b(?:api[_ -]?key|secret|password|senha|token|bearer|cpf|cnpj|private[_ -]?key)\b|"
                      r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\b(?:sk-|AIza)[\w-]{12,})", re.I)
@@ -35,7 +37,7 @@ def ticket(task_id, agent=None, round_index=0):
         raise ValueError("Invalid consultation task")
     if agent is not None and agent not in AGENT_IDS:
         raise ValueError("Unknown consultation specialist")
-    if not isinstance(round_index, int) or not 0 <= round_index < MAX_CONSULTATIONS_PER_TASK:
+    if type(round_index) is not int or round_index < 0:
         raise ValueError("Invalid consultation round")
     # The first round deliberately preserves issued V2 ticket IDs.
     key = task_id if agent is None else "v2|" + agent + "|" + task_id
@@ -77,6 +79,48 @@ def _find_issue(api, key, legacy=False):
     raise RuntimeError("Consultation search cap reached: verify existing ticket")
 
 
+def _agent_cooldown(api, agent, now):
+    """Sliding one-hour window shared by every task of the same specialist.
+
+    GitHub issue creation timestamps are durable across worker restarts.
+    This only counts authenticated V2 consultation requests, not retries.
+    """
+    cutoff = now - timedelta(seconds=CONSULTATION_WINDOW_SECONDS)
+    recent = []
+    for page in range(1, 6):
+        rows = api("GET", "/issues?state=all&sort=created&direction=desc"
+                   "&per_page=100&page=" + str(page))
+        for row in rows:
+            created_raw = row.get("created_at")
+            if not created_raw:
+                continue
+            try:
+                created = datetime.fromisoformat(created_raw.replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                continue
+            if created <= cutoff:
+                # GitHub issues were requested in descending creation order.
+                return _cooldown_seconds(recent, now)
+            body = row.get("body") or ""
+            if (not row.get("pull_request")
+                    and (row.get("title") or "").startswith(ISSUE_PREFIX)
+                    and REQUEST_MARKER in body
+                    and ("\nagent: " + agent + "\n") in ("\n" + body)):
+                recent.append(created)
+        if len(rows) < 100:
+            return _cooldown_seconds(recent, now)
+    # If the repository was extremely busy, fail closed with a temporary wait.
+    return CONSULTATION_WINDOW_SECONDS
+
+
+def _cooldown_seconds(recent, now):
+    if len(recent) < CONSULTATIONS_PER_WINDOW:
+        return 0
+    oldest = min(recent)
+    remaining = (oldest + timedelta(seconds=CONSULTATION_WINDOW_SECONDS) - now).total_seconds()
+    return max(60, min(CONSULTATION_WINDOW_SECONDS, int(remaining) + 1))
+
+
 def _public_question(task, question, reason):
     """Only operator-approved public technical questions may leave the worker."""
     if reason == "providers_unavailable":
@@ -93,7 +137,7 @@ def _public_question(task, question, reason):
     return question.strip()
 
 
-def request_consultation(task, reason, *, api=None, question=None, round_index=0):
+def request_consultation(task, reason, *, api=None, question=None, round_index=0, now=None):
     """Idempotent request for any registered agent. No raw private task context."""
     agent = task.get("agent")
     if agent not in AGENT_IDS or reason not in REASONS:
@@ -106,12 +150,17 @@ def request_consultation(task, reason, *, api=None, question=None, round_index=0
     try:
         key = ticket(task.get("task_id"), agent, round_index)
     except ValueError:
-        return {"status": "consultation_budget_exhausted"}
+        return {"status": "invalid_consultation_round"}
     call = api or _github
     existing = _find_issue(call, key)
     if existing:
         return {"status": "already_requested", "issue": existing["number"],
                 "ticket": key, "agent": agent}
+    moment = now or datetime.now(timezone.utc)
+    wait = _agent_cooldown(call, agent, moment)
+    if wait:
+        return {"status": "cooldown", "agent": agent,
+                "retry_after_seconds": wait, "window_seconds": CONSULTATION_WINDOW_SECONDS}
     body = "\n".join((
         REQUEST_MARKER,
         "ticket: " + key,

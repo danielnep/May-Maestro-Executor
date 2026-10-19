@@ -1,6 +1,7 @@
 """Regression contract for the user-approved shared May reasoning fallback."""
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 from horizon_core.may_consultation import (
@@ -15,6 +16,7 @@ class FakeIssues:
         self.issues = []
         self.comments = {}
         self.posts = 0
+        self.now = datetime.now(timezone.utc)
 
     def __call__(self, method, path, *, body=None):
         if method == "GET" and path.startswith("/issues?"):
@@ -23,7 +25,8 @@ class FakeIssues:
             return self.comments.get(int(path.split("/")[2]), [])
         if method == "POST" and path == "/issues":
             self.posts += 1
-            row = {"title": body["title"], "body": body["body"], "number": self.posts}
+            row = {"title": body["title"], "body": body["body"],
+                   "created_at": self.now.isoformat(), "number": self.posts}
             self.issues.append(row)
             return row
         raise AssertionError((method, path))
@@ -45,17 +48,46 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
         self.assertEqual(request_consultation(self.task, "unsupported", api=api)["status"], "not_applicable")
         self.assertEqual(request_consultation(dict(self.task, agent="unregistered"), "providers_unavailable", api=api)["status"], "not_applicable")
 
-    def test_three_slots_are_unique_and_fourth_is_rejected(self):
+    def test_four_queries_then_cooldown_and_resume_without_terminal_cap(self):
         api = FakeIssues()
-        for round_index in range(3):
-            out = request_consultation(self.task, 'providers_unavailable', api=api,
-                                       round_index=round_index)
+        for round_index in range(4):
+            out = request_consultation(
+                self.task, 'providers_unavailable', api=api,
+                round_index=round_index, now=api.now)
             self.assertEqual(out['status'], 'requested')
-            self.assertEqual(out['ticket'], ticket(self.task['task_id'], self.task['agent'], round_index))
-        self.assertEqual(api.posts, 3)
-        self.assertEqual(len({item['title'] for item in api.issues}), 3)
-        self.assertEqual(request_consultation(self.task, 'providers_unavailable', api=api,
-                                               round_index=3)['status'], 'consultation_budget_exhausted')
+            self.assertEqual(out['ticket'],
+                             ticket(self.task['task_id'], self.task['agent'], round_index))
+        self.assertEqual(api.posts, 4)
+        capped = request_consultation(
+            self.task, 'providers_unavailable', api=api, round_index=4, now=api.now)
+        self.assertEqual(capped['status'], 'cooldown')
+        self.assertEqual(capped['retry_after_seconds'], 3600)
+        self.assertEqual(api.posts, 4)
+        api.now += timedelta(seconds=3601)
+        after = request_consultation(
+            self.task, 'providers_unavailable', api=api, round_index=4, now=api.now)
+        self.assertEqual(after['status'], 'requested')
+        self.assertEqual(api.posts, 5)
+        self.assertEqual(len({i['title'] for i in api.issues}), 5)
+
+    def test_rate_limit_spans_tasks_but_isolated_per_agent(self):
+        api = FakeIssues()
+        for index in range(4):
+            task = dict(self.task, task_id='qa-task-' + str(index),
+                        agent='qa-engineer')
+            self.assertEqual(request_consultation(
+                task, 'providers_unavailable', api=api, now=api.now)['status'],
+                'requested')
+        fifth = dict(self.task, task_id='fifth-task', agent='qa-engineer')
+        self.assertEqual(request_consultation(
+            fifth, 'providers_unavailable', api=api, now=api.now)['status'], 'cooldown')
+        another = dict(self.task, task_id='fifth-task', agent='backend-engineer')
+        self.assertEqual(request_consultation(
+            another, 'providers_unavailable', api=api, now=api.now)['status'], 'requested')
+        # Idempotency does not consume an additional slot during cooldown.
+        self.assertEqual(request_consultation(
+            dict(self.task, task_id='qa-task-0', agent='qa-engineer'),
+            'providers_unavailable', api=api, now=api.now)['status'], 'already_requested')
 
     def test_redaction_and_idempotency(self):
         api = FakeIssues()
