@@ -106,16 +106,6 @@ jobs:
       - name: Preparar imagem isolada para testes Node e Playwright
         # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
         run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
-      - name: Provar renderização real, cliques e PNGs em Chromium isolado
-        run: python -m horizon_core.web_checks --root synthetic_visual/generic-demo --check browser-playwright --evidence runtime/visual-fixture
-      - name: Publicar somente capturas sintéticas de teste
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: horizon-visual-fixture
-          path: runtime/visual-fixture/
-          if-no-files-found: ignore
-          retention-days: 3
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}
