@@ -6,9 +6,11 @@
     "reason": "No generated workspace files"
   },
   "quality": {
-    "approved": true,
+    "approved": false,
     "failed_checks": [],
-    "qa_missing_evidence": []
+    "qa_missing_evidence": [
+      "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa"
+    ]
   },
   "request_id": "a-ronda-pro-mobile-field-20261019",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/a-ronda-pro-mobile-field-20261019.json",
@@ -21,6 +23,51 @@
       "status": "queued",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019",
+      "verification": []
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-ui-audit",
+      "verification": []
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-ui-fix",
+      "verification": []
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa",
+      "verification": []
+    },
+    {
+      "agent": "mobile-app-builder",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-apk-check",
+      "verification": []
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-final-guard",
       "verification": []
     }
   ]
