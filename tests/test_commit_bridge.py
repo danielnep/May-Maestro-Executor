@@ -197,7 +197,9 @@ class CommitBridgeTests(unittest.TestCase):
         result = summarize('proof-request', [{'task_id': 'x', 'agent': 'qa-engineer', 'status': 'succeeded',
             'result': {'summary': 'Finished investigation', 'verification': [{'passed': False, 'exit_code': 1,
                 'output': 'SECRET-RAW-LOGS', 'check': 'python-unittest'}]}}])
-        self.assertEqual(result['status'], 'reported_complete')
+        self.assertEqual(result['status'], 'needs_attention')
+        self.assertFalse(result['quality']['approved'])
+        self.assertEqual(result['quality']['failed_checks'][0]['exit_code'], 1)
         self.assertFalse(result['tasks'][0]['verification'][0]['passed'])
         self.assertNotIn('SECRET', json.dumps(result))
 
