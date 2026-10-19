@@ -1,0 +1,26 @@
+{
+  "owner": "danielnep",
+  "repository": "danielnep/app-hondas-maxvel",
+  "task_id": "ronda-pro-css-recovery-20261019",
+  "delivery_type": "existing_product",
+  "agent": "may-maestro",
+  "project": "ronda-pro",
+  "objective": "PRIORIDADE MÁXIMA. RETOMADA CORRETIVA do Ronda Pro após a execução ronda-pro-css-priority-20261019, que reportou sucesso mas terminou com testes node-test exit 125 e zero alterações CSS. O bloqueio de infraestrutura foi corrigido no controlador pelo PR #18 e a allowlist anterior excluía styles.css e assets/**. Iniciar agora: (1) ler DESIGN.md e testes reais em tests/*.test.mjs, reproduzir especificamente as 14 asserções CSS e regressões mobile Vigia/Vistoriador, COI e Administração; (2) delegar correção concreta a frontend-engineer e UI Guardian com QA independente, preservando identidade Maxvel, mapa claro, barra inferior proporcional e CSS compartilhado; (3) editar CSS e arquivos originais autorizados, sem criar remendos, mantendo funções e dados existentes; (4) executar run_check node-test após modificações, que agora roda npm run check e toda suíte *.test.mjs em Docker. Opcional browser-playwright somente quando a rota e evidências permitirem. Não repetir só inventário nem apenas arquivo de bloqueio se houver alterações técnicas possíveis. Só registrar entrega funcional quando testes_run>0, passed=true e evidências do conteúdo atual. Se realmente houver falha técnica, gravar diagnóstico, evidência e aprendizado verificável, preservar checkpoint e deixar explícito o bloqueio, não declarar QA verde. Publicar SOMENTE os arquivos pertinentes em branch isolada agent/chat-ronda-pro-css-recovery-20261019; NÃO fazer merge em main nem deploy e NÃO editar a Michelle. Todo código e testes precisam permanecer verificáveis.",
+  "payload": {
+    "allowed_paths": [
+      "assets/**",
+      "styles.css",
+      "src/**",
+      "tests/**",
+      "docs/**",
+      "scripts/**",
+      "server/**",
+      "server.js",
+      "index.html",
+      "central.html",
+      "package.json",
+      "package-lock.json",
+      "horizon.browser.json"
+    ]
+  }
+}
