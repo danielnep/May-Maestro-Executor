@@ -344,13 +344,13 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state.get('completed')['result']['summary'], 'Completed local fixture')
         self.assertIsNone(self.state.get('completed')['error'])
 
-    def test_default_step_ceiling_and_compact_model_history_preserve_full_checkpoint(self):
+    def test_no_automatic_task_step_ceiling_while_context_stays_compact(self):
         self.state.enqueue('long', 'frontend-engineer', 'fixture', 'Reason through more than twelve fixture decisions')
         observed = []
         def decide(agent, context):
             count = context['completed_steps']
             observed.append(count)
-            self.assertEqual(context['remaining_steps'], 48-count)
+            self.assertIsNone(context['remaining_steps'])
             self.assertLessEqual(len(context['history']), 4)
             if count == 18:
                 self.assertEqual(context['history'][0]['outcome'], {'remembered': 'step-14'})
