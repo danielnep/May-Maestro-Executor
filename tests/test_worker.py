@@ -48,6 +48,30 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.close()
         self.tmp.cleanup()
 
+    def test_vision_provider_outage_does_not_abort_other_ui_qa_steps(self):
+        self.state.enqueue('vision-outage', 'qa-engineer', 'fixture',
+                           'Audit a captured screenshot and report its unavailable provider')
+        def decide(agent, context):
+            if not context['history']:
+                return action('inspect_image', {'index': 0, 'question': 'Inspect image layout'})
+            evidence = context['history'][-1]['outcome']
+            self.assertEqual(evidence['tool_error'], 'VisionUnavailable')
+            self.assertFalse(evidence['actual_image_analyzed'])
+            self.assertEqual(evidence['status'], 429)
+            self.assertEqual(evidence['reason'], 'vision_unavailable')
+            return action('finish', summary='Vision unavailable; DOM QA remains required')
+        gateway = FakeGateway(decide)
+        gateway.inspect_image = lambda *args: (_ for _ in ()).throw(
+            GatewayError('Vision quota exhausted', provider='gemini',
+                         reason='vision_unavailable', retryable=True, status=429))
+        with patch('horizon_core.tools.Tools.evidence_image',
+                   return_value=b'PNG evidence provided by browser proof'):
+            result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['checkpoint']['history'][0]['action'], 'inspect_image')
+        self.assertEqual(result['checkpoint']['history'][0]['outcome']['tool_error'], 'VisionUnavailable')
+        self.assertEqual(len(gateway.calls), 2)
+
     def test_invalid_model_protocol_can_correct_itself_without_replaying_tool(self):
         def decide(agent, context):
             if not context['history']:
