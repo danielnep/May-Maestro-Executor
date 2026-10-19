@@ -1,0 +1,24 @@
+{
+  "owner": "danielnep",
+  "repository": "danielnep/app-hondas-maxvel",
+  "task_id": "ronda-pro-mobile-notifications-user-20261019",
+  "agent": "may-maestro",
+  "project": "ronda-pro",
+  "delivery_type": "existing_product",
+  "objective": "EXECUTE A EXATA CORREÇÃO SOLICITADA PELO PROPRIETÁRIO, SEM REDESENHAR POR CONTA PRÓPRIA. Gemini 3.6 Flash (padrão do controlador), NÃO 3.8 e NÃO Lite. Prioridade alta para mobile Maxvel. Falhas comunicadas: diversos botões da UI mobile não respondem, algumas barras laterais funcionam mas posições de controles estão erradas, seta à direita na barra/lista de notificações está em lugar incorreto. Para Mensagens existe PR isolado #78 em danielnep/app-hondas-maxvel com correção do painel que abre descendo e ocupa a tela, e menu que fecha após navegação: NÃO DUPLIQUE ou desfaça esse trabalho. Reproduza no navegador real/Chromium com eventos de clique (NÃO use evaluate(click) para falsificar interação), em 360x800 e 393x852, vigia/vistoriador/COI/admin, consulte DESIGN.md. Diagnostique overlay residual e hit targets, verifique inset de seta da lista direita de eventos/notificações, corrija APENAS os defeitos comprovados na origem CSS/JS sem criar novas camadas de override. Preserve identidade Grupo Maxvel, mapa claro, fluxo existente e papéis, não crie features não solicitadas. Registre evidência de teste dos botões, estado antes/depois, verificação npm run check + npm test; os testes legados de CSS foram atualizados na branch PR #78 para o CSS compilado (não mude contratos para maquiar falhas). Somente considere concluído depois de testes reais; nenhum login/senha de produção deve ser inventado ou incluído em código, autenticação requer serviço e secret separados. Publique arquivos apenas na branch de trabalho agent/chat-ronda-pro-mobile-notifications-user-20261019, NÃO faça merge/deploy. Se não puder testar browser, registre bloqueio verificável e prossiga com a parte segura; nunca declare QA aprovado sem execução.",
+  "payload": {
+    "allowed_paths": [
+      "src/**",
+      "assets/**",
+      "styles.css",
+      "index.html",
+      "central.html",
+      "tests/**",
+      "scripts/**",
+      "docs/**",
+      "sw.js",
+      "package.json",
+      "package-lock.json"
+    ]
+  }
+}
