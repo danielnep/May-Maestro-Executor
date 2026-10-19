@@ -15,6 +15,8 @@ import sqlite3
 import tempfile
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+import time
 
 from .state import State
 
@@ -68,6 +70,16 @@ class HorizonEmbeddedState(State):
 
     def _request(self, method, body=None):
         raw = None if body is None else json.dumps(body, separators=(',', ':')).encode('utf8')
+        # GitHub OIDC JWTs expire during longer specialist cycles. Refresh before
+        # each operation; never persist or print the bearer token.
+        try:
+            encoded = self.token.split('.')[1]
+            claims = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
+            expiry = claims.get('exp', 0)
+        except (IndexError, ValueError, TypeError):
+            expiry = 0
+        if expiry and expiry <= time.time() + 60:
+            self.token = self._oidc_token()
         req = Request(URL, data=raw, method=method, headers={
             'Authorization': 'Bearer ' + self.token,
             'Content-Type': 'application/json', 'Accept': 'application/json',
@@ -76,10 +88,17 @@ class HorizonEmbeddedState(State):
             with self.requester(req, timeout=90) as response:
                 output = json.load(response)
             if not isinstance(output, dict) or 'revision' not in output:
-                raise ValueError('Malformed state bridge response')
+                raise RuntimeError('Horizon state invalid response')
             return output
-        except Exception:
-            raise RuntimeError('Horizon state connection failed; execution suspended safely') from None
+        except HTTPError as error:
+            # Codes only. No body, URL parameters, private snapshot or headers.
+            raise RuntimeError('Horizon state HTTP ' + str(error.code) +
+                               ' on ' + method + '; checkpoint not acknowledged') from None
+        except (URLError, TimeoutError, OSError):
+            raise RuntimeError('Horizon state transport failed on ' + method +
+                               '; checkpoint not acknowledged') from None
+        except (ValueError, UnicodeError):
+            raise RuntimeError('Horizon state invalid JSON on ' + method) from None
 
     def _persist(self):
         path = Path(self.workdir.name) / 'snapshot.sqlite3'
