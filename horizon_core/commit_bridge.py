@@ -179,9 +179,17 @@ def summarize(request_id, tasks, publication=None):
                 continue
             checks.append({key: check[key] for key in ('check', 'passed', 'exit_code', 'tests_run',
                 'timed_out', 'truncated', 'cleanup_ok', 'backend', 'workspace_digest') if key in check})
+        model = result.get('model') or {}
+        model = model if isinstance(model, dict) else {}
+        provider = model.get('provider')
+        provider = provider if provider in ('gemini', 'deepseek') else None
+        identifier = model.get('model')
+        identifier = identifier if (isinstance(identifier, str) and
+                                   re.fullmatch(r'[A-Za-z0-9_.-]{1,90}', identifier)) else None
         reports.append({'task_id': task['task_id'], 'agent': task['agent'], 'status': task['status'],
                         'attempts': task.get('attempts', 0), 'summary': str(result.get('summary', ''))[:12000],
-                        'verification': checks})
+                        'verification': checks,
+                        'model_used': {'provider': provider, 'model': identifier} if provider else None})
     # A model's finish is not a verified delivery: failed or absent QA evidence
     # must remain actionable regardless of all specialists saying 'succeeded'.
     qa_reports = [row for row in reports if row['agent'] == 'qa-engineer']
