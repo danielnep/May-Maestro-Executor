@@ -18,6 +18,9 @@ on:
       - 'horizon_core/learning.py'
       - 'horizon_core/deterministic.py'
       - 'tests/test_agent_learning.py'
+      - 'horizon_core/provider_access_probe.py'
+      - 'tests/test_provider_access_probe.py'
+      - 'horizon_core/web_checks.py'
       - 'tests/test_github_sqlite_state.py'
       - 'tests/test_github_state.py'
       - 'agents/knowledge/delivery-principles.md'
@@ -71,6 +74,10 @@ jobs:
           python -m unittest discover -s tests -p test_github_state.py -v
           python -m unittest discover -s tests -p test_github_sqlite_state.py -v
           python -m unittest discover -s tests -p test_agent_learning.py -v
+          python -m unittest discover -s tests -p test_provider_access_probe.py -v
+      - name: Preparar imagem isolada para testes Node e Playwright
+        # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
+        run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}
