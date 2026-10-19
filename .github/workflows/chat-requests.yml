@@ -69,6 +69,9 @@ jobs:
           HORIZON_STATE_BACKEND: embedded-postgres
         run: python -m horizon_core.commit_bridge --session-seconds 1200
       - name: Continuar imediatamente quando o checkpoint estiver pronto
+        # O controlador pode registrar tarefas prontas e retornar erro por pedidos rejeitados.
+        # Nao disparar em cancelamento; handoff.py exige marcador resume=true.
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
