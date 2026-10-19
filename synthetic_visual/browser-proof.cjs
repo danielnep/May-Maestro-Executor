@@ -6,7 +6,7 @@ if(cfg.profile==='station-synthetic-v1'){require('./station-proof.cjs');}else{
 const {chromium}=require('/opt/visual/node_modules/playwright');const out='/evidence';fs.mkdirSync(out,{recursive:true});const report={check:'browser-playwright',profile:cfg.steps?'configured-flows-v2':'generic-static-v1',tests:0,passed:false,functional_scenarios:0,checks:[],screenshots:[],layout:[],consoleErrors:[],pageErrors:[],scope:cfg.steps?'Configured scenarios only':'Smoke only; no functional scenarios configured'};let browser,server,lastPage=null,lastViewport=null;
 function check(name,passed,details={}){report.tests++;report.checks.push({name,passed,...details});assert.ok(passed,name);}
 async function capture(page,viewport,suffix){
- if(report.screenshots.length>=20)throw Error('Up to 18 intermediate frames plus 2 final viewport captures');
+ if(report.screenshots.length>=(suffix.startsWith('stage-')?18:20))throw Error('Up to 18 intermediate frames plus 2 final viewport captures');
  if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(suffix))throw Error('Invalid screenshot stage name');
  const file=viewport.name+'-'+suffix+'.png';
  if(report.screenshots.some(item=>item.file===file))throw Error('Duplicate screenshot stage name');
@@ -69,7 +69,7 @@ for(const el of document.querySelectorAll('button,input,select,textarea,a[href],
 return{viewport:innerWidth,scroll:document.documentElement.scrollWidth,
  unnamed:names,lang:document.documentElement.lang,title:document.title,
  controlsMeasured:scanned,blocking:blocking.slice(0,20),warnings:warnings.slice(0,20)};});report.layout.push({name:viewport.name,width:viewport.width,height:viewport.height,controls_measured:metrics.controlsMeasured,blocking_issues:metrics.blocking,warnings:metrics.warnings});check(viewport.name+': no horizontal overflow',metrics.scroll<=metrics.viewport+1,metrics);check(viewport.name+': no covered or clipped controls',metrics.blocking.length===0,metrics);check(viewport.name+': basic names/language/title',!metrics.unnamed.length&&!!metrics.lang&&!!metrics.title,metrics);await capture(page,viewport,'rendered');await context.close();lastPage=null;}
-check('console and runtime health',!report.consoleErrors.length&&!report.pageErrors.length);report.passed=report.tests>0&&report.checks.every(c=>c.passed===true)&&report.screenshots.length===2&&['desktop-rendered.png','mobile-rendered.png'].every(file=>report.screenshots.some(item=>item.file===file));
+check('console and runtime health',!report.consoleErrors.length&&!report.pageErrors.length);report.passed=report.tests>0&&report.checks.every(c=>c.passed===true)&&report.screenshots.length>=2&&['desktop-rendered.png','mobile-rendered.png'].every(file=>report.screenshots.some(item=>item.file===file));
  }catch(error){
  report.failure={kind:error.name,message:String(error.message).slice(0,300)};
  if(lastPage&&lastViewport){
