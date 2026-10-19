@@ -209,13 +209,63 @@ class State:
         encoded = _json(error)
         with self._tx():
             row = self._owned(task_id, worker, now)
-            retry = retryable and row["attempts"] < row["max_attempts"]
+            # Provider exhaustion is a temporary external dependency, not a terminal task error.
+            # Keep the original checkpoint and allow bounded-time retries across quota resets.
+            provider_outage = (isinstance(error, dict) and
+                error.get("reason") == "providers_unavailable" and error.get("retryable") is True)
+            retry = retryable and (row["attempts"] < row["max_attempts"] or provider_outage)
             # A bounded exponential delay also handles provider quota/transient errors.
             not_before = now + min(300, 5 * 2 ** min(row["attempts"] - 1, 6)) if retry else row["not_before"]
             status = "queued" if retry else "failed"
             self.db.execute("UPDATE tasks SET status=?,error=?,not_before=?,lease_owner=NULL,lease_until=NULL WHERE task_id=?",
                             (status, encoded, not_before, task_id))
             self._event(task_id, "retry_scheduled" if retry else "failed", {"error": error, "not_before": not_before}, now)
+
+    def recover_provider_outages(self, now=None):
+        """Unstick only failed retryable provider tasks and their dependents.
+
+        Preserve checkpoints, task definitions and unrelated failure states.
+        This recovery is idempotent across controller restarts.
+        """
+        now = time.time() if now is None else now
+        revived = []
+        unblocked = []
+        with self._tx():
+            for row in self.db.execute("SELECT * FROM tasks WHERE status='failed'").fetchall():
+                try:
+                    detail = json.loads(row["error"] or "null")
+                except (ValueError, TypeError):
+                    continue
+                if (not isinstance(detail, dict) or
+                    detail.get("reason") != "providers_unavailable" or
+                    detail.get("retryable") is not True):
+                    continue
+                self.db.execute(
+                    "UPDATE tasks SET status='queued',not_before=?,lease_owner=NULL,lease_until=NULL "
+                    "WHERE task_id=? AND status='failed'", (now, row["task_id"]))
+                self._event(row["task_id"], "provider_outage_recovered",
+                            {"reason": "providers_unavailable"}, now)
+                revived.append(row["task_id"])
+            # Undo cascade blocks only when every dependency is no longer terminal.
+            while True:
+                progressed = False
+                for row in self.db.execute("SELECT * FROM tasks WHERE status='blocked'").fetchall():
+                    deps = json.loads(row["depends_on"])
+                    statuses = [self.db.execute("SELECT status FROM tasks WHERE task_id=?",
+                                (dep,)).fetchone() for dep in deps]
+                    if not all(item and item["status"] in ("succeeded","queued","running")
+                               for item in statuses):
+                        continue
+                    self.db.execute(
+                        "UPDATE tasks SET status='queued',error=NULL,not_before=? WHERE task_id=?",
+                        (now,row["task_id"]))
+                    self._event(row["task_id"], "dependency_unblocked", {"deps": deps}, now)
+                    unblocked.append(row["task_id"])
+                    progressed = True
+                if not progressed:
+                    break
+        return {"requeued_provider_failures": len(revived),
+                "unblocked_dependents": len(unblocked)}
 
     def remember(self, project, agent, key, value):
         with self._tx():
