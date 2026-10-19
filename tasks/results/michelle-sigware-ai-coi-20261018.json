@@ -7,7 +7,7 @@
   },
   "request_id": "michelle-sigware-ai-coi-20261018",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/michelle-sigware-ai-coi-20261018.json",
-  "status": "pending",
+  "status": "needs_attention",
   "tasks": [
     {
       "agent": "may-maestro",
@@ -27,8 +27,8 @@
     },
     {
       "agent": "software-architect",
-      "attempts": 2,
-      "status": "queued",
+      "attempts": 3,
+      "status": "failed",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:arch",
       "verification": []
@@ -36,7 +36,7 @@
     {
       "agent": "integration-engineer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:sigware-parser",
       "verification": []
@@ -44,7 +44,7 @@
     {
       "agent": "backend-engineer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:backend-core",
       "verification": []
@@ -52,7 +52,7 @@
     {
       "agent": "database-engineer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:db-store",
       "verification": []
@@ -60,7 +60,7 @@
     {
       "agent": "security-engineer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:security-check",
       "verification": []
@@ -68,7 +68,7 @@
     {
       "agent": "ui-ux-designer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:ui-design",
       "verification": []
@@ -76,7 +76,7 @@
     {
       "agent": "frontend-engineer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:frontend-impl",
       "verification": []
@@ -84,7 +84,7 @@
     {
       "agent": "qa-engineer",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:qa-validation",
       "verification": []
@@ -92,7 +92,7 @@
     {
       "agent": "corregedoria-may",
       "attempts": 0,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-michelle-sigware-ai-coi-20261018:audit-corregedoria",
       "verification": []
