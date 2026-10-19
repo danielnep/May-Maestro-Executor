@@ -22,6 +22,10 @@ def load_agent(agent_id, root=None):
     if config.get("id") != agent_id:
         raise ValueError("Specialist identity mismatch")
     config["instructions"] = (directory / "instructions.md").read_text(encoding="utf-8")
+    # Canonical mandatory skill, loaded for ALL 17 registered agents on each run.
+    # Fail visibly if missing: silently skipping it would defeat the contract.
+    meticulous = Path(root or AGENTS_ROOT) / "skills" / "meticulosidade" / "SKILL.md"
+    config["instructions"] += "\n\n" + meticulous.read_text(encoding="utf-8")
     knowledge = Path(root or AGENTS_ROOT) / 'knowledge' / 'transactional-integrity.md'
     if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
         config["instructions"] += '\n\n' + knowledge.read_text(encoding='utf-8')
