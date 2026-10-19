@@ -216,7 +216,12 @@ class Worker:
                             before = hashlib.sha256(path.read_bytes() if path.exists() else b'').hexdigest()
                         outcome = execute_read_only_with_retry(tools, name, args)
                         if name == 'write_file':
-                            failure_counts.clear()  # real corrective edit gives a new attempt budget
+                            # A successful idempotent write is NOT a correction.
+                            # Only changed file bytes may reset failing check/tool budgets.
+                            if isinstance(outcome, dict) and outcome.get('sha256') != before:
+                                for fingerprint in list(failure_counts):
+                                    if fingerprint.startswith(('tool:', 'check:')):
+                                        failure_counts.pop(fingerprint, None)
                             previous_write = self.state.recall(task['project'], '__workspace__').get(args['path'])
                             base = previous_write['expected_sha256'] if previous_write else before
                             self.state.remember(task['project'], '__workspace__', args['path'],
