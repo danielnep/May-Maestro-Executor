@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const STATE_ENVIRONMENT_ID = 'da638584-8400-44f8-9b93-3c3d343a6022';
+export const STATE_ENVIRONMENT_ID = '11b303c5-e811-4fb2-9e77-514ad050697e';
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const HOME = '/tmp/horizon-postgres-controller';
 const MARKER = '/tmp/horizon-postgres-owner.json';
