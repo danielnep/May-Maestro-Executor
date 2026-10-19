@@ -21,7 +21,16 @@ def ready_request_ids(state, request_ids, now=None):
     timestamp = time.time() if now is None else now
     ready = []
     for request_id in dict.fromkeys(request_ids):
-        rows = state.tasks(project="chat:" + request_id)
+        # Read-only status queries may safely be retried after transient transport faults.
+        # Never retry queue mutations (claim/complete) whose outcome is ambiguous.
+        for attempt in range(3):
+            try:
+                rows = state.tasks(project="chat:" + request_id)
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(min(2 ** attempt, 2))
         by_id = {row["task_id"]: row for row in rows}
         for row in rows:
             if row["status"] != "queued" or row.get("not_before", 0) > timestamp:
