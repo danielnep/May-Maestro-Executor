@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "scope": "public_non_sensitive_verified_rules",
+  "entries": [
+    {
+      "id": "gemini-429",
+      "match": {
+        "provider": "gemini",
+        "status": 429
+      },
+      "classification": "rate_or_quota_limit",
+      "action": "Honor Retry-After when provided; otherwise bounded exponential backoff with jitter. Check quota telemetry. Do not loop without a cooldown.",
+      "verification": "A later successful authorized API request; a 429 alone does not prove which quota was exhausted."
+    },
+    {
+      "id": "gemini-503",
+      "match": {
+        "provider": "gemini",
+        "status": 503
+      },
+      "classification": "upstream_unavailable",
+      "action": "Retry with bounded exponential backoff and jitter; fall back only to an available authorized provider; preserve checkpoint.",
+      "verification": "Successful later request and completed checkpoint."
+    },
+    {
+      "id": "deepseek-402",
+      "match": {
+        "provider": "deepseek",
+        "status": 402
+      },
+      "classification": "insufficient_balance",
+      "action": "Open a payment circuit breaker; do not retry until credit status changes or cooldown expires. Continue Gemini and deterministic work.",
+      "verification": "Authorized request succeeds after balance restoration."
+    },
+    {
+      "id": "state-507",
+      "match": {
+        "component": "state_bridge",
+        "status": 507
+      },
+      "classification": "persistent_storage_full",
+      "action": "Stop snapshot writes, preserve readable snapshots, inspect disk and WAL/TOAST, provision capacity or restore from verified backup. Never delete original state before verified restore.",
+      "verification": "Read, checksum, and successful write of new revision."
+    },
+    {
+      "id": "docker-125",
+      "match": {
+        "component": "run_check",
+        "exit_code": 125
+      },
+      "classification": "test_environment_failed",
+      "action": "Report infrastructure failure, not failed assertions. Verify runtime/image availability before retry.",
+      "verification": "Test runner actually executes test cases and returns results."
+    }
+  ]
+}
