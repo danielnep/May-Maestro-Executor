@@ -7,6 +7,8 @@ on:
       - 'tasks/chat/*.json'
       - '.github/workflows/chat-requests.yml'
       - 'horizon_core/commit_bridge.py'
+      - 'horizon_core/state.py'
+      - 'tests/test_provider_recovery.py'
       - 'horizon_core/embedded_state.py'
       - 'agents/knowledge/delivery-principles.md'
       - 'agents/may-maestro/instructions.md'
@@ -47,7 +49,9 @@ jobs:
         working-directory: sandbox
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Validar contrato do controlador sem chamadas externas
-        run: python -m unittest discover -s tests -p test_commit_bridge.py -v
+        run: |
+          python -m unittest discover -s tests -p test_commit_bridge.py -v
+          python -m unittest discover -s tests -p test_provider_recovery.py -v
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}
