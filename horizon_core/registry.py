@@ -28,6 +28,10 @@ def load_agent(agent_id, root=None):
     policy = Path(root or AGENTS_ROOT) / 'knowledge' / 'delivery-principles.md'
     if policy.is_file():
         config["instructions"] += '\n\n' + policy.read_text(encoding='utf-8')
+    if agent_id in {'frontend-engineer', 'ui-ux-designer', 'horizon-ui-guardian', 'mobile-app-builder', 'software-architect'}:
+        references = Path(root or AGENTS_ROOT) / 'knowledge' / 'premium-product-references.md'
+        if references.is_file():
+            config['instructions'] += '\\n\\n' + references.read_text(encoding='utf-8')
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     return config
 
