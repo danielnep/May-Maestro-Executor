@@ -5,7 +5,7 @@ Esta ponte usa o conector GitHub já autorizado no chat. May grava um JSON em
 telefone, PAT permanente, OAuth adicional nem credencial dentro do pedido.
 
 O controlador é código confiável da principal. Valida proprietário, repositório,
-especialista e namespace; transforma o JSON em tarefa na fila PostgreSQL privada.
+especialista e namespace; transforma o JSON em tarefa na fila SQLite com checkpoints criptografados no GitHub.
 Cada pedido recebe projeto isolado e branch `agent/chat-<id>`. Em `new_product`
 (padrão), os especialistas editam somente o namespace `apps/<project>/`. Em
 `existing_product`, editam a lista explícita de arquivos/padrões autorizados.
@@ -85,11 +85,16 @@ seu conector GitHub, depois confirmar o commit real. Esse estado **não signific
 publicado** e não transfere credenciais do chat para o worker.
 
 Como o repositório é público, pedidos e resultados devem conter somente dados
-sintéticos ou públicos. Memória completa e checkpoints permanecem no banco
-privado. Os valores de Gemini, DeepSeek e Railway ficam apenas nos secrets do
+sintéticos ou públicos. Os novos checkpoints são arquivos SQLite comprimidos e criptografados em branch pública; o histórico SQLite anterior permanece no repositório e deve ser tratado como público. Não importar dados reais nem informações privadas de clientes. Os valores de Gemini, DeepSeek e Railway ficam apenas nos secrets do
 coordenador. O token GitHub é temporário do job; não entra no sandbox de testes.
 
 Ativação: aprovar os arquivos desta ponte na principal e manter os secrets e o
-PostgreSQL privado já configurados. Um commit que inclua o workflow dispara a
+secret de criptografia `HORIZON_SQLITE_ENCRYPTION_KEY` (ou fallback temporário para o token Railway existente, sem rotacioná-lo sem migração). Um commit que inclua o workflow dispara a
 primeira execução; `workflow_dispatch` permite retomada manual sem terminal.
 Testes locais do contrato: `python -m unittest discover -s tests -p test_commit_bridge.py -v`.
+
+## Resiliência e aprendizado verificado (19/10/2026)
+
+O backend ativo da ponte é `github-sqlite`. Ele restaura checkpoints da branch `agent-state/runtime` (formato gzip e criptografia Fernet, com fallback legado somente para leitura inicial), verifica integridade e salva por CAS. A execução não recorre ao PostgreSQL cheio: a base antiga no Railway fica intacta, **não reconciliada automaticamente** com o snapshot SQLite histórico. Erros de gravação interrompem o worker, não produzem falso checkpoint nem fallback silencioso.
+
+Antes da primeira chamada do modelo, o trabalhador executa inventário do projeto por algoritmo, sem rede. Erros de ferramentas e validações são classificados e deduplicados na memória separada `__agent_learning__:<agente>`, com regras preventivas inicialmente marcadas `observed`. Uma falha de teste só muda para `verified_by_matching_check` depois que a mesma checagem passa na mesma tarefa; não significa treinamento dos pesos do modelo. Retentativas automáticas são restritas a leituras com falhas transitórias. O mecanismo não executa comandos ou alterações desnecessárias para alcançar uma 'autocorreção' aparente.
