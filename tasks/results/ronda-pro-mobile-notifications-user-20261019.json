@@ -16,7 +16,7 @@
   "tasks": [
     {
       "agent": "may-maestro",
-      "attempts": 4,
+      "attempts": 5,
       "model_used": null,
       "status": "queued",
       "summary": "",
