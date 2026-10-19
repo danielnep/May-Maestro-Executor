@@ -32,6 +32,15 @@ def load_agent(agent_id, root=None):
         references = Path(root or AGENTS_ROOT) / 'knowledge' / 'premium-product-references.md'
         if references.is_file():
             config['instructions'] += '\n\n' + references.read_text(encoding='utf-8')
+    playbook = Path(root or AGENTS_ROOT) / 'knowledge' / 'verified-error-playbook.json'
+    if playbook.is_file():
+        rules = json.loads(playbook.read_text(encoding='utf-8'))
+        if rules.get('schema_version') != 1 or not isinstance(rules.get('entries'), list):
+            raise ValueError('Invalid verified error playbook')
+        config["instructions"] += ('\n\nShared incident playbook (versioned, public, sanitized; '
+                                   'consult before any model diagnosis, never assume a matching '
+                                   'rule proves root cause):\n' +
+                                   json.dumps(rules['entries'], ensure_ascii=False))
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     return config
 
