@@ -6,7 +6,7 @@ if(cfg.profile==='station-synthetic-v1'){require('./station-proof.cjs');}else{
 const {chromium}=require('/opt/visual/node_modules/playwright');const out='/evidence';fs.mkdirSync(out,{recursive:true});const report={check:'browser-playwright',profile:cfg.steps?'configured-flows-v2':'generic-static-v1',tests:0,passed:false,functional_scenarios:0,checks:[],screenshots:[],layout:[],consoleErrors:[],pageErrors:[],scope:cfg.steps?'Configured scenarios only':'Smoke only; no functional scenarios configured'};let browser,server,lastPage=null,lastViewport=null;
 function check(name,passed,details={}){report.tests++;report.checks.push({name,passed,...details});assert.ok(passed,name);}
 async function capture(page,viewport,suffix){
- if(report.screenshots.length>=(suffix.startsWith('stage-')?18:20))throw Error('Up to 18 intermediate frames plus 2 final viewport captures');
+ if(report.screenshots.length>=20||(suffix.startsWith('stage-')&&report.screenshots.filter(item=>item.file.includes('-stage-')).length>=18))throw Error('Up to 18 intermediate frames plus 2 final viewport captures');
  if(!/^[a-z0-9][a-z0-9-]{0,63}$/.test(suffix))throw Error('Invalid screenshot stage name');
  const file=viewport.name+'-'+suffix+'.png';
  if(report.screenshots.some(item=>item.file===file))throw Error('Duplicate screenshot stage name');
