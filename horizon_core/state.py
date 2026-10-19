@@ -221,6 +221,13 @@ class State:
                             (status, encoded, not_before, task_id))
             self._event(task_id, "retry_scheduled" if retry else "failed", {"error": error, "not_before": not_before}, now)
 
+    @staticmethod
+    def _safe_failure_json(raw):
+        try:
+            return json.loads(raw) if raw else None
+        except (ValueError, TypeError):
+            return None
+
     def recover_provider_outages(self, now=None):
         """Unstick only failed retryable provider tasks and their dependents.
 
@@ -230,6 +237,23 @@ class State:
         now = time.time() if now is None else now
         revived = []
         unblocked = []
+        # A no-op must not POST an entire durable SQLite snapshot to Railway.
+        # The state bridge commits a new revision after EVERY _tx, even reads.
+        with self._lock:
+            eligible_failed = any(
+                isinstance(detail, dict) and
+                detail.get("reason") == "providers_unavailable" and
+                detail.get("retryable") is True
+                for row in self.db.execute("SELECT error FROM tasks WHERE status='failed'")
+                for detail in [self._safe_failure_json(row["error"])])
+            eligible_blocked = any(
+                all(self.db.execute("SELECT status FROM tasks WHERE task_id=?", (dep,)).fetchone()
+                    and self.db.execute("SELECT status FROM tasks WHERE task_id=?", (dep,)).fetchone()["status"]
+                        in ("queued", "running", "succeeded")
+                    for dep in json.loads(row["depends_on"]))
+                for row in self.db.execute("SELECT depends_on FROM tasks WHERE status='blocked'"))
+            if not eligible_failed and not eligible_blocked:
+                return {"requeued_provider_failures": 0, "unblocked_dependents": 0}
         with self._tx():
             for row in self.db.execute("SELECT * FROM tasks WHERE status='failed'").fetchall():
                 try:
