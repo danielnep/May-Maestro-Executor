@@ -52,7 +52,7 @@ class VerifiedRepairTests(unittest.TestCase):
         (self.root/"app"/"logic.py").write_text("VALUE = 1\n")
         self.state=State(":memory:")
         self.addCleanup(self.state.close)
-        self.payload={"branch":"fix/sample","allowed_paths":["app/*.py"]}
+        self.payload={"branch":"fix/sample","allowed_paths":["app/*.py"],"visual_review_required":False}
 
     def task(self,id):
         self.state.enqueue(id,"frontend-engineer","project-a",
