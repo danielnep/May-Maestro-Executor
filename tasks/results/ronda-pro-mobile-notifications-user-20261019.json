@@ -6,7 +6,7 @@
     "reason": "No generated workspace files"
   },
   "quality": {
-    "approved": true,
+    "approved": false,
     "failed_checks": [],
     "qa_missing_evidence": []
   },
