@@ -303,9 +303,21 @@ class State:
                 "unblocked_dependents": len(unblocked)}
 
     def remember(self, project, agent, key, value):
-        with self._tx():
-            self.db.execute("INSERT INTO memory(project,agent,key,value) VALUES(?,?,?,?) ON CONFLICT(project,agent,key) DO UPDATE SET value=excluded.value",
-                            (project, agent, key, _json(value)))
+        # Public encrypted GitHub snapshots are committed after real SQL changes.
+        # Avoid producing a new checkpoint/commit for identical operational data.
+        encoded = _json(value)
+        with self._lock:
+            prior = self.db.execute(
+                "SELECT value FROM memory WHERE project=? AND agent=? AND key=?",
+                (project, agent, key)).fetchone()
+            if prior is not None and prior["value"] == encoded:
+                return
+            with self._tx():
+                self.db.execute(
+                    "INSERT INTO memory(project,agent,key,value) VALUES(?,?,?,?) "
+                    "ON CONFLICT(project,agent,key) DO UPDATE SET value=excluded.value "
+                    "WHERE memory.value<>excluded.value",
+                    (project, agent, key, encoded))
 
     def recall(self, project, agent):
         with self._lock:
