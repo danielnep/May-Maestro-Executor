@@ -31,7 +31,7 @@ def load_agent(agent_id, root=None):
     if agent_id in {'frontend-engineer', 'ui-ux-designer', 'horizon-ui-guardian', 'mobile-app-builder', 'software-architect'}:
         references = Path(root or AGENTS_ROOT) / 'knowledge' / 'premium-product-references.md'
         if references.is_file():
-            config['instructions'] += '\\n\\n' + references.read_text(encoding='utf-8')
+            config['instructions'] += '\n\n' + references.read_text(encoding='utf-8')
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     return config
 
