@@ -12,47 +12,51 @@ permissions:
 jobs:
   state-readonly:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verificar conexão OIDC e armazenamento Horizon, somente leitura
+      - name: Inspect legacy snapshot schema and counts with OIDC only
         run: |
           python - <<'PY'
           from horizon_core.embedded_state import HorizonEmbeddedState
-          client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
-          client.requester=__import__('urllib.request',fromlist=['urlopen']).urlopen
-          client.token=client._oidc_token()
-          import base64, json
-          claims=json.loads(base64.urlsafe_b64decode(client.token.split('.')[1]+'==='))
-          print('OIDC claims:',{key:claims.get(key) for key in ('iss','repository','ref','workflow_ref','sub','aud','iat','nbf','exp')})
-          try:
-              value=client._request('GET')
-          except Exception:
-              from urllib.request import Request
-              from urllib.error import HTTPError,URLError
-              request=Request('https://horizonsolucoes.com/api/internal/horizon-agent-state',
-                headers={'Authorization':'Bearer '+client.token,'User-Agent':'Horizon-State-Probe'})
-              try:
-                  with client.requester(request,timeout=15) as response: print('Probe status:',response.status)
-              except HTTPError as error: print('Probe HTTP:',error.code)
-              except URLError: print('Probe network error')
+          from urllib.error import HTTPError, URLError
+          import base64,hashlib,json,sqlite3,tempfile,os
+          c=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
+          c.requester=__import__('urllib.request',fromlist=['urlopen']).urlopen
+          c.token=c._oidc_token()
+          try: d=c._request('GET')
+          except Exception as e:
+              print('Legacy snapshot inaccessible:',type(e).__name__,str(e)[:130])
               raise
-          assert type(value.get('revision')) is int
-          print('Horizon embedded PostgreSQL: authenticated read succeeded; snapshot_revision='+str(value['revision']))
-          # Only task IDs and statuses are emitted. Never log objectives, payloads or checkpoints.
-          if value.get('snapshot'):
-              import tempfile, os, sqlite3
-              with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                  name=tmp.name
-                  tmp.write(base64.b64decode(value['snapshot']))
+          revision=d.get('revision')
+          snapshot=d.get('snapshot')
+          print('Legacy revision:',revision,'snapshot_present:',snapshot is not None)
+          if snapshot is None:
+              raise SystemExit(0)
+          raw=base64.b64decode(snapshot,validate=True)
+          sha=hashlib.sha256(raw).hexdigest()
+          if sha!=d.get('checksum') or not raw.startswith(b'SQLite format 3\\x00'):
+              raise ValueError('Legacy snapshot integrity mismatch')
+          with tempfile.NamedTemporaryFile(delete=False) as f:
+              f.write(raw); path=f.name
+          try:
+              db=sqlite3.connect('file:'+path+'?mode=ro',uri=True)
               try:
-                  with sqlite3.connect(name) as db:
-                      rows=db.execute('SELECT task_id,status,attempts,error FROM tasks ORDER BY seq LIMIT 50').fetchall()
-                      rows=[(id,status,attempts,{key:detail.get(key) for key in ('kind','reason','status','retryable','failed_dependencies','failures') if key in detail} if isinstance(detail,dict) else {'type':type(detail).__name__}) for id,status,attempts,raw in rows for detail in [json.loads(raw) if raw else {}]]
-                  print('Agent task states:',json.dumps(rows))
-              finally:
-                  os.unlink(name)
+                  status=db.execute('PRAGMA quick_check').fetchone()[0]
+                  if status!='ok':raise ValueError('SQLite quick_check failed')
+                  names=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+                  counts={}
+                  for name in names:
+                      # SQL identifiers supplied by SQLite's schema, never interpolated unchecked.
+                      safe='"'+name.replace('"','""')+'"'
+                      try: counts[name]=db.execute('SELECT count(*) FROM '+safe).fetchone()[0]
+                      except sqlite3.Error:counts[name]='unreadable'
+                  print(json.dumps({'sqlite_integrity':status,'snapshot_bytes':len(raw),
+                    'schema_table_count':len(names),'table_row_counts':counts,
+                    'sha256_prefix':sha[:14]},sort_keys=True))
+              finally:db.close()
+          finally:os.unlink(path)
           PY
