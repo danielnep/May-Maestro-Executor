@@ -74,6 +74,7 @@ jobs:
           python -m unittest discover -s tests -p test_github_state.py -v
           python -m unittest discover -s tests -p test_github_sqlite_state.py -v
           python -m unittest discover -s tests -p test_agent_learning.py -v
+          python -m unittest discover -s tests -p test_gemini_model_pin.py -v
           python -m unittest discover -s tests -p test_provider_access_probe.py -v
           python -m unittest discover -s tests -p test_agent_report_quality.py -v
       - name: Validar script isolado Node
