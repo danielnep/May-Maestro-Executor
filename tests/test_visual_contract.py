@@ -27,6 +27,19 @@ class VisualReviewTests(unittest.TestCase):
             requires_visual_review({"agent":"frontend-engineer",
                                     "payload":{"visual_review_required":"no"}})
 
+    def test_multiple_real_flow_screenshots_do_not_replace_required_final_views(self):
+        history = [proof()]
+        original = history[0]["outcome"]
+        original["screenshots"].extend([
+            {"file": "mobile-stage-1-chat-open.png", "sha256": "b" * 64},
+            {"file": "mobile-stage-7-inspection.png", "sha256": "c" * 64},
+            {"file": "desktop-stage-3-events.png", "sha256": "d" * 64},
+        ])
+        self.assertTrue(visual_review_status(history)["verified"])
+        original["screenshots"] = [s for s in original["screenshots"]
+                                   if s["file"] != "desktop-rendered.png"]
+        self.assertFalse(visual_review_status(history)["verified"])
+
     def test_both_viewports_required_after_last_edit(self):
         edit={"action":"write_file"}
         self.assertTrue(visual_review_status([edit,proof()])["verified"])
