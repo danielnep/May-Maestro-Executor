@@ -27,7 +27,7 @@ class VisionBoundaryTests(unittest.TestCase):
         self.assertNotIn('synthetic-key',requests[0].full_url)
 
     def test_vision_retries_same_png_on_free_lite_after_quota_only(self):
-        image = b'\\x89PNG\\r\\n\\x1a\\nfixture'
+        image = b'\x89PNG\r\n\x1a\nfixture'
         requests = []
         def opener(request, timeout):
             requests.append(request)
@@ -61,7 +61,7 @@ class VisionBoundaryTests(unittest.TestCase):
              'GEMINI_FREE_FALLBACK_MODEL':'gemini-3.5-flash-lite'}
         with self.assertRaises(GatewayError) as error:
             ModelGateway(environ=env,opener=opener).inspect_image(
-                load_agent('qa-engineer'), b'\\x89PNG\\r\\n\\x1a\\nfixture', 'Inspect text')
+                load_agent('qa-engineer'), b'\x89PNG\r\n\x1a\nfixture', 'Inspect text')
         self.assertEqual(error.exception.status,401)
         self.assertEqual(len(calls),1)
 
@@ -75,7 +75,7 @@ class VisionBoundaryTests(unittest.TestCase):
              'GEMINI_FREE_FALLBACK_MODEL':'gemini-3.5-flash-lite'}
         with self.assertRaises(GatewayError) as error:
             ModelGateway(environ=env,opener=opener).inspect_image(
-                load_agent('qa-engineer'), b'\\x89PNG\\r\\n\\x1a\\nfixture', 'Inspect labels')
+                load_agent('qa-engineer'), b'\x89PNG\r\n\x1a\nfixture', 'Inspect labels')
         self.assertEqual(error.exception.reason,'vision_unavailable')
         self.assertEqual([x['status'] for x in error.exception.failures],[429,429])
         self.assertEqual(len(calls),2)
