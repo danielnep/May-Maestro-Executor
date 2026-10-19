@@ -19,6 +19,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from .effort_policy import decide, select_gemini_level, select_deepseek_mode
 
 DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
 ACTIONS = {"read_file", "list_files", "write_file", "run_check", "remember", "finish", "delegate", "search_web", "fetch_public", "inspect_image"}
@@ -184,7 +185,9 @@ class GeminiGateway(_HTTPGateway):
         return {'summary':action['summary'],'metadata':self._metadata(agent,model,result.get('usageMetadata',{})),
                 'actual_image_provided':True}
 
-    def complete(self, agent, messages):
+    def complete(self, agent, messages, *, thinking_level="low"):
+        if thinking_level not in ("minimal","low","medium","high"):
+            raise self._error("Unsupported Gemini thinking level", "configuration")
         if self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() != "true":
             raise self._error("Gemini free-tier confirmation is missing; no Gemini request sent", "configuration")
         model = agent.get("model") or self.environ.get("GEMINI_MODEL")
@@ -194,7 +197,8 @@ class GeminiGateway(_HTTPGateway):
         if not key:
             raise self._error("Missing specialist Gemini API credential", "configuration")
         contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in _messages(messages)]
-        generation = {"responseMimeType": "application/json"}
+        generation = {"responseMimeType": "application/json",
+                      "thinkingConfig": {"thinkingLevel": thinking_level}}
         if self.max_output_tokens is not None:
             generation["maxOutputTokens"] = self.max_output_tokens
         payload = {"systemInstruction": {"parts": [{"text": _prompt(agent)}]}, "contents": contents, "generationConfig": generation}
@@ -210,7 +214,7 @@ class GeminiGateway(_HTTPGateway):
         except (KeyError, IndexError, TypeError, AttributeError):
             raise self._error("Gemini returned an invalid action envelope", "invalid_response", True) from None
         action = self._action(text, agent)
-        action["metadata"] = self._metadata(agent, model, usage)
+        action["metadata"] = dict(self._metadata(agent, model, usage), thinking_level=thinking_level)
         return action
 
 
@@ -218,7 +222,12 @@ class DeepSeekGateway(_HTTPGateway):
     provider = "deepseek"
     prefix = "DEEPSEEK"
 
-    def complete(self, agent, messages):
+    def complete(self, agent, messages, *, effort=None):
+        if effort is None:
+            effort = {"thinking": {"type": "disabled"}}
+        if (not isinstance(effort,dict) or effort.get("thinking") not in ({"type":"disabled"},{"type":"enabled"})
+                or (effort["thinking"]["type"] == "enabled" and effort.get("reasoning_effort") not in ("low","high","max"))):
+            raise self._error("Unapproved DeepSeek effort configuration", "configuration")
         key = self.environ.get(agent.get("deepseek_api_key_env", "DEEPSEEK_API_KEY"))
         if not key:
             raise self._error("Missing DeepSeek API credential", "configuration")
@@ -226,7 +235,9 @@ class DeepSeekGateway(_HTTPGateway):
         if not isinstance(model, str) or not model.strip():
             raise self._error("DEEPSEEK_MODEL must be nonempty text", "configuration")
         payload = {"model": model, "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
-                   "response_format": {"type": "json_object"}, "thinking": {"type": "enabled"}, "reasoning_effort": "max"}
+                   "response_format": {"type": "json_object"}, **effort}
+        if effort["thinking"]["type"] == "disabled":
+            payload["temperature"] = 0.2
         if self.max_output_tokens is not None:
             payload["max_tokens"] = self.max_output_tokens
         request = urllib.request.Request("https://api.deepseek.com/chat/completions", data=json.dumps(payload).encode(),
@@ -241,7 +252,9 @@ class DeepSeekGateway(_HTTPGateway):
         except (KeyError, IndexError, TypeError, AttributeError):
             raise self._error("DeepSeek returned an invalid action envelope", "invalid_response", True) from None
         action = self._action(text, agent)
-        action["metadata"] = self._metadata(agent, model, usage)
+        action["metadata"] = dict(self._metadata(agent, model, usage),
+                                  thinking_mode=effort["thinking"]["type"],
+                                  reasoning_effort=effort.get("reasoning_effort", "none"))
         return action
 
 
@@ -287,6 +300,11 @@ class ModelGateway:
 
     def complete(self, agent, messages):
         self._load_circuit()
+        try:
+            context = json.loads(messages[-1]["content"])
+        except (ValueError, TypeError, KeyError, IndexError):
+            context = {}
+        approval = decide(context)
         now = time.time()
         if now < self._circuit.get("retry_after", 0):
             primary = self._circuit.get("failure", {"provider": "gemini", "reason": "cooldown", "status": None, "retryable": True})
@@ -295,7 +313,10 @@ class ModelGateway:
             try:
                 if "gemini" in self._init_errors:
                     raise self._init_errors["gemini"]
-                action = self.gemini.complete(agent, messages)
+                primary_model = agent.get("model") or self.environ.get("GEMINI_MODEL")
+                action = self.gemini.complete(agent, messages,
+                    thinking_level=select_gemini_level(approval, primary_model))
+                action["metadata"]["maestro_effort_approval"] = approval.public()
                 self._save_circuit({})
                 return action
             except GatewayError as exc:
@@ -308,7 +329,8 @@ class ModelGateway:
                                    reason="insufficient_balance", status=402)
             if "deepseek" in self._init_errors:
                 raise self._init_errors["deepseek"]
-            action = self.deepseek.complete(agent, messages)
+            action = self.deepseek.complete(agent, messages, effort=select_deepseek_mode(approval))
+            action["metadata"]["maestro_effort_approval"] = approval.public()
         except GatewayError as exc:
             failures = [primary, exc.as_dict()]
             # A payment-required response is not transient. Preserve its precise
@@ -328,11 +350,11 @@ class ModelGateway:
                     and self.gemini is not None):
                 try:
                     alternate = dict(agent, model=backup_model)
-                    action = self.gemini.complete(alternate, messages)
+                    action = self.gemini.complete(alternate, messages, thinking_level="minimal")
                     action["metadata"].update(
                         fallback_from="gemini_and_deepseek",
                         fallback_reasons=failures,
-                        free_tier_model=True)
+                        free_tier_model=True, maestro_effort_approval=approval.public())
                     return action
                 except GatewayError as free_error:
                     failures.append(free_error.as_dict())
