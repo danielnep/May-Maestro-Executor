@@ -1,0 +1,85 @@
+name: Horizon - vigia independente de falhas
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/agent-watchdog.yml'
+  workflow_run:
+    workflows: ["Horizon - pedidos do chat por commit"]
+    types: [completed]
+  schedule:
+    - cron: '*/15 * * * *'
+permissions:
+  actions: write
+  contents: read
+  issues: write
+concurrency:
+  group: horizon-independent-watchdog
+  cancel-in-progress: false
+jobs:
+  watchdog:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Detectar execuções paradas, recuperar fila e avisar proprietário sem IA ou BD
+        env:
+          GH_TOKEN: \${{ github.token }}
+        run: |
+          python - <<'PY'
+          import datetime as dt, json, os
+          from urllib.request import Request, urlopen
+          from urllib.error import HTTPError
+          ROOT="https://api.github.com/repos/danielnep/May-Maestro-Executor"
+          HEADERS={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json",
+                   "X-GitHub-Api-Version":"2022-11-28","User-Agent":"Horizon-Independent-Watchdog"}
+          def api(method, path, data=None):
+              raw=json.dumps(data).encode() if data is not None else None
+              req=Request(ROOT+path,data=raw,headers=HEADERS,method=method)
+              with urlopen(req,timeout=20) as res:
+                  body=res.read()
+                  return json.loads(body) if body else None
+          def when(s):
+              return dt.datetime.fromisoformat(s.replace("Z","+00:00"))
+          now=dt.datetime.now(dt.timezone.utc)
+          runs=api("GET","/actions/workflows/chat-requests.yml/runs?per_page=30").get("workflow_runs",[])
+          runs.sort(key=lambda r:r.get("created_at",""), reverse=True)
+          current=runs[0] if runs else None
+          active=[r for r in runs if r["status"] in ("in_progress","queued","pending","waiting")]
+          stale=[r for r in active if (now-when(r["created_at"])).total_seconds()>3300]
+          incidents=[]
+          for r in stale:
+              if r["status"] != "in_progress":
+                  continue
+              try:
+                  api("POST",f'/actions/runs/{r["id"]}/cancel')
+                  incidents.append(("Worker parado há mais de 55 minutos; cancelamento solicitado",r))
+              except HTTPError as e:
+                  incidents.append(("Worker parado; cancelamento falhou HTTP "+str(e.code),r))
+          if current and current.get("conclusion") in ("failure","timed_out"):
+              incidents.append(("Última execução falhou",current))
+          if current and current["status"] in ("pending","queued") and (now-when(current["created_at"])).total_seconds()>900:
+              incidents.append(("Fila pendente há mais de 15 minutos",current))
+          for label,r in incidents:
+              marker=f"<!-- horizon-watchdog-run:{r['id']} -->"
+              title=f"[Horizon incidente] Controlador #{r['id']}"
+              body=(f"{label}\n\nRun: {r['html_url']}\n"
+                    f"Estado: {r['status']} | Conclusão: {r.get('conclusion')}\n"
+                    "Prioridade: recuperar o processamento do Painel Michelle e demais tarefas.\n"
+                    "Não representa entrega de software nem teste de integração aprovado.\n"+marker)
+              issues=api("GET","/issues?state=all&per_page=100")
+              if not any(marker in (x.get("body") or "") for x in issues):
+                  issue=api("POST","/issues",{"title":title,"body":body,"assignees":["danielnep"]})
+                  print("Created incident",issue["number"])
+          if current and not active and current.get("conclusion") in ("failure","timed_out"):
+              recent_failures=sum(r.get("conclusion") in ("failure","timed_out")
+                and (now-when(r["created_at"])).total_seconds()<10800 for r in runs)
+              if recent_failures<3:
+                  api("POST","/actions/workflows/chat-requests.yml/dispatches",{"ref":"main"})
+                  print("Recovery dispatched")
+              else:
+                  print("Circuit open: 3 failed runs; owner incident required")
+          print(json.dumps({"latest":current["id"] if current else None,
+            "active":len(active),"stale":len(stale),"incidents":len(incidents)}))
+          PY
