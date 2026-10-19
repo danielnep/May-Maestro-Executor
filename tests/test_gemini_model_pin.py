@@ -23,6 +23,17 @@ class ModelPinTest(unittest.TestCase):
                     self.assertIn('GEMINI_FREE_TIER_CONFIRMED',gateway)
                 else:
                     self.assertNotIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)
+    def test_free_tier_confirmation_is_never_assumed_by_workflows(self):
+        # Gemini is a paid-capable API. A model catalog/probe cannot prove billing.
+        for path in WORKFLOWS:
+            body = (ROOT / path).read_text()
+            with self.subTest(path=path):
+                lines = [line.strip() for line in body.splitlines()
+                         if line.strip().startswith("GEMINI_FREE_TIER_CONFIRMED:")]
+                self.assertTrue(lines)
+                self.assertTrue(all("|| 'false'" in line for line in lines))
+                self.assertFalse(any("|| 'true'" in line for line in lines))
+
     def test_all_agents_use_runtime_model_no_hidden_override(self):
         import json
         root=ROOT/"agents"
