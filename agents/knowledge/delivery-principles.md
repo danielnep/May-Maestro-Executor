@@ -35,3 +35,12 @@ Este documento é incorporado pelo registro de especialistas às instruções de
 4. Falhas de modelo HTTP 429/5xx: usar outro provedor já configurado se permitido e funcional, com limites de custo; se nenhum operar, aguardar cota em backoff, preservar checkpoint e avisar. **Jamais esperar resposta de IA para emitir o aviso operacional.**
 5. Toda retomada reconcilia tarefa, branch, SHA, testes e estado. Relatórios distinguem implementado, testado, implantado, bloqueado e notificado. Um teste unitário aprovado não comprova execução do agente real.
 6. É proibido terminar com “falhou” sem evidência, responsável e próxima ação. O Maestro acompanha entregas de clientes em andamento e prioriza compromissos comerciais próximos. **Prioridade atual: concluir o Painel Michelle** por tarefa `michelle-sigware-ai-coi-20261018`, em `danielnep/michelle-preview`, na branch de trabalho autorizada; não alterar o banco de dados da Michelle para armazenar dados dos agentes.
+
+## Estratégia híbrida: algoritmo antes de IA (19/10/2026)
+
+- Sempre executar inventário local determinístico de manifestos, estrutura, testes disponíveis, prioridades e dependências antes de pedir decisão ao modelo. Dados do inventário não são testes executados.
+- Usar APIs, validações tipadas, schemas, hashes, SQL/SQLite, regras de estados e verificações locais para trabalhos objetivos. IA somente para decisões novas ou interpretação incerta; modelos não executam código sem ferramentas verificadas.
+- Reutilizar checkpoints e decisões já comprovadas. Nunca chamar Gemini ou DeepSeek só para confirmar que um arquivo existe, para contar tarefas ou para repetir validação que um algoritmo resolve.
+- Falha de ferramenta gera incidente estruturado sem corpo bruto, regra preventiva **candidata** na memória SQLite do agente e tentativa de correção. Só passar a **validada** depois de um teste correspondente aprovado na mesma tarefa. Em novo projeto, reavaliar a aplicabilidade, não copiar conclusões como dogma.
+- Resultados devem contar chamadas do modelo quando disponível; teste falho nunca é reclassificado como sucesso por opinião do próprio modelo. LLM indisponível não impede bookkeeping, avisos, preflight e transições determinísticas.
+- Enquanto o armazenamento for SQLite sincronizado em branch pública GitHub, trabalhar exclusivamente com fontes públicas e dados sintéticos, sem credenciais ou amostras privadas de clientes. Não importar o estado privado do Railway para a branch pública.
