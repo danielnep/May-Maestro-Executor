@@ -1,0 +1,30 @@
+{
+  "ready": {
+    "role": "heading",
+    "name": "Painel de rondas demonstrativo"
+  },
+  "capture_initial": true,
+  "steps": [
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Mensagens"
+      },
+      "capture": true
+    },
+    {
+      "action": "expect_text",
+      "text": "Conversa aberta e visível.",
+      "capture": true
+    },
+    {
+      "action": "click",
+      "target": {
+        "role": "button",
+        "name": "Fechar mensagens"
+      },
+      "capture": true
+    }
+  ]
+}
