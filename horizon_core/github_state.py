@@ -112,10 +112,10 @@ class GitHubState:
             content = base64.b64decode("".join(result["content"].split()), validate=True)
             if self.compressed and not self.restored_legacy:
                 content = gzip.decompress(content)
-            if len(content) > 64 * 1024 * 1024 or not content.startswith(b"SQLite format 3\\x00"):
+            if len(content) > 64 * 1024 * 1024 or not content.startswith(b"SQLite format 3\x00"):
                 raise ValueError()
             sha = result["sha"]
-        except (KeyError, TypeError, ValueError, binascii.Error):
+        except (KeyError, TypeError, ValueError, OSError, EOFError, binascii.Error):
             raise GitHubStateError("Invalid GitHub checkpoint response") from None
         target = Path(destination)
         target.parent.mkdir(parents=True, exist_ok=True)
