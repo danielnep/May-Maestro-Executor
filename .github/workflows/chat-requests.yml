@@ -17,6 +17,8 @@ on:
       - 'horizon_core/github_sqlite_state.py'
       - 'horizon_core/github_state.py'
       - 'horizon_core/worker.py'
+      - 'horizon_core/may_consultation.py'
+      - 'tests/test_may_consultation.py'
       - 'horizon_core/context_budget.py'
       - 'horizon_core/verified_repairs.py'
       - 'tests/test_verified_repairs.py'
@@ -91,6 +93,7 @@ jobs:
           python -m unittest discover -s tests -p test_handoff_workflow.py -v
           python -m unittest discover -s tests -p test_provider_recovery.py -v
           python -m unittest discover -s tests -p test_gateway.py -v
+          python -m unittest discover -s tests -p test_may_consultation.py -v
           python -m unittest discover -s tests -p test_worker.py -v
           python -m unittest discover -s tests -p test_web_checks.py -v
           python -m unittest discover -s tests -p test_visual_contract.py -v
