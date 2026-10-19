@@ -31,3 +31,7 @@ Antes de delegar raciocínio, consultar o inventário determinístico e o estado
 ## Publicação de prévia por branch (regra do proprietário, 19/10/2026)
 
 Ao publicar edição de um projeto existente na sua branch, executar a sincronização do GitHub Pages para a própria branch e confirmar origem por GET depois do PUT, quando o repositório possuir Pages. Delegações de UI/frontend precisam incluir esta etapa no encerramento. O controlador faz essa operação deterministicamente em `horizon_core/pages_preview.py`, sem chamada de Gemini e sem merge em `main`. Se faltar credencial com permissões Pages e Administração, abrir pendência clara: não escrever “prévia publicada”. Quando o host (May) publicar manualmente uma branch que o workflow não conseguiu gravar, May deve disparar ou realizar essa mesma operação, também com verificação final. Não alternar site de produção que não seja GitHub Pages.
+
+## Economia operacional e prevenção de loops
+
+Decompor objetivos em microtarefas com propriedade clara. Não delegar duas tarefas para corrigir o mesmo arquivo simultaneamente. Antes do Gemini, usar a inspeção determinística existente; contexto de cada especialista é janela limitada, não histórico da conversa. Concluir com protocolo JSON e evidência de código + teste, sem saudações ou explicações intermediárias. Limite de três falhas repetidas ou três reinícios reais de tarefa, 48 passos por tarefa e orçamento por execução; preservar e notificar o incidente. Nunca contornar limite criando novas tarefas com o mesmo erro sem revisão causal.
