@@ -104,6 +104,29 @@ class GitHubStateTests(unittest.TestCase):
         post = next(call for call in self.api.calls if call.method == "POST")
         self.assertEqual(json.loads(post.data)["ref"], "refs/heads/agent-state/runtime")
 
+    def test_compressed_encrypted_snapshot_is_confidential_and_roundtrips(self):
+        import gzip
+        from cryptography.fernet import Fernet
+        self.database()
+        api = FakeGitHub()
+        secret = Fernet.generate_key()
+        writer = GitHubState("owner/repo", token="fixture", opener=api,
+                             compressed=True, encryption_key=secret)
+        self.assertFalse(writer.pull(self.destination))
+        writer.push(self.source)
+        self.assertTrue(api.content.startswith(b"gAAAA"))
+        self.assertNotIn(b"SQLite format 3", api.content)
+        reader = GitHubState("owner/repo", token="fixture", opener=api,
+                             compressed=True, encryption_key=secret)
+        self.assertTrue(reader.pull(self.destination))
+        with sqlite3.connect(self.destination) as db:
+            self.assertEqual(db.execute("SELECT value FROM memory").fetchone()[0],
+                             b"\\x00\\xffsynthetic")
+        other = GitHubState("owner/repo", token="fixture", opener=api,
+                            compressed=True, encryption_key=Fernet.generate_key())
+        with self.assertRaisesRegex(GitHubStateError, "Invalid GitHub checkpoint"):
+            other.pull(self.destination)
+
     def test_compare_and_swap_never_retries_conflict(self):
         self.database()
         self.state.push(self.source)
