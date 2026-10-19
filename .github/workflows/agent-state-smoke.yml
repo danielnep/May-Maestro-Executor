@@ -1,153 +1,42 @@
-name: Horizon - prova de banco dos agentes
+name: Horizon - prova do SQLite ativo
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/agent-state-smoke.yml'
-      - 'horizon_core/embedded_state.py'
+      - 'horizon_core/github_sqlite_state.py'
 permissions:
   contents: read
-  id-token: write
 jobs:
   state-readonly:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Inspect legacy snapshot schema and counts with OIDC only
-        run: |
-          python - <<'PY'
-          from horizon_core.embedded_state import HorizonEmbeddedState
-          from urllib.error import HTTPError, URLError
-          import base64,hashlib,json,sqlite3,tempfile,os
-          c=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
-          c.requester=__import__('urllib.request',fromlist=['urlopen']).urlopen
-          c.token=c._oidc_token()
-          try: d=c._request('GET')
-          except Exception as e:
-              print('Legacy snapshot inaccessible:',type(e).__name__,str(e)[:130])
-              raise
-          revision=d.get('revision')
-          snapshot=d.get('snapshot')
-          print('Legacy revision:',revision,'snapshot_present:',snapshot is not None)
-          if snapshot is None:
-              raise SystemExit(0)
-          raw=base64.b64decode(snapshot,validate=True)
-          sha=hashlib.sha256(raw).hexdigest()
-          if sha!=d.get('checksum') or not raw.startswith(b'SQLite format 3\x00'):
-              raise ValueError('Legacy snapshot integrity mismatch')
-          with tempfile.NamedTemporaryFile(delete=False) as f:
-              f.write(raw); path=f.name
-          try:
-              db=sqlite3.connect('file:'+path+'?mode=ro',uri=True)
-              try:
-                  status=db.execute('PRAGMA quick_check').fetchone()[0]
-                  if status!='ok':raise ValueError('SQLite quick_check failed')
-                  names=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
-                  counts={}
-                  for name in names:
-                      # SQL identifiers supplied by SQLite's schema, never interpolated unchecked.
-                      safe='"'+name.replace('"','""')+'"'
-                      try: counts[name]=db.execute('SELECT count(*) FROM '+safe).fetchone()[0]
-                      except sqlite3.Error:counts[name]='unreadable'
-                  print(json.dumps({'sqlite_integrity':status,'snapshot_bytes':len(raw),
-                    'schema_table_count':len(names),'table_row_counts':counts,
-                    'sha256_prefix':sha[:14]},sort_keys=True))
-              finally:db.close()
-          finally:os.unlink(path)
-          PY
-      - name: Encrypt and verify full logical legacy snapshot for private archive
+      - name: Install authenticated state dependencies
+        run: python -m pip install 'cryptography>=43,<48' --quiet
+      - name: Verify active GitHub SQLite checkpoint without printing data
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
-          python -m pip install 'cryptography>=43,<48' --quiet
           python - <<'PY'
-          import base64,gzip,hashlib,json,os,sqlite3,tempfile
-          from pathlib import Path
-          from cryptography.fernet import Fernet
-          from horizon_core.embedded_state import HorizonEmbeddedState
-          from urllib.request import urlopen
-          material=os.environ.get('HORIZON_SQLITE_ENCRYPTION_KEY') or os.environ.get('RAILWAY_API_TOKEN')
-          if not material or len(material)<24:raise RuntimeError('No durable encryption secret: archive not created')
-          source_name='HORIZON_SQLITE_ENCRYPTION_KEY' if os.environ.get('HORIZON_SQLITE_ENCRYPTION_KEY') else 'RAILWAY_API_TOKEN'
-          key=base64.urlsafe_b64encode(hashlib.sha256(('horizon-legacy-archive-v1:'+material).encode()).digest())
-          client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
-          client.requester=urlopen
-          client.token=client._oidc_token()
-          result=client._request('GET')
-          revision=result['revision']; raw=base64.b64decode(result['snapshot'],validate=True)
-          digest=hashlib.sha256(raw).hexdigest()
-          assert digest==result['checksum'] and raw.startswith(b'SQLite format 3\x00')
-          with tempfile.NamedTemporaryFile() as tmp:
-              tmp.write(raw);tmp.flush()
-              db=sqlite3.connect('file:'+tmp.name+'?mode=ro',uri=True)
-              try:
-                  assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
-                  counts={t:db.execute('SELECT count(*) FROM "'+t+'"').fetchone()[0] for t in ('tasks','memory','events')}
-              finally:db.close()
-          packed=gzip.compress(raw,compresslevel=9,mtime=0)
-          cipher=Fernet(key).encrypt(packed)
-          restored=gzip.decompress(Fernet(key).decrypt(cipher))
-          assert restored==raw and hashlib.sha256(restored).hexdigest()==digest
-          dest=Path('backup');dest.mkdir(exist_ok=True)
-          (dest/'railway-agent-state-legacy.sqlite3.gz.fernet').write_bytes(cipher)
-          manifest={'format':'Fernet(gzip(SQLite))','kdf':'sha256(horizon-legacy-archive-v1:+source-secret)',
-             'secret_name':source_name,'revision':revision,'sha256':digest,
-             'sqlite_bytes':len(raw),'encrypted_bytes':len(cipher),'row_counts':counts,
-             'verified_roundtrip':True,'source':'horizon-site PGlite authenticated OIDC GET'}
-          (dest/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-          print(json.dumps({'archive_created':True,'verified_roundtrip':True,
-             'revision':revision,'sqlite_bytes':len(raw),'encrypted_bytes':len(cipher),
-             'records':counts,'source_key_name':source_name}))
+          import json
+          from horizon_core.github_sqlite_state import GitHubSQLiteState
+          with_state=GitHubSQLiteState()
+          try:
+              result=with_state.db.execute('PRAGMA quick_check').fetchone()[0]
+              if result!='ok':raise RuntimeError('SQLite integrity failed')
+              counts={table:with_state.db.execute('SELECT count(*) FROM '+table).fetchone()[0]
+                      for table in ('tasks','events','memory')}
+              print(json.dumps({'active_backend':'github-encrypted-sqlite',
+                  'branch':'agent-state/runtime','integrity':'ok','counts':counts,
+                  'legacy_restored_automatically':with_state.restored_legacy}))
+          finally:
+              with_state.close()
           PY
-      - name: Encrypt archival snapshot to owner-held recovery public key
-        run: |
-          python - <<'PY'
-          import base64, gzip, hashlib, json, os
-          from pathlib import Path
-          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-          from cryptography.hazmat.primitives.asymmetric import padding
-          from cryptography.hazmat.primitives import hashes, serialization
-          from horizon_core.embedded_state import HorizonEmbeddedState
-          from urllib.request import urlopen
-          pub=serialization.load_pem_public_key(base64.b64decode('LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0KTUlJQm9qQU5CZ2txaGtpRzl3MEJBUUVGQUFPQ0FZOEFNSUlCaWdLQ0FZRUFpYjcyNy9IaVpDc2pxRysyeGFIWgozZG52ZTh0SXAwY0RFQ1lycldLdEJzczJrRTg0Tmh3eERVaUdwa29Cc2JWLzh5Mkd3NFdDMGtIZXFwdEZkeTltCnI5amFvUE9pbGlGUE1VeEgwL3hQWkp0c0xFcHpWSXhQNXNBVkIyN3l1V3Vhb0xMVnZWMXdEaERSL0pJdTg1SEkKVkM4ZWdhd1gvdXM4dVFWQmRKZE5malZwaVNLWDkxWElyNFF0bnZmNmdCK0V6RkZ2bE96cERMd2cyR3NJSGdiYwplMnB4cGFvclBpZDR1U256QVdBc3ZROXplL2VpWm9IbnFWMEYxVGxkcTdnaDRNTmlkNU51eVhibmFpMjlYZlFUCkpEdjZVanYvMm56TEZmcGRydzhXMjVZYzZjQk9WSzJ2WS9GL0Y1dW96bzFZcXc4WlNCYkY1N2w0akxxTDU2QWcKd3RmOEEwbitOd0QvcDNONEpWS21xZVRwc0dMOGJiTDNBaVlBekgrNm5qUzh6eEY0dG1ib3psM29TeXZwS0dNbwpNKzB2cHZFK0lCcGxOQWNPeE9lVHpDcDJNZm0wclE1Tys5TG9VR2xsZ29YTzdFRkV0ZHpsNjQ1cGp4THVmZWxICmxZT21LYjlHZGZIajVIWVJqYWRaQU0yV1dFM2p6TmJSeWNudEs5T0V2WWZ2QWdNQkFBRT0KLS0tLS1FTkQgUFVCTElDIEtFWS0tLS0tCg=='))
-          client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
-          client.requester=urlopen;client.token=client._oidc_token()
-          state=client._request('GET')
-          raw=base64.b64decode(state['snapshot'],validate=True)
-          digest=hashlib.sha256(raw).hexdigest()
-          if digest!=state['checksum'] or not raw.startswith(b'SQLite format 3\x00'):
-              raise ValueError('Legacy snapshot integrity mismatch')
-          key=AESGCM.generate_key(bit_length=256)
-          nonce=os.urandom(12)
-          ciphertext=AESGCM(key).encrypt(nonce,gzip.compress(raw,compresslevel=9,mtime=0),bytes.fromhex(digest))
-          wrapped=pub.encrypt(key,padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
-          data={'format':'Horizon-legacy-AES256GCM-RSA3072-OAEP-SHA256-v1',
-                'sha256':digest,'revision':state['revision'],'nonce':base64.b64encode(nonce).decode(),
-                'wrapped_key':base64.b64encode(wrapped).decode(),
-                'ciphertext':base64.b64encode(ciphertext).decode()}
-          target=Path('backup-recovery');target.mkdir(exist_ok=True)
-          (target/'horizon-legacy-recovery-20261019.json').write_text(json.dumps(data,sort_keys=True))
-          unwrapped=pub.key_size
-          print(json.dumps({'recovery_archive_written':True,'revision':data['revision'],'sha256_prefix':digest[:14],
-           'cipher_bytes':len(ciphertext),'rsa_bits':unwrapped,'key_custody':'private user library'}))
-          PY
-      - name: Store recovery encrypted artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: horizon-legacy-recovery-20261019
-          path: backup-recovery/
-          retention-days: 7
-          if-no-files-found: error
-      - name: Archive encrypted backup only
-        uses: actions/upload-artifact@v4
-        with:
-          name: horizon-legacy-encrypted-20261019
-          path: backup/
-          retention-days: 7
-          if-no-files-found: error
