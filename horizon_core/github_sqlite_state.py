@@ -5,6 +5,9 @@ agent-state branch are public. Never import the private Railway PGlite snapshots
 GitHub Actions concurrency serializes workers, with a CAS SHA per snapshot.
 """
 from contextlib import contextmanager
+import base64
+import hashlib
+import os
 import tempfile
 from pathlib import Path
 
@@ -18,8 +21,18 @@ STATE_BRANCH = "agent-state/runtime"
 class GitHubSQLiteState(State):
     def __init__(self, *, api=None):
         self.workdir = tempfile.TemporaryDirectory(prefix="horizon-sqlite-")
-        self.remote = api if api is not None else GitHubState(
-            REPOSITORY, branch=STATE_BRANCH, compressed=True)
+        if api is not None:
+            self.remote = api
+        else:
+            # A dedicated key may replace this temporary binding without changing
+            # the provider; retain the old binding until data is re-encrypted.
+            material = os.getenv("HORIZON_SQLITE_ENCRYPTION_KEY") or os.getenv("RAILWAY_API_TOKEN")
+            if not material or len(material) < 24:
+                raise RuntimeError("SQLite encryption key unavailable; refusing public plaintext")
+            key = base64.urlsafe_b64encode(hashlib.sha256(
+                ("horizon-github-sqlite-v1:" + material).encode()).digest())
+            self.remote = GitHubState(
+                REPOSITORY, branch=STATE_BRANCH, compressed=True, encryption_key=key)
         self.restored_legacy = False
         dbfile = Path(self.workdir.name) / "state.sqlite3"
         try:
