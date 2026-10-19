@@ -22,5 +22,18 @@ class SharedIncidentPlaybookTests(unittest.TestCase):
                 self.assertIn("state-507", instructions)
 
 
+    def test_verified_lessons_are_available_cross_specialist(self):
+        doc = json.loads((AGENTS_ROOT / "knowledge" / "verified-runtime-lessons.json").read_text(encoding="utf-8"))
+        entries = doc.get("entries", [])
+        if not entries:
+            self.skipTest("No independently verified lesson published yet")
+        source = entries[0]["agent"]
+        for agent_id in AGENT_IDS:
+            with self.subTest(agent=agent_id):
+                instructions = load_agent(agent_id)["instructions"]
+                self.assertIn('"source_agent": "' + source + '"', instructions)
+                self.assertIn("cross-agent lessons", instructions)
+
+
 if __name__ == "__main__":
     unittest.main()
