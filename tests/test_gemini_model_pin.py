@@ -23,16 +23,20 @@ class ModelPinTest(unittest.TestCase):
                     self.assertIn('GEMINI_FREE_TIER_CONFIRMED',gateway)
                 else:
                     self.assertNotIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)
-    def test_free_tier_confirmation_is_never_assumed_by_workflows(self):
-        # Gemini is a paid-capable API. A model catalog/probe cannot prove billing.
+    def test_free_tier_confirmation_requires_explicit_operator_attestation(self):
+        # A confirmed owner choice is not interchangeable with a default.
         for path in WORKFLOWS:
             body = (ROOT / path).read_text()
+            flags = [line.strip() for line in body.splitlines()
+                     if line.strip().startswith("GEMINI_FREE_TIER_CONFIRMED:")]
             with self.subTest(path=path):
-                lines = [line.strip() for line in body.splitlines()
-                         if line.strip().startswith("GEMINI_FREE_TIER_CONFIRMED:")]
-                self.assertTrue(lines)
-                self.assertTrue(all("|| 'false'" in line for line in lines))
-                self.assertFalse(any("|| 'true'" in line for line in lines))
+                self.assertTrue(flags)
+                if path.endswith("chat-requests.yml"):
+                    self.assertEqual(flags, ["GEMINI_FREE_TIER_CONFIRMED: 'true'"])
+                    self.assertIn("Explicit owner attestation received 2026-10-19", body)
+                    self.assertNotIn("GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'true' }}", body)
+                else:
+                    self.assertTrue(all("|| 'false'" in flag for flag in flags))
 
     def test_all_agents_use_runtime_model_no_hidden_override(self):
         import json
