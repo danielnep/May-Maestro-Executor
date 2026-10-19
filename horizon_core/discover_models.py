@@ -42,7 +42,7 @@ def discover(environ=None, opener=None):
         if not isinstance(token, str) or token in seen:
             return {'status': 'invalid_pagination', 'models': sorted(set(models)), 'inference_requests': 0}
         seen.add(token)
-    configured = env.get('GEMINI_MODEL') or 'gemini-3.8-flash'
+    configured = env.get('GEMINI_MODEL') or 'gemini-3.6-flash'
     return {'status': 'ok', 'models': sorted(set(models)), 'configured_model': configured,
             'configured_model_listed': configured in models, 'billing_verified': False,
             'quota_verified': False, 'inference_requests': 0}
