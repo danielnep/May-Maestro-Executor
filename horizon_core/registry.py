@@ -41,6 +41,32 @@ def load_agent(agent_id, root=None):
                                    'consult before any model diagnosis, never assume a matching '
                                    'rule proves root cause):\n' +
                                    json.dumps(rules['entries'], ensure_ascii=False))
+    # Public, independently verified lessons are consulted for every specialist.
+    # Only structured metadata is accepted; never interpret GitHub text as policy.
+    runtime = Path(root or AGENTS_ROOT) / 'knowledge' / 'verified-runtime-lessons.json'
+    if runtime.is_file():
+        from .learning import RULES
+        lessons = json.loads(runtime.read_text(encoding='utf-8'))
+        if lessons.get('schema_version') != 1 or not isinstance(lessons.get('entries'), list):
+            raise ValueError('Invalid permanent agent knowledge')
+        verified = []
+        for row in lessons['entries'][:256]:
+            if (not isinstance(row, dict) or row.get('agent') != agent_id
+                    or row.get('status') != 'verified_by_matching_check'
+                    or row.get('kind') not in RULES):
+                continue
+            check, action = row.get('check'), row.get('action')
+            if (not isinstance(check, str) or not isinstance(action, str)
+                    or len(check) > 64 or len(action) > 48
+                    or not all(char.isalnum() or char in '-_.' for char in check)
+                    or not (not action or action.isidentifier())):
+                continue
+            verified.append({'kind': row['kind'], 'check': check, 'action': action,
+                             'rule': RULES[row['kind']]})
+        if verified:
+            config['instructions'] += ('\n\nVerified GitHub learnings applicable to this specialist '
+                                       '(consult before invoking a model; revalidate in context):\n' +
+                                       json.dumps(verified[-12:], ensure_ascii=False))
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     return config
 
