@@ -48,6 +48,7 @@ on:
       - 'tests/test_ui_imagination.py'
       - 'tests/test_visual_contract.py'
       - 'synthetic_visual/browser-proof.cjs'
+      - 'synthetic_visual/interactive-proof.cjs'
       - 'synthetic_visual/generic-demo/**'
       - 'agents/ui-ux-designer/tools.json'
       - 'agents/horizon-ui-guardian/tools.json'
@@ -127,6 +128,7 @@ jobs:
         run: |
           node --check synthetic_visual/node-proof.cjs
           node --check synthetic_visual/browser-proof.cjs
+          node --check synthetic_visual/interactive-proof.cjs
       - name: Preparar imagem isolada para testes Node e Playwright
         # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
         run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
