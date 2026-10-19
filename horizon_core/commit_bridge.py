@@ -198,7 +198,10 @@ def summarize(request_id, tasks, publication=None):
                   for row in reports for check in row['verification']
                   if check.get('passed') is not True or check.get('tests_run', 0) == 0]
     missing_qa_checks = [row['task_id'] for row in qa_reports if not row['verification']]
-    quality_ok = not bad_checks and not missing_qa_checks
+    # Pending/failed work cannot be quality-approved even when no QA checks
+    # exist yet. An empty verification list is absence of evidence, not a pass.
+    quality_ok = (status == 'reported_complete' and not bad_checks
+                  and not missing_qa_checks)
     if status == 'reported_complete' and not quality_ok:
         status = 'needs_attention'
     delivery = publication or {'published': False, 'reason': 'No publication attempted'}
