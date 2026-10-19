@@ -28,6 +28,7 @@ jobs:
       contents: write
       actions: write
       issues: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,8 +55,7 @@ jobs:
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-          RAILWAY_STATE_ENVIRONMENT_ID: 11b303c5-e811-4fb2-9e77-514ad050697e
-          HORIZON_STATE_BACKEND: railway-postgres
+          HORIZON_STATE_BACKEND: embedded-postgres
         run: python -m horizon_core.commit_bridge --session-seconds 2400
       - name: Continuar imediatamente quando o checkpoint estiver pronto
         env:
