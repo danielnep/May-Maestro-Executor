@@ -144,6 +144,16 @@ class State:
                         changed = True
                 if not changed:
                     break
+            # Never claim a fourth attempt, including legacy queued rows that
+            # predate the strict provider retry policy.
+            for exhausted in self.db.execute(
+                    "SELECT task_id,max_attempts FROM tasks WHERE status='queued' AND attempts>=max_attempts").fetchall():
+                self.db.execute(
+                    "UPDATE tasks SET status='failed',error=? WHERE task_id=?",
+                    (_json({"reason": "retry_limit_exceeded",
+                            "max_attempts": exhausted["max_attempts"]}),
+                     exhausted["task_id"]))
+                self._event(exhausted["task_id"], "retry_limit_exceeded", {}, now)
             ready_sql = "SELECT * FROM tasks WHERE status='queued' AND not_before<=?"
             ready_args = [now]
             if project is not None:
@@ -209,11 +219,9 @@ class State:
         encoded = _json(error)
         with self._tx():
             row = self._owned(task_id, worker, now)
-            # Provider exhaustion is a temporary external dependency, not a terminal task error.
-            # Keep the original checkpoint and allow bounded-time retries across quota resets.
-            provider_outage = (isinstance(error, dict) and
-                error.get("reason") == "providers_unavailable" and error.get("retryable") is True)
-            retry = retryable and (row["attempts"] < row["max_attempts"] or provider_outage)
+            # Gateway outages respect the same hard attempt ceiling as all other
+            # failures. A circuit breaker avoids repeatedly consuming API quota.
+            retry = retryable and row["attempts"] < row["max_attempts"]
             # A bounded exponential delay also handles provider quota/transient errors.
             not_before = now + min(300, 5 * 2 ** min(row["attempts"] - 1, 6)) if retry else row["not_before"]
             status = "queued" if retry else "failed"
@@ -243,8 +251,10 @@ class State:
             eligible_failed = any(
                 isinstance(detail, dict) and
                 detail.get("reason") == "providers_unavailable" and
-                detail.get("retryable") is True
-                for row in self.db.execute("SELECT error FROM tasks WHERE status='failed'")
+                detail.get("retryable") is True and
+                row["attempts"] < row["max_attempts"]
+                for row in self.db.execute(
+                    "SELECT error,attempts,max_attempts FROM tasks WHERE status='failed'")
                 for detail in [self._safe_failure_json(row["error"])])
             eligible_blocked = any(
                 all(self.db.execute("SELECT status FROM tasks WHERE task_id=?", (dep,)).fetchone()
@@ -262,7 +272,8 @@ class State:
                     continue
                 if (not isinstance(detail, dict) or
                     detail.get("reason") != "providers_unavailable" or
-                    detail.get("retryable") is not True):
+                    detail.get("retryable") is not True or
+                    row["attempts"] >= row["max_attempts"]):
                     continue
                 self.db.execute(
                     "UPDATE tasks SET status='queued',not_before=?,lease_owner=NULL,lease_until=NULL "

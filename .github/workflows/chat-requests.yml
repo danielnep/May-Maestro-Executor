@@ -17,6 +17,11 @@ on:
       - 'horizon_core/github_sqlite_state.py'
       - 'horizon_core/github_state.py'
       - 'horizon_core/worker.py'
+      - 'horizon_core/context_budget.py'
+      - 'tests/test_agent_budgets.py'
+      - 'horizon_core/tools.py'
+      - 'horizon_core/state.py'
+      - 'horizon_core/registry.py'
       - 'horizon_core/learning.py'
       - 'horizon_core/deterministic.py'
       - 'tests/test_agent_learning.py'
@@ -73,6 +78,9 @@ jobs:
           python -m unittest discover -s tests -p test_provider_recovery.py -v
           python -m unittest discover -s tests -p test_gateway.py -v
           python -m unittest discover -s tests -p test_worker.py -v
+          python -m unittest discover -s tests -p test_state.py -v
+          python -m unittest discover -s tests -p test_tools.py -v
+          python -m unittest discover -s tests -p test_agent_budgets.py -v
           python -m unittest discover -s tests -p test_github_state.py -v
           python -m unittest discover -s tests -p test_github_sqlite_state.py -v
           python -m unittest discover -s tests -p test_agent_learning.py -v
@@ -90,6 +98,9 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: gemini-3.6-flash
+          GEMINI_MAX_CALLS: '64'
+          DEEPSEEK_MAX_CALLS: '16'
+          HORIZON_AGENT_MAX_STEPS: '48'
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'true' }}
           GEMINI_FREE_FALLBACK_MODEL: ''
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}

@@ -344,16 +344,18 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state.get('completed')['result']['summary'], 'Completed local fixture')
         self.assertIsNone(self.state.get('completed')['error'])
 
-    def test_default_has_no_step_ceiling_and_preserves_complete_history(self):
+    def test_default_step_ceiling_and_compact_model_history_preserve_full_checkpoint(self):
         self.state.enqueue('long', 'frontend-engineer', 'fixture', 'Reason through more than twelve fixture decisions')
         observed = []
         def decide(agent, context):
-            count = len(context['history'])
+            count = context['completed_steps']
             observed.append(count)
-            self.assertIsNone(context['remaining_steps'])
+            self.assertEqual(context['remaining_steps'], 48-count)
+            self.assertLessEqual(len(context['history']), 4)
             if count == 18:
-                self.assertEqual(context['history'][0]['outcome'], {'remembered': 'step-0'})
+                self.assertEqual(context['history'][0]['outcome'], {'remembered': 'step-14'})
                 self.assertEqual(context['history'][-1]['outcome'], {'remembered': 'step-17'})
+                self.assertEqual(context['history_omitted'], 14)
                 return action('finish')
             return action('remember', {'key': 'step-' + str(count), 'value': count})
         gateway = FakeGateway(decide)
@@ -393,7 +395,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('sliced', 'frontend-engineer', 'fixture', 'Resume cooperative slices until actual completion', max_attempts=1)
         lengths = []
         def decide(agent, context):
-            count = len(context['history'])
+            count = context['completed_steps']
             lengths.append(count)
             if count >= 5:
                 return action('finish')
@@ -439,7 +441,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         gateway = FakeGateway(lambda agent, context: action('read_file', {'path': 'README.md'}))
         result = Worker(self.state, gateway, self.root, max_steps=2).run_one()
         self.assertEqual(result['status'], 'failed')
-        self.assertIn('budget', result['error'])
+        self.assertEqual(result['error']['reason'], 'step_limit_exceeded')
 
 
 if __name__ == '__main__':
