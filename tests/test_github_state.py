@@ -121,7 +121,7 @@ class GitHubStateTests(unittest.TestCase):
         self.assertTrue(reader.pull(self.destination))
         with sqlite3.connect(self.destination) as db:
             self.assertEqual(db.execute("SELECT value FROM memory").fetchone()[0],
-                             b"\\x00\\xffsynthetic")
+                             b"\x00\xffsynthetic")
         other = GitHubState("owner/repo", token="fixture", opener=api,
                             compressed=True, encryption_key=Fernet.generate_key())
         with self.assertRaisesRegex(GitHubStateError, "Invalid GitHub checkpoint"):
