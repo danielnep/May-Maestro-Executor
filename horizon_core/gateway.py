@@ -128,7 +128,10 @@ class _HTTPGateway:
                 return json.loads(response.read())
         except urllib.error.HTTPError as exc:
             status = exc.code
-            reason = "quota" if status == 429 else "authentication" if status in (401, 403) else "server" if status >= 500 else "http"
+            reason = ("insufficient_balance" if status == 402 and self.provider == "deepseek"
+                      else "quota" if status == 429
+                      else "authentication" if status in (401, 403)
+                      else "server" if status >= 500 else "http")
             raise self._error(self.provider + " request failed (HTTP " + str(status) + ")", reason, status == 429 or status >= 500, status) from None
         except (urllib.error.URLError, TimeoutError, OSError):
             raise self._error(self.provider + " transport failed; checkpoint before retrying", "transport", True) from None
@@ -305,6 +308,9 @@ class ModelGateway:
             action = self.deepseek.complete(agent, messages)
         except GatewayError as exc:
             failures = [primary, exc.as_dict()]
+            # A payment-required response is not transient. Preserve its precise
+            # classification for incident reporting; do not retry it blindly.
+            deepseek_payment_blocked = exc.status == 402
             # Zero-cost third route, explicitly enabled only after a real
             # free-tier probe. Never opt into paid model inference.
             backup_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
@@ -324,6 +330,7 @@ class ModelGateway:
             message = ("Model providers unavailable: Gemini " + str(primary["reason"]) +
                        "; DeepSeek " + exc.reason +
                        "; free fallback exhausted/unavailable. Checkpoint and retry without replaying completed tools.")
-            raise GatewayError(message, retryable=True, provider="all", reason="providers_unavailable", failures=failures) from None
+            raise GatewayError(message, retryable=not deepseek_payment_blocked,
+                               provider="all", reason="providers_unavailable", failures=failures) from None
         action["metadata"].update(fallback_from="gemini", fallback_reason=primary, gemini_cooldown_skipped=skipped)
         return action
