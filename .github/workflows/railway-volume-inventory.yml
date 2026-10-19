@@ -25,9 +25,7 @@ jobs:
             echo "::error::RAILWAY_API_TOKEN not configured"; exit 1
           fi
           set +e
-          railway volume files --volume a7c1051d-cc63-4172-aa49-cb02db589d29 list / --json \
-            --project caf3c2ea-f857-4242-8fa3-5453ea1462ca \
-            --environment 6c3d13e1-d963-49c0-8121-8c75bd172766 > /tmp/volume.json 2>/tmp/volume.err
+          railway volume files --volume a7c1051d-cc63-4172-aa49-cb02db589d29 list / --json > /tmp/volume.json 2>/tmp/volume.err
           CODE=$?
           set -e
           if [ "$CODE" -ne 0 ]; then
