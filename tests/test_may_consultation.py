@@ -45,6 +45,18 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
         self.assertEqual(request_consultation(self.task, "unsupported", api=api)["status"], "not_applicable")
         self.assertEqual(request_consultation(dict(self.task, agent="unregistered"), "providers_unavailable", api=api)["status"], "not_applicable")
 
+    def test_three_slots_are_unique_and_fourth_is_rejected(self):
+        api = FakeIssues()
+        for round_index in range(3):
+            out = request_consultation(self.task, 'providers_unavailable', api=api,
+                                       round_index=round_index)
+            self.assertEqual(out['status'], 'requested')
+            self.assertEqual(out['ticket'], ticket(self.task['task_id'], self.task['agent'], round_index))
+        self.assertEqual(api.posts, 3)
+        self.assertEqual(len({item['title'] for item in api.issues}), 3)
+        self.assertEqual(request_consultation(self.task, 'providers_unavailable', api=api,
+                                               round_index=3)['status'], 'consultation_budget_exhausted')
+
     def test_redaction_and_idempotency(self):
         api = FakeIssues()
         first = request_consultation(self.task, "providers_unavailable", api=api)

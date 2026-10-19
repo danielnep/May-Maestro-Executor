@@ -24,17 +24,23 @@ API_URL = "https://api.github.com/repos/" + REPOSITORY
 REASONS = frozenset(("providers_unavailable", "specialist_question"))
 MAX_QUESTION = 1400
 MAX_ADVICE = 3000
+MAX_CONSULTATIONS_PER_TASK = 3
 SAFE_QUESTION = re.compile(r"^[\w \t.,:;!?()[\]{}+=/#\-À-ÿ\n]*$", re.UNICODE)
 BLOCKED = re.compile(r"(?:\b(?:api[_ -]?key|secret|password|senha|token|bearer|cpf|cnpj|private[_ -]?key)\b|"
                      r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|\b(?:sk-|AIza)[\w-]{12,})", re.I)
 
 
-def ticket(task_id, agent=None):
+def ticket(task_id, agent=None, round_index=0):
     if not isinstance(task_id, str) or not task_id:
         raise ValueError("Invalid consultation task")
     if agent is not None and agent not in AGENT_IDS:
         raise ValueError("Unknown consultation specialist")
+    if not isinstance(round_index, int) or not 0 <= round_index < MAX_CONSULTATIONS_PER_TASK:
+        raise ValueError("Invalid consultation round")
+    # The first round deliberately preserves issued V2 ticket IDs.
     key = task_id if agent is None else "v2|" + agent + "|" + task_id
+    if round_index:
+        key += "|round:" + str(round_index)
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
 
 
@@ -55,16 +61,20 @@ def _github(method, path, *, token=None, body=None):
 
 
 def _find_issue(api, key, legacy=False):
-    # Bounded last 100 issues. Task ID is deterministic; never manufacture a
-    # second issue if the first was already located in this live page.
-    rows = api("GET", "/issues?state=all&per_page=100")
+    # Browse up to 500 issues to avoid a duplicate when the repository grows.
+    # Stop on the first short page to minimize API calls and cost.
     marker = LEGACY_REQUEST_MARKER if legacy else REQUEST_MARKER
-    for row in rows:
-        if (not row.get("pull_request")
-                and row.get("title") == ISSUE_PREFIX + key
-                and marker in (row.get("body") or "")):
-            return row
-    return None
+    for page in range(1, 6):
+        rows = api("GET", "/issues?state=all&per_page=100&page=" + str(page))
+        for row in rows:
+            if (not row.get("pull_request")
+                    and row.get("title") == ISSUE_PREFIX + key
+                    and marker in (row.get("body") or "")):
+                return row
+        if len(rows) < 100:
+            return None
+    # Failure-closed on large histories: do not create duplicates.
+    raise RuntimeError("Consultation search cap reached: verify existing ticket")
 
 
 def _public_question(task, question, reason):
@@ -83,7 +93,7 @@ def _public_question(task, question, reason):
     return question.strip()
 
 
-def request_consultation(task, reason, *, api=None, question=None):
+def request_consultation(task, reason, *, api=None, question=None, round_index=0):
     """Idempotent request for any registered agent. No raw private task context."""
     agent = task.get("agent")
     if agent not in AGENT_IDS or reason not in REASONS:
@@ -93,7 +103,10 @@ def request_consultation(task, reason, *, api=None, question=None):
     public_question = _public_question(task, question, reason)
     if public_question is None:
         return {"status": "private_context_blocked"}
-    key = ticket(task.get("task_id"), agent)
+    try:
+        key = ticket(task.get("task_id"), agent, round_index)
+    except ValueError:
+        return {"status": "consultation_budget_exhausted"}
     call = api or _github
     existing = _find_issue(call, key)
     if existing:
@@ -104,6 +117,7 @@ def request_consultation(task, reason, *, api=None, question=None):
         "ticket: " + key,
         "agent: " + agent,
         "reason: " + reason,
+        "round: " + str(round_index),
         "data_class: public_technical_only",
         "response_contract: MAY_CONSULT_REPLY_V2 followed by JSON tool action OR a short diagnosis",
         "",
@@ -146,12 +160,12 @@ def _valid_reply(body):
     return {"advice_untrusted": payload}
 
 
-def read_consultation(task_id, *, api=None, agent=None):
+def read_consultation(task_id, *, api=None, agent=None, round_index=0):
     """Accept only a repository-owner comment with the expected V2 marker."""
     if not os.environ.get("GITHUB_TOKEN") and api is None:
         return None
     call = api or _github
-    row = _find_issue(call, ticket(task_id, agent), legacy=agent is None)
+    row = _find_issue(call, ticket(task_id, agent, round_index), legacy=agent is None)
     if row is None:
         return None
     comments = call("GET", "/issues/" + str(row["number"]) + "/comments?per_page=100")
