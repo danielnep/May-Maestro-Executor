@@ -12,13 +12,13 @@
   },
   "request_id": "ronda-pro-mobile-notifications-user-20261019",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/ronda-pro-mobile-notifications-user-20261019.json",
-  "status": "pending",
+  "status": "needs_attention",
   "tasks": [
     {
       "agent": "may-maestro",
       "attempts": 6,
       "model_used": null,
-      "status": "queued",
+      "status": "failed",
       "summary": "",
       "task_id": "chat-ronda-pro-mobile-notifications-user-20261019",
       "verification": []
