@@ -182,10 +182,23 @@ def summarize(request_id, tasks, publication=None):
         reports.append({'task_id': task['task_id'], 'agent': task['agent'], 'status': task['status'],
                         'attempts': task.get('attempts', 0), 'summary': str(result.get('summary', ''))[:12000],
                         'verification': checks})
+    # A model's finish is not a verified delivery: failed or absent QA evidence
+    # must remain actionable regardless of all specialists saying 'succeeded'.
+    qa_reports = [row for row in reports if row['agent'] == 'qa-engineer']
+    bad_checks = [dict(task_id=row['task_id'], check=check.get('check', 'unknown'),
+                       exit_code=check.get('exit_code'), tests_run=check.get('tests_run', 0))
+                  for row in reports for check in row['verification']
+                  if check.get('passed') is not True or check.get('tests_run', 0) == 0]
+    missing_qa_checks = [row['task_id'] for row in qa_reports if not row['verification']]
+    quality_ok = not bad_checks and not missing_qa_checks
+    if status == 'reported_complete' and not quality_ok:
+        status = 'needs_attention'
     delivery = publication or {'published': False, 'reason': 'No publication attempted'}
     if status != 'pending' and delivery.get('awaiting_host_publication') is True:
         status = 'awaiting_host_publication'
     return {'request_id': request_id, 'status': status, 'tasks': reports, 'publication': delivery,
+            'quality': {'approved': quality_ok, 'failed_checks': bad_checks,
+                        'qa_missing_evidence': missing_qa_checks},
             'source': 'https://github.com/' + REPOSITORY + '/blob/main/tasks/chat/' + request_id + '.json',
             'delivery_mode': 'read_result_in_chat',
             'note': 'Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.'}
