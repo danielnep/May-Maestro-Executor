@@ -193,6 +193,17 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertEqual(self.state.get('chat-proof-request')['attempts'], 2)
         self.assertEqual(result['status'], 'reported_complete')
 
+    def test_pending_and_failed_work_never_have_qa_approved_true(self):
+        for state in ("queued", "running", "blocked", "failed"):
+            with self.subTest(state=state):
+                report = summarize("proof-request", [{
+                    "task_id": "task-1", "agent": "may-maestro",
+                    "status": state, "attempts": 1,
+                    "result": {"verification": []},
+                }])
+                self.assertFalse(report["quality"]["approved"])
+                self.assertNotEqual(report["status"], "reported_complete")
+
     def test_summarize_keeps_verification_failure_without_raw_logs_or_keys(self):
         result = summarize('proof-request', [{'task_id': 'x', 'agent': 'qa-engineer', 'status': 'succeeded',
             'result': {'summary': 'Finished investigation', 'verification': [{'passed': False, 'exit_code': 1,
