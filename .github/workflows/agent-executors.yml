@@ -73,6 +73,7 @@ jobs:
         run: |
           python3 -m horizon_core.discover_models
           python3 -m horizon_core.app --preflight
+          python3 -m horizon_core.provider_access_probe
 
   smoke-prepare:
     needs: verification
