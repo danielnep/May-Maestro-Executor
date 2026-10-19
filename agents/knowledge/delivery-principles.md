@@ -93,6 +93,12 @@ Aplicável a Frontend Engineer, UI/UX Designer, Horizon UI Guardian, Mobile App 
 
 **Referência de estilo não é licença para copiar um template:** a solução deve parecer produto desenhado para o fluxo específico, não um dashboard genérico com cards intercambiáveis.
 
+## Gate universal de excelência premium e revisão final May (19/10/2026)
+
+**Fim de trabalho não é fim de qualidade.** Projeto/correção com UI passa por design de transições, microinterações, gestos naturais, caminho claro de abrir/fechar/voltar, estados completos, proporções de ícones, espaço/contraste/opacidade, revisão Chromium mobile+desktop, retrabalho se necessário e conferência May pelo link de uma prévia realmente acessível. **Anti-padrão:** substituir raciocínio de interação por um modal genérico, uma animação de entrada isolada ou botão X decorativo. Não remover meios essenciais de cancelamento, foco, Esc, Voltar ou acessibilidade: projetar a solução contextual correta. A equipe não deve confundir redução de movimento com exclusão da sofisticação nem insistir em animações que mudem o alvo de clique.
+
+**Handoff padrão de todas as entregas técnicas:** `tasks/results/<id>.json` apresenta bloco sistêmico `may_review` contendo `status`, `preview_url` apenas quando confirmado pelo Pages da branch publicada, `commit_url` se houver SHA verificado, `result_url`, itens de revisão e razão concreta de indisponibilidade. Em estado pronto, o Maestro deve disponibilizar esse pacote curto a May pelo mecanismo de comunicação realmente ativo. A entrega por GitHub **não é uma mensagem iniciada dentro de uma conversa**; não afirmar recebimento no chat sem testemunhar entrega. A May abre o link no navegador e percorre jornadas, não recebe centenas de screenshots. Se link ausente, pedir implantação de preview verificado ou evidência alternativa segura, jamais inventar URL e jamais copiar imagens de clientes para Issue pública.
+
 ## Política de economia de contexto e limite de looping (19/10/2026)
 
 1. **Envio cirúrgico:** usar o inventário local e a busca determinística `list_files(filter,limit)` / `read_file(path,search)` para localizar trechos, depois `read_file(path,start_line,end_line)`. Não enviar arquivos inteiros se uma seção ou dependência direta basta. A memória e os checkpoints completos ficam no SQLite; o modelo só recebe as quatro ações recentes compactadas, oito registros de memória relevantes por agente e contagem das ações omitidas. Cada tarefa tem histórico próprio, sem anexar a conversa de outro projeto.
