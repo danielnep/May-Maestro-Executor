@@ -294,9 +294,37 @@ class ModelGateway:
             self._circuit = self.state.recall("__runtime__", "gateway").get("circuit", {})
 
     def inspect_image(self, agent, data, question):
+        """Use the actual PNG, with a free-only vision fallback after HTTP 429.
+
+        DeepSeek in this executor is text-only. Never pretend that a text
+        response or an OCR extraction proves an image was inspected.
+        """
         if self.gemini is None:
             raise self._init_errors['gemini']
-        return self.gemini.inspect_image(agent, data, question)
+        try:
+            return self.gemini.inspect_image(agent, data, question)
+        except GatewayError as primary:
+            alternate_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
+            # Same strict free-tier/HTTP-429 policy as textual fallback.
+            if not (primary.provider == "gemini" and primary.reason == "quota"
+                    and primary.status == 429
+                    and alternate_model == "gemini-3.5-flash-lite"
+                    and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
+                    and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != alternate_model):
+                raise
+            try:
+                report = self.gemini.inspect_image(dict(agent, model=alternate_model),
+                                                   data, question)
+            except GatewayError as backup:
+                raise GatewayError(
+                    "Both permitted Gemini visual routes failed; retain browser evidence",
+                    retryable=primary.retryable or backup.retryable,
+                    provider="gemini", reason="vision_unavailable",
+                    failures=[primary.as_dict(), backup.as_dict()]) from None
+            report["metadata"]["fallback_from"] = "gemini"
+            report["metadata"]["fallback_reason"] = primary.as_dict()
+            report["metadata"]["free_tier_model"] = True
+            return report
 
     def _save_circuit(self, value):
         self._circuit = value
