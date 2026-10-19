@@ -41,5 +41,5 @@ jobs:
               except URLError: print('Probe network error')
               raise
           assert type(value.get('revision')) is int
-          print('Horizon embedded PostgreSQL: authenticated read succeeded; revision available')
+          print('Horizon embedded PostgreSQL: authenticated read succeeded; snapshot_revision='+str(value['revision']))
           PY
