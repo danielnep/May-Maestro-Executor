@@ -299,6 +299,14 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
                 'target_repo': target_repo, 'target_branch': publication_target,
                 'base_sha': baseline.base_sha, 'patch_files': files,
                 'host_action': 'May must verify the remote base and publish via the connected GitHub tool; do not claim publication before confirmation.'}
+        # Publishing source is a separate preview surface, never a main merge.
+        # Switching Pages requires a Pages+Administration-write token.
+        if publication.get('published') is True and publication.get('branch') == validated['branch']:
+            from .pages_preview import sync_pages_source
+            preview = sync_pages_source(target_repo, validated['branch'])
+            publication['pages_preview'] = preview
+            if preview['status'] not in ('verified', 'already_current', 'pages_not_enabled'):
+                print(json.dumps({'request_id': validated['id'], 'pages_preview': preview}))
         state.remember(task['project'], '__chat_controller__', 'publication', publication)
         return summarize(validated['id'], scoped.tasks(), publication)
 
