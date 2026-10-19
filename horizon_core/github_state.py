@@ -8,6 +8,7 @@ CAS prevents lost updates; it does not provide a distributed task lease.
 """
 
 import base64
+import gzip
 import binascii
 import json
 import os
@@ -27,7 +28,8 @@ class GitHubStateError(RuntimeError):
 class GitHubState:
     path = "runtime/state.sqlite3"
 
-    def __init__(self, repo, branch="agent-state/runtime", token=None, opener=None):
+    def __init__(self, repo, branch="agent-state/runtime", token=None, opener=None, compressed=False,
+                 encryption_key=None):
         if not isinstance(repo, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo
         ) or any(part in (".", "..") for part in repo.split("/")):
@@ -39,6 +41,12 @@ class GitHubState:
             raise ValueError("State branch must be inside agent-state/")
         self.repo = repo
         self.branch = branch
+        self.compressed = compressed
+        if encryption_key is not None and not compressed:
+            raise ValueError("Encrypted checkpoints require compression")
+        self.encryption_key = encryption_key
+        self.path = "runtime/state.sqlite3.gz" if compressed else "runtime/state.sqlite3"
+        self.restored_legacy = False
         self.token = token if token is not None else os.environ.get("GITHUB_TOKEN")
         self.opener = opener or urlopen
         self.sha = None
@@ -87,6 +95,18 @@ class GitHubState:
         connections). A missing checkpoint leaves any destination untouched.
         """
         result = self._content()
+        self.restored_legacy = False
+        if result is None and self.compressed:
+            # First run after an opt-in transition: use the historical SQLite snapshot.
+            # Subsequent writes publish a compressed blob without deleting the original.
+            previous = self.path
+            self.path = "runtime/state.sqlite3"
+            try:
+                result = self._content()
+            finally:
+                self.path = previous
+            if result is not None:
+                self.restored_legacy = True
         if result is None:
             self.sha, self._read = None, True
             return False
@@ -94,8 +114,18 @@ class GitHubState:
             if result["encoding"] != "base64" or not isinstance(result["sha"], str):
                 raise ValueError()
             content = base64.b64decode("".join(result["content"].split()), validate=True)
+            if self.compressed and not self.restored_legacy:
+                if self.encryption_key is not None:
+                    from cryptography.fernet import Fernet, InvalidToken
+                    try:
+                        content = Fernet(self.encryption_key).decrypt(content)
+                    except (InvalidToken, ValueError, TypeError):
+                        raise ValueError("Checkpoint decryption failed") from None
+                content = gzip.decompress(content)
+            if len(content) > 64 * 1024 * 1024 or not content.startswith(b"SQLite format 3\x00"):
+                raise ValueError()
             sha = result["sha"]
-        except (KeyError, TypeError, ValueError, binascii.Error):
+        except (KeyError, TypeError, ValueError, OSError, EOFError, binascii.Error):
             raise GitHubStateError("Invalid GitHub checkpoint response") from None
         target = Path(destination)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +136,8 @@ class GitHubState:
             os.replace(temporary_path, target)
         finally:
             temporary_path.unlink(missing_ok=True)
-        self.sha, self._read = sha, True
+        # The blob SHA of the legacy path is NOT valid for the new compressed path.
+        self.sha, self._read = (None if self.restored_legacy else sha), True
         return True
 
     def _ensure_branch(self):
@@ -148,7 +179,12 @@ class GitHubState:
             with sqlite3.connect(source.as_uri() + "?mode=ro", uri=True) as original:
                 with sqlite3.connect(snapshot) as copy:
                     original.backup(copy)
-            payload = base64.b64encode(snapshot.read_bytes()).decode("ascii")
+            original_bytes = snapshot.read_bytes()
+            packed = gzip.compress(original_bytes, compresslevel=6, mtime=0) if self.compressed else original_bytes
+            if self.encryption_key is not None:
+                from cryptography.fernet import Fernet
+                packed = Fernet(self.encryption_key).encrypt(packed)
+            payload = base64.b64encode(packed).decode("ascii")
         self._ensure_branch()
         body = {"message": "Checkpoint Horizon runtime", "branch": self.branch, "content": payload}
         sha = expected_sha if expected_sha is not None else self.sha

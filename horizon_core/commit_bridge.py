@@ -292,12 +292,20 @@ def main(argv=None):
     if os.getenv('GITHUB_REPOSITORY', REPOSITORY) != REPOSITORY:
         raise ValueError('This controller is bound to its own repository')
     from .handoff import ready_request_ids, write_marker
-    if os.getenv('HORIZON_STATE_BACKEND') == 'embedded-postgres':
+    backend = os.getenv('HORIZON_STATE_BACKEND', 'github-sqlite')
+    if backend == 'github-sqlite':
+        from .github_sqlite_state import GitHubSQLiteState
+        state = GitHubSQLiteState()
+        print(json.dumps({'state_backend': 'github-sqlite',
+                          'legacy_sqlite_snapshot_restored': state.restored_legacy}))
+    elif backend == 'embedded-postgres':
         from .embedded_state import HorizonEmbeddedState
         state = HorizonEmbeddedState()
-    else:
+    elif backend == 'railway-postgres':
         from .railway_postgres import RailwayPostgresState
         state = RailwayPostgresState()
+    else:
+        raise RuntimeError('Unsupported state backend; refusing implicit fallback')
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
