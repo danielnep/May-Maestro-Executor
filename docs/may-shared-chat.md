@@ -22,15 +22,22 @@ A decisão só é aceita pelo worker se estiver dentro das ferramentas reais
 autorizadas para aquele agente, e a verificação da ferramenta ocorrer.
 
 ## Algoritmos, confidencialidade e limites
-- GitHub Issues são o transporte durável. Uma Issue por task-id e agent-id.
+- GitHub Issues são o transporte durável: cada rodada tem ticket único por
+  task-id, agent-id e índice, preservando idempotência.
 - Marcadores MAY_CONSULT_REQUEST_V2 e MAY_CONSULT_REPLY_V2.
 - Somente perguntas textuais com payload.may_public_context_allowed=true
   aprovado pelo proprietário podem ser incluídas no GitHub público.
 - Queda de ambos provedores só envia classe genérica, sem código, dados ou logs.
 - Aguardando May: fila suspensa por 15 minutos (not_before), sem consumir
   tentativas ou bater repetidamente nos provedores.
-- Até três perguntas sequenciais por agente/tarefa, com ticket SHA256 por rodada,\n  evitando loops de perguntas repetidas. Resposta apenas de comentário autenticado
-  do proprietário, limites de tamanho, validação de esquema e controle de ACL.
+- Quatro consultas por agente numa janela móvel de 60 minutos, contando
+  Issues V2 criadas no GitHub, inclusive de tarefas distintas. A quinta espera
+  até haver vaga; pergunta, rodada e checkpoint permanecem intactos.
+  Após o intervalo, a tentativa seguinte envia o mesmo ticket sem usar
+  outra chamada Gemini/DeepSeek. Não existe limite vitalício por tarefa.
+- Resposta: uma única ação JSON executável ou um diagnóstico curto;
+  selecionar primeiro a leitura/teste que falta quando houver incerteza,
+  sem escrever prosa genérica nem inventar resultados. O executor valida ACL.
 - O agendador verifica até três tickets por execução, sequencialmente.
   Não criar um chat por agente. Criar sucessor somente após prova de
   limite/tamanho da conversa e atualizar a URL no agendador privado.
