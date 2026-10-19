@@ -25,6 +25,10 @@ on:
       - 'horizon_core/state.py'
       - 'horizon_core/registry.py'
       - 'horizon_core/learning.py'
+      - 'horizon_core/knowledge_sync.py'
+      - 'tests/test_knowledge_sync.py'
+      - 'tests/test_shared_incident_playbook.py'
+      - 'agents/knowledge/verified-error-playbook.json'
       - 'horizon_core/deterministic.py'
       - 'tests/test_agent_learning.py'
       - 'horizon_core/provider_access_probe.py'
@@ -99,6 +103,8 @@ jobs:
           python -m unittest discover -s tests -p test_github_state.py -v
           python -m unittest discover -s tests -p test_github_sqlite_state.py -v
           python -m unittest discover -s tests -p test_agent_learning.py -v
+          python -m unittest discover -s tests -p test_shared_incident_playbook.py -v
+          python -m unittest discover -s tests -p test_knowledge_sync.py -v
           python -m unittest discover -s tests -p test_gemini_model_pin.py -v
           python -m unittest discover -s tests -p test_provider_access_probe.py -v
           python -m unittest discover -s tests -p test_agent_report_quality.py -v
@@ -125,6 +131,16 @@ jobs:
           HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
           HORIZON_PAGES_TOKEN: ${{ secrets.HORIZON_PAGES_TOKEN }}
         run: python -m horizon_core.commit_bridge --session-seconds 1200
+      - name: Publicar aprendizados verificados no GitHub com verificacao de integridade
+        # O checkpoint privado permanece criptografado em agent-state/runtime.
+        # So metadados permitidos e validados sao copiados para o manual publico.
+        if: ${{ success() }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: python -m horizon_core.knowledge_sync
       - name: Compartilhar prints dos agentes quando expressamente autorizado
         if: ${{ always() && vars.HORIZON_VISUAL_ARTIFACTS_PUBLIC_SAFE == 'true' }}
         uses: actions/upload-artifact@v4
