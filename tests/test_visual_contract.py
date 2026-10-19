@@ -30,6 +30,9 @@ class VisualReviewTests(unittest.TestCase):
     def test_both_viewports_required_after_last_edit(self):
         edit={"action":"write_file"}
         self.assertTrue(visual_review_status([edit,proof()])["verified"])
+        extra=proof()
+        extra["outcome"]["screenshots"].append({"file":"mobile-chat-messages-2.png","sha256":"a"*64})
+        self.assertTrue(visual_review_status([edit,extra])["verified"])
         self.assertFalse(visual_review_status([proof(),edit])["verified"])
         for bad in (proof(mobile=False),proof(desktop=False),proof(passed=False),
                     proof(geometry=False),proof(clicks=0),proof(blocked=True)):
