@@ -1,0 +1,22 @@
+{
+  "owner": "danielnep",
+  "repository": "danielnep/app-hondas-maxvel",
+  "task_id": "ronda-pro-css-priority-20261019",
+  "agent": "may-maestro",
+  "project": "ronda-pro",
+  "delivery_type": "existing_product",
+  "objective": "PRIORIDADE MÁXIMA sobre Michelle: iniciar agora a correção das 14 asserções CSS e regressões de UI/UX do Ronda Pro, especialmente mobile Vigia/Vistoriador, COI e Administração, preservando identidade Maxvel, mapa claro, barra inferior proporcional à tela e CSS consolidado. Primeiro reproduzir falhas reais e identificar arquivos/testes; delegar a UI Guardian, frontend, UI/UX e QA conforme necessário; corrigir causas raiz, sem remendos; executar npm run check e npm test e testes visuais quando disponíveis; registrar logs, falhas, checkpoint e progresso por especialista. Publicar SOMENTE em branch isolada agent/chat-ronda-pro-css-priority-20261019, nunca merge, main ou deploy. Não tocar no projeto Michelle; ele fica com prioridade inferior sem apagar seu estado. Se bloqueio de permissão ou ambiente, registrar erro e ação concreta, não marcar como concluído sem testes.",
+  "payload": {
+    "allowed_paths": [
+      "src/**",
+      "tests/**",
+      "styles/**",
+      "css/**",
+      "public/**",
+      "docs/**",
+      "index.html",
+      "package.json",
+      "server.js"
+    ]
+  }
+}
