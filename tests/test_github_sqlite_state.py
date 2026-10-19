@@ -54,5 +54,30 @@ class GitHubSQLiteTests(unittest.TestCase):
         state.close()
 
 
+    def test_identical_memory_does_not_create_another_snapshot(self):
+        class Snapshot:
+            restored_legacy = False
+            def __init__(self, source):
+                self.source = source
+                self.writes = 0
+            def pull(self, dest):
+                Path(dest).write_bytes(Path(self.source).read_bytes())
+                return True
+            def push(self, source):
+                self.writes += 1
+                return "ack"
+        remote = Snapshot(self.orig)
+        state = GitHubSQLiteState(api=remote)
+        try:
+            state.remember("sample", "qa-engineer", "same", {"status": "verified"})
+            self.assertEqual(remote.writes, 1)
+            state.remember("sample", "qa-engineer", "same", {"status": "verified"})
+            self.assertEqual(remote.writes, 1)
+            state.remember("sample", "qa-engineer", "same", {"status": "changed"})
+            self.assertEqual(remote.writes, 2)
+        finally:
+            state.close()
+
+
 if __name__ == "__main__":
     unittest.main()
