@@ -251,6 +251,40 @@ class FallbackTests(unittest.TestCase):
         for secret in ("gemini-test-secret", "deepseek-test-secret"):
             self.assertNotIn(secret, str(error) + json.dumps(error.failures))
 
+    def test_verified_free_model_recovers_primary_quota_and_deepseek_402(self):
+        env = dict(self.env, GEMINI_FREE_FALLBACK_MODEL='gemini-3.5-flash-lite')
+        calls = []
+        def opener(request, timeout):
+            calls.append(request.full_url)
+            if 'gemini-3.5-flash-lite' in request.full_url:
+                return envelope()
+            status = 429 if 'googleapis' in request.full_url else 402
+            raise urllib.error.HTTPError(request.full_url, status, 'unavailable', {},
+                                         io.BytesIO(b'no secrets in diagnostics'))
+        gateway = ModelGateway(environ=env, opener=opener)
+        result = gateway.complete(load_agent('software-architect'), self.messages)
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(result['metadata']['model'], 'gemini-3.5-flash-lite')
+        self.assertTrue(result['metadata']['free_tier_model'])
+        self.assertEqual(result['metadata']['fallback_from'], 'gemini_and_deepseek')
+        self.assertEqual([e['status'] for e in result['metadata']['fallback_reasons']], [429, 402])
+        for key in ('GEMINI_API_KEY', 'DEEPSEEK_API_KEY'):
+            self.assertNotIn(env[key], json.dumps(result))
+
+    def test_free_model_failure_preserves_all_three_safe_provider_errors(self):
+        env = dict(self.env, GEMINI_FREE_FALLBACK_MODEL='gemini-3.5-flash-lite')
+        def opener(request, timeout):
+            status = 402 if 'api.deepseek.com' in request.full_url else 429
+            raise urllib.error.HTTPError(request.full_url, status, 'quota', {},
+                                         io.BytesIO(b'sensitive upstream payload'))
+        with self.assertRaises(GatewayError) as caught:
+            ModelGateway(environ=env, opener=opener).complete(
+                load_agent('software-architect'), self.messages)
+        self.assertEqual([f['status'] for f in caught.exception.failures], [429, 402, 429])
+        self.assertEqual(caught.exception.reason, 'providers_unavailable')
+        self.assertTrue(caught.exception.retryable)
+        self.assertNotIn('sensitive upstream payload', str(caught.exception))
+
     def test_deepseek_enforces_same_action_permissions_and_rejects_bad_envelopes(self):
         bad = {"action": "write_file", "args": {"path": "x", "content": "x"}, "summary": "unauthorized"}
         for raw in (b'[]', b'{}', b'not json', b'{"choices":[{"finish_reason":"length"}]}'):
