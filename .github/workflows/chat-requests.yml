@@ -53,6 +53,8 @@ jobs:
       - name: Validar contrato do controlador sem chamadas externas
         run: |
           python -m unittest discover -s tests -p test_commit_bridge.py -v
+          python -m unittest discover -s tests -p test_handoff.py -v
+          python -m unittest discover -s tests -p test_handoff_workflow.py -v
           python -m unittest discover -s tests -p test_provider_recovery.py -v
           python -m unittest discover -s tests -p test_gateway.py -v
       - name: Importar pedidos, retomar especialistas e registrar resultados
