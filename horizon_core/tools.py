@@ -60,21 +60,48 @@ class Tools:
         if not isinstance(args, dict):
             raise ValueError('Tool arguments must be an object')
         if action == 'list_files':
+            pattern = args.get('filter', '')
+            limit = args.get('limit', 100)
+            if not isinstance(pattern, str) or len(pattern) > 80 or (
+                    type(limit) is not int or not 1 <= limit <= 200):
+                raise ValueError('Bounded list_files filter/limit required')
             result = []
             for path in sorted(self.root.rglob('*')):
-                if len(result) >= 500:
+                if len(result) >= limit:
                     break
                 if not path.is_file():
                     continue
                 name = path.relative_to(self.root).as_posix()
+                if pattern and pattern.casefold() not in name.casefold():
+                    continue
                 try:
                     self.path(name)
                 except ValueError:
                     continue
                 result.append(name)
-            return {'files': result, 'limit': 500}
+            return {'files': result, 'limit': limit, 'filter': pattern}
         if action == 'read_file':
             path = self.path(args.get('path'))
+            # Find a local symbol or string first, rather than asking an LLM to
+            # read thousands of unrelated lines or make a remote API call.
+            search = args.get('search')
+            if search is not None:
+                if (not isinstance(search, str) or not 2 <= len(search) <= 100 or
+                        args.get('start_line') is not None or args.get('end_line') is not None):
+                    raise ValueError('Search must be 2-100 chars without a line range')
+                found = []
+                context = 3
+                if path.stat().st_size > 2_000_000:
+                    raise ValueError('Source exceeds bounded local search')
+                lines = path.read_text(encoding='utf-8').splitlines()
+                matches = [i for i, line in enumerate(lines) if search.casefold() in line.casefold()]
+                for match in matches[:8]:
+                    start = max(0, match-context)
+                    end = min(len(lines), match+context+1)
+                    found.append({'start_line': start+1, 'end_line': end,
+                                  'content': '\\n'.join(lines[start:end])[:1100]})
+                return {'path': args['path'], 'search': search, 'matches': found,
+                        'total_matches': len(matches), 'truncated': len(matches)>8}
             # Read only the relevant excerpt when a bounded line range is supplied.
             start, end = args.get('start_line'), args.get('end_line')
             if start is not None or end is not None:
