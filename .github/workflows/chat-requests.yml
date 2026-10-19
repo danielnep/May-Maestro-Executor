@@ -11,6 +11,8 @@ on:
       - 'tests/test_pages_preview.py'
       - 'horizon_core/state.py'
       - 'horizon_core/gateway.py'
+      - 'horizon_core/reasoning_policy.py'
+      - 'tests/test_reasoning_policy.py'
       - 'horizon_core/may_consultation.py'
       - 'tests/test_may_consultation.py'
       - 'tests/test_gateway.py'
@@ -95,6 +97,7 @@ jobs:
           python -m unittest discover -s tests -p test_handoff_workflow.py -v
           python -m unittest discover -s tests -p test_provider_recovery.py -v
           python -m unittest discover -s tests -p test_gateway.py -v
+          python -m unittest discover -s tests -p test_reasoning_policy.py -v
           python -m unittest discover -s tests -p test_may_consultation.py -v
           python -m unittest discover -s tests -p test_may_consultation.py -v
           python -m unittest discover -s tests -p test_worker.py -v
