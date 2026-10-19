@@ -30,6 +30,8 @@ on:
       - 'horizon_core/tools.py'
       - 'horizon_core/state.py'
       - 'horizon_core/registry.py'
+      - 'agents/skills/meticulosidade/SKILL.md'
+      - 'tests/test_meticulosidade.py'
       - 'horizon_core/learning.py'
       - 'horizon_core/knowledge_sync.py'
       - 'tests/test_knowledge_sync.py'
@@ -113,6 +115,7 @@ jobs:
           python -m unittest discover -s tests -p test_github_sqlite_state.py -v
           python -m unittest discover -s tests -p test_agent_learning.py -v
           python -m unittest discover -s tests -p test_shared_incident_playbook.py -v
+          python -m unittest discover -s tests -p test_meticulosidade.py -v
           python -m unittest discover -s tests -p test_knowledge_sync.py -v
           python -m unittest discover -s tests -p test_gemini_model_pin.py -v
           python -m unittest discover -s tests -p test_provider_access_probe.py -v
