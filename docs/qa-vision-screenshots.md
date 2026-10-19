@@ -26,3 +26,71 @@
 ## Aceite P0 Ronda Pro
 
 Vigia/Ronda, Vistoriador e site/COI/Admin devem ter perfis/estados testados em viewport real, incluindo arrastos por toda superfície das barras, foco/teclado, ícones sem deformação, animações sem instabilidade de clique, chat visível e controles com cores corretas. **Uma captura aprovada não prova gesto nem APK Android**. Exigir capturas e provas das ações após cada reparo, e inspeção visual real quando a composição exigir julgamento.
+
+
+## Auditoria de FLUXOS com navegador do próprio executor (sem nova API)
+
+O CLI existente não é automaticamente um navegador com testes do produto. O executor
+possui `browser-playwright` dentro de Docker isolado, mas sem
+`horizon.browser.json` no **repositório avaliado** executa só um smoke genérico.
+O browser acessa uma cópia local do código por `127.0.0.1:4173`,
+com `--network=none` para impedir dependências externas e vazamento de sessões.
+Isso é diferente de navegar o GitHub Pages público: para o site publicado a
+May usa seu navegador conectado e relata o que realmente clicou.
+
+### Contrato declarativo `horizon.browser.json`
+
+Adicionar ao repositório do produto em uma branch de trabalho, após identificar
+os nomes acessíveis exatos, o estado inicial e os fluxos autorizados:
+
+```json
+{
+  "ready": {"role": "heading", "name": "Pronto para iniciar?"},
+  "steps": [
+    {"action": "expect_visible", "target": {"role": "button", "name": "Iniciar ronda"}, "viewports": ["mobile"]},
+    {"action": "capture", "name": "ronda-inicial", "viewports": ["mobile"]},
+    {"action": "drag", "target": {"role": "region", "name": "Ação principal da ronda"}, "dx": 0, "dy": -250, "viewports": ["mobile"]},
+    {"action": "capture", "name": "depois-do-arrasto", "viewports": ["mobile"]},
+    {"action": "click", "target": {"role": "button", "name": "Enviar mensagem"}, "viewports": ["mobile"]},
+    {"action": "expect_visible", "target": {"role": "dialog", "name": "Mensagens"}, "viewports": ["mobile"]},
+    {"action": "capture", "name": "mensagens-abertas", "viewports": ["mobile"]}
+  ]
+}
+```
+
+O exemplo é um **modelo a ajustar aos nomes acessíveis realmente implementados**;
+NÃO é resultado de teste e NÃO será aprovado se os rótulos ou estado forem
+diferentes. A equipe deve primeiro inspecionar o HTML/ARIA real, navegar pelo
+fluxo e definir **asserções que comprovam efeito** após cada drag/click.
+Também há passos `fill`, `press`, `navigate`, `expect_text`,
+`expect_hidden`, `expect_attribute` e `offline` (não executar fluxo
+offline se a aplicação exigir backend). As ações são dados validados;
+nenhum script do usuário é executado como código do avaliador.
+
+O navegador coleta métricas e validações para todos os passos, com **até 18
+screenshots intermediários de estágios nomeados e 2 finais de referência**
+(`mobile-rendered.png`, `desktop-rendered.png`) por auditoria. Evidências
+binárias permanecem isoladas no runtime; não mandar automaticamente 20 PNGs
+para Gemini, GitHub Issues ou ChatGPT. Enviar só a imagem relevante quando
+houver ambiguidade visual, ou preferencialmente o **link público e o roteiro**
+para May reproduzir em navegador. O executor só considera a prova visual
+aceita com ações reais, geometrias e finais de ambos os viewports.
+
+**Momento operacional:** executar inspeção determinística após concluir um
+conjunto de mudanças, corrigir falhas, e repetir como portão de publicação;
+não tirar centenas de screenshots a cada linha editada. QA, UI Guardian e
+Corregedoria têm papéis independentes. Uma captura comprovada não substitui
+validação de gesto, fluxo e APK real no Android.
+
+### Ponte para a conversa única
+
+Quando for necessária segunda opinião visual e o site for público e
+expressamente aprovado, uma Issue `MAY_CONSULT_REQUEST_V2` do projeto
+`ronda-pro` inclui automaticamente o link público fixo. A tarefa
+**Central Horizon dos Agentes** pode ler a Issue, visitar o link no navegador
+KERNEL conectado, responder **curto** na mesma conversa monitorada, e gravar
+uma resposta autenticada na Issue original. O transporte **não injeta PNG no
+ChatGPT** nem permite que o runtime remoto controle por si o KERNEL conectado.
+A cadência atualmente configurada da tarefa é **horária**, não imediata;
+para revisões urgentes, May pode usar o navegador em um turno solicitado pelo
+proprietário. Não há transparência de screenshots de cliente em GitHub público.
