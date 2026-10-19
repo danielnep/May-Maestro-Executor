@@ -234,6 +234,11 @@ class DeepSeekGateway(_HTTPGateway):
         model = agent.get("deepseek_model") or self.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
         if not isinstance(model, str) or not model.strip():
             raise self._error("DEEPSEEK_MODEL must be nonempty text", "configuration")
+        # The old chat/reasoner aliases retired in July 2026. Do not make an
+        # implicit deep-thinking request merely because a stale alias was set.
+        deprecated = model in ("deepseek-chat", "deepseek-reasoner")
+        if deprecated:
+            model = "deepseek-flash"
         payload = {"model": model, "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
                    "response_format": {"type": "json_object"}, **effort}
         if effort["thinking"]["type"] == "disabled":
@@ -254,7 +259,8 @@ class DeepSeekGateway(_HTTPGateway):
         action = self._action(text, agent)
         action["metadata"] = dict(self._metadata(agent, model, usage),
                                   thinking_mode=effort["thinking"]["type"],
-                                  reasoning_effort=effort.get("reasoning_effort", "none"))
+                                  reasoning_effort=effort.get("reasoning_effort", "none"),
+                                  retired_alias_normalized=deprecated)
         return action
 
 
@@ -329,7 +335,13 @@ class ModelGateway:
                                    reason="insufficient_balance", status=402)
             if "deepseek" in self._init_errors:
                 raise self._init_errors["deepseek"]
-            action = self.deepseek.complete(agent, messages, effort=select_deepseek_mode(approval))
+            # Paid Pro is never selected unless the operator explicitly enabled
+            # it AND Maestro has approved the maximum level with real evidence.
+            use_pro = (approval.approved and approval.effort == "max"
+                       and self.environ.get("DEEPSEEK_PRO_ALLOWED") == "true")
+            chosen = dict(agent, deepseek_model="deepseek-v4-pro") if use_pro else agent
+            action = self.deepseek.complete(chosen, messages, effort=select_deepseek_mode(approval))
+            action["metadata"]["pro_explicitly_authorized"] = use_pro
             action["metadata"]["maestro_effort_approval"] = approval.public()
         except GatewayError as exc:
             failures = [primary, exc.as_dict()]
