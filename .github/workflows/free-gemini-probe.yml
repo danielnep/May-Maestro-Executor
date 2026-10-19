@@ -1,0 +1,43 @@
+name: Horizon - verificar Gemini gratuito reserva
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/free-gemini-probe.yml']
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verificar modelo gratuito sem imprimir segredo nem resposta
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from urllib.request import Request,urlopen
+          from urllib.error import HTTPError,URLError
+          key=os.getenv('GEMINI_API_KEY','')
+          if not key:
+              print('Gemini free probe: missing credential');raise SystemExit(1)
+          model='gemini-3.5-flash-lite'
+          url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent'
+          body={'contents':[{'parts':[{'text':'Return a JSON object {"ok":true} and nothing else.'}]}],
+                'generationConfig':{'responseMimeType':'application/json','maxOutputTokens':80}}
+          req=Request(url,data=json.dumps(body).encode(),method='POST',headers={
+            'Content-Type':'application/json','x-goog-api-key':key})
+          try:
+              with urlopen(req,timeout=35) as response:
+                  data=json.load(response)
+                  text=''.join(x.get('text','') for x in data.get('candidates',[{}])[0].get('content',{}).get('parts',[]))
+                  valid=isinstance(json.loads(text),dict)
+                  print('Gemini 3.5 Flash-Lite free test: HTTP',response.status,'JSON',valid)
+          except HTTPError as error:
+              print('Gemini 3.5 Flash-Lite free test: HTTP',error.code)
+              raise SystemExit(1)
+          except (URLError,TimeoutError,ValueError,KeyError,IndexError):
+              print('Gemini 3.5 Flash-Lite free test: unavailable')
+              raise SystemExit(1)
+          PY
