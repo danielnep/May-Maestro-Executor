@@ -31,7 +31,7 @@ def decide(context):
     """Never treat a narrative or a failed model response as test proof."""
     if not isinstance(context, dict):
         return EffortDecision("low", False, "missing_trusted_context", ())
-    history = context.get("history") or []
+    history = context.get("effort_history", context.get("history")) or []
     if not isinstance(history, list):
         return EffortDecision("low", False, "invalid_history", ())
     # Truncated model context is no substitute for the persisted checkpoint.
@@ -52,7 +52,14 @@ def decide(context):
                 or outcome.get("workspace_unchanged") is not True
                 or outcome.get("passed") is not False):
             continue
-        ident = outcome["check"]
+        digest = outcome.get("workspace_digest")
+        # One failing test with identical inputs is still one failed attempt.
+        # A new source snapshot makes a retry a new diagnostic experiment.
+        if isinstance(digest, str) and len(digest) == 64 and all(
+                char in "0123456789abcdef" for char in digest.lower()):
+            ident = outcome["check"] + "@" + digest[:12]
+        else:
+            ident = outcome["check"]
         if ident not in failed:
             failed.append(ident)
     if not failed:
@@ -95,3 +102,26 @@ def describe_for_maestro():
         "Try local deterministic diagnostics and verified memory first. "
         "Record the decision and never automatically buy a Pro model."
     )
+
+
+def evidence_for_router(history):
+    """Export only small runtime observations, never large tool output or secrets."""
+    if not isinstance(history,list):
+        return []
+    facts=[]
+    for item in history:
+        if not isinstance(item,dict):
+            continue
+        action=item.get("action")
+        raw=item.get("outcome")
+        if not isinstance(raw,dict):
+            continue
+        if action=="write_file" and raw.get("sha256") and not raw.get("error"):
+            facts.append({"action":"write_file","outcome":{"sha256":str(raw["sha256"])[:64]}})
+        if action=="run_check" and raw.get("check") in HARD_CHECKS:
+            facts.append({"action":"run_check","outcome":{
+                "check":raw["check"],"source":raw.get("source"),
+                "simulated":raw.get("simulated"),"passed":raw.get("passed"),
+                "workspace_unchanged":raw.get("workspace_unchanged"),
+                "workspace_digest":str(raw.get("workspace_digest") or "")[:64]}})
+    return facts[-16:]
