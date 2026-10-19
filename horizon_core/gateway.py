@@ -308,8 +308,12 @@ class ModelGateway:
             # Zero-cost third route, explicitly enabled only after a real
             # free-tier probe. Never opt into paid model inference.
             backup_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
-            if (backup_model == "gemini-3.5-flash-lite" and
-                    self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
+            # Only consider the least costly tier after actual primary quota
+            # exhaustion and DeepSeek unavailability. Never on auth/config errors.
+            if (backup_model == "gemini-3.5-flash-lite"
+                    and primary.get("reason") == "quota"
+                    and primary.get("status") == 429
+                    and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
                     and self.gemini is not None):
                 try:
                     alternate = dict(agent, model=backup_model)
