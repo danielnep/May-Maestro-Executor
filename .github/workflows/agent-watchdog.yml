@@ -25,7 +25,7 @@ jobs:
     steps:
       - name: Detectar execuções paradas, recuperar fila e avisar proprietário sem IA ou BD
         env:
-          GH_TOKEN: \${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY'
           import datetime as dt, json, os
