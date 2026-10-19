@@ -23,6 +23,10 @@ LEGACY_REQUEST_MARKER = "MAY_CONSULT_REQUEST_V1"
 LEGACY_REPLY_MARKER = "MAY_CONSULT_REPLY_V1"
 API_URL = "https://api.github.com/repos/" + REPOSITORY
 REASONS = frozenset(("providers_unavailable", "specialist_question"))
+# Fixed operator-approved PUBLIC demo URLs only, never private app URLs from model text.
+PUBLIC_PREVIEW_BY_PROJECT = {
+    "ronda-pro": "https://danielnep.github.io/app-hondas-maxvel/",
+}
 MAX_QUESTION = 1400
 MAX_ADVICE = 3000
 CONSULTATIONS_PER_WINDOW = 4
@@ -178,6 +182,14 @@ def request_consultation(task, reason, *, api=None, question=None, round_index=0
         "May may use the one named ChatGPT agent conversation as a helper;",
         "the GitHub issue is the durable response channel.",
     )) + "\n"
+    # Public preview only: the model cannot choose an arbitrary URL, and
+    # no screenshot or private session data is written to a public issue.
+    public_preview = PUBLIC_PREVIEW_BY_PROJECT.get(task.get("project"))
+    if public_preview:
+        body += ("\nApproved live public preview for May browser QA:\n"
+                 + public_preview +
+                 "\nTest actual user actions and return a concise reproduction and correction. "
+                 "No screenshots or customer data are attached by this ticket.\n")
     created = call("POST", "/issues", body={
         "title": ISSUE_PREFIX + key, "body": body, "assignees": ["danielnep"]})
     return {"status": "requested", "issue": created["number"],
