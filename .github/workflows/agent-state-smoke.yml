@@ -27,7 +27,7 @@ jobs:
           client.token=client._oidc_token()
           import base64, json
           claims=json.loads(base64.urlsafe_b64decode(client.token.split('.')[1]+'==='))
-          print('OIDC claims:',{key:claims.get(key) for key in ('iss','repository','ref','workflow_ref')})
+          print('OIDC claims:',{key:claims.get(key) for key in ('iss','repository','ref','workflow_ref','sub','aud','iat','nbf','exp')})
           try:
               value=client._request('GET')
           except Exception:
