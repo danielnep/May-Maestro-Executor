@@ -24,3 +24,14 @@ Revise imagens e métricas, estados de erro/vazio/offline e interações. Um bui
 uma captura ou uma opinião isolados não comprovam todos os fluxos.
 
 A implementação dos próprios agentes e suas integrações foi autorizada na principal em 18/10/2026. A ponte por commit grava pedidos em tasks/chat e devolve recibos em tasks/results: consulte o manual docs/chat-bridge.md antes de usá-la.
+
+## Protocolo obrigatório: falha nunca é silêncio (19/10/2026)
+
+Este documento é incorporado pelo registro de especialistas às instruções de **todos os 17 agentes**. O May Maestro é o responsável final pelo acompanhamento e escalonamento.
+
+1. Ao detectar falha de API, limite de cota, ferramenta, build, autorização, persistência, testes ou publicação, registrar **tipo, etapa, projeto, tarefa, responsável, último checkpoint, tentativas e próxima ação** sem dados privados, segredos ou texto bruto de clientes.
+2. Tentar recuperação segura na mesma execução: diagnosticar a causa, selecionar alternativa disponível e autorizada, corrigir código/contrato na origem, validar a correção e continuar do último checkpoint. Usar retentativas com espera limitada somente quando a operação for idempotente; jamais repetir escrita de resultado ambíguo ou aumentar gastos/credenciais/permissões automaticamente.
+3. Se a falha inviabiliza a execução no momento, **não marcar sucesso, não abandonar tarefa e não apagá-la**. Gravar estado recuperável (queued/retry/backoff ou blocked com ação concreta) e expor um incidente durável ao proprietário por GitHub Issue atribuído a danielnep; se a própria fila estiver indisponível, o workflow independente de vigilância deverá abrir/atualizar o incidente usando GitHub Actions. Alertar também na tarefa horária Horizon. Publicação do incidente não deve depender do Gemini/DeepSeek nem da mesma base que falhou.
+4. Falhas de modelo HTTP 429/5xx: usar outro provedor já configurado se permitido e funcional, com limites de custo; se nenhum operar, aguardar cota em backoff, preservar checkpoint e avisar. **Jamais esperar resposta de IA para emitir o aviso operacional.**
+5. Toda retomada reconcilia tarefa, branch, SHA, testes e estado. Relatórios distinguem implementado, testado, implantado, bloqueado e notificado. Um teste unitário aprovado não comprova execução do agente real.
+6. É proibido terminar com “falhou” sem evidência, responsável e próxima ação. O Maestro acompanha entregas de clientes em andamento e prioriza compromissos comerciais próximos. **Prioridade atual: concluir o Painel Michelle** por tarefa `michelle-sigware-ai-coi-20261018`, em `danielnep/michelle-preview`, na branch de trabalho autorizada; não alterar o banco de dados da Michelle para armazenar dados dos agentes.
