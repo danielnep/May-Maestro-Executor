@@ -427,9 +427,20 @@ class Worker:
                     if not isinstance(question,str) or len(question)>5000:
                         raise ValueError('A bounded visual question is required')
                     try:
-                        outcome=self.gateway.inspect_image(agent,tools.evidence_image(args.get('index')),question)
+                        image=tools.evidence_image(args.get('index'))
+                        outcome=self.gateway.inspect_image(agent,image,question)
+                    except GatewayError as error:
+                        # Vision outage is an actionable tool diagnostic, not a
+                        # successful visual review or a reason to lose a code job.
+                        # Never copy upstream responses or screenshot bytes to logs.
+                        outcome={'tool_error':'VisionUnavailable',
+                                 'provider':error.provider, 'reason':error.reason,
+                                 'status':error.status, 'retryable':error.retryable,
+                                 'actual_image_analyzed':False,
+                                 'next_action':'Use verified DOM/browser findings. Retry visual analysis only when a configured image-capable provider is available, or request a May review of a public-safe screenshot.'}
                     except (ValueError,OSError) as error:
-                        outcome={'tool_error':type(error).__name__,'message':str(error)[:300],
+                        outcome={'tool_error':type(error).__name__, 'actual_image_analyzed':False,
+                                 'message':str(error)[:300],
                                  'next_action':'Run the browser check again if the current execution has no retained images.'}
                 else:
                     try:
