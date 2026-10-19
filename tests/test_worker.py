@@ -79,7 +79,8 @@ class WorkerIntegrationTests(unittest.TestCase):
         persists = []
         worker = Worker(self.state, gateway, self.root, persist=lambda: persists.append(True))
         for agent_id in AGENT_IDS:
-            self.state.enqueue(agent_id, agent_id, 'fixture', 'Read fixture and remember evidence')
+            self.state.enqueue(agent_id, agent_id, 'fixture', 'Read fixture and remember evidence',
+                               payload={'visual_review_required': False})
             finished = worker.run_one()
             self.assertEqual(finished['status'], 'succeeded')
             self.assertEqual(finished['result']['status'], 'reported')
