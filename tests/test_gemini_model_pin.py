@@ -1,4 +1,4 @@
-"""The operator-selected agent model must never silently change to 3.8 or Lite."""
+"""Keep Gemini 3.6 Flash primary and restrict Lite to quota-only last resort."""
 from pathlib import Path
 import unittest
 
@@ -15,7 +15,14 @@ class ModelPinTest(unittest.TestCase):
                 selected=[s.strip() for s in text.splitlines() if s.strip().startswith("GEMINI_MODEL:")]
                 self.assertTrue(selected)
                 self.assertTrue(all(s=="GEMINI_MODEL: gemini-3.6-flash" for s in selected))
-                self.assertNotIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)
+                if path.endswith("chat-requests.yml"):
+                    self.assertIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)
+                    gateway=(ROOT/"horizon_core/gateway.py").read_text()
+                    self.assertIn('primary.get("reason") == "quota"',gateway)
+                    self.assertIn('primary.get("status") == 429',gateway)
+                    self.assertIn('GEMINI_FREE_TIER_CONFIRMED',gateway)
+                else:
+                    self.assertNotIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)
     def test_all_agents_use_runtime_model_no_hidden_override(self):
         import json
         root=ROOT/"agents"
