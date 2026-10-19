@@ -14,7 +14,7 @@ import subprocess
 
 from .state import LeaseError
 
-STATE_ENVIRONMENT_ID = 'da638584-8400-44f8-9b93-3c3d343a6022'
+STATE_ENVIRONMENT_ID = '11b303c5-e811-4fb2-9e77-514ad050697e'
 METHODS = frozenset(('enqueue', 'claim', 'renew_lease', 'yield_task', 'checkpoint',
     'complete', 'fail', 'remember', 'recall', 'get', 'events', 'tasks', 'list_tasks_snapshot'))
 
