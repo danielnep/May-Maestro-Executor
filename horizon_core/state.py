@@ -147,10 +147,11 @@ class State:
             # Never claim a fourth attempt, including legacy queued rows that
             # predate the strict provider retry policy.
             for exhausted in self.db.execute(
-                    "SELECT task_id FROM tasks WHERE status='queued' AND attempts>=max_attempts").fetchall():
+                    "SELECT task_id,max_attempts FROM tasks WHERE status='queued' AND attempts>=max_attempts").fetchall():
                 self.db.execute(
                     "UPDATE tasks SET status='failed',error=? WHERE task_id=?",
-                    (_json({"reason": "retry_limit_exceeded", "max_attempts": 3}),
+                    (_json({"reason": "retry_limit_exceeded",
+                            "max_attempts": exhausted["max_attempts"]}),
                      exhausted["task_id"]))
                 self._event(exhausted["task_id"], "retry_limit_exceeded", {}, now)
             ready_sql = "SELECT * FROM tasks WHERE status='queued' AND not_before<=?"
