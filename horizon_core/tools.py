@@ -99,7 +99,7 @@ class Tools:
                     start = max(0, match-context)
                     end = min(len(lines), match+context+1)
                     found.append({'start_line': start+1, 'end_line': end,
-                                  'content': '\\n'.join(lines[start:end])[:1100]})
+                                  'content': '\n'.join(lines[start:end])[:1100]})
                 return {'path': args['path'], 'search': search, 'matches': found,
                         'total_matches': len(matches), 'truncated': len(matches)>8}
             # Read only the relevant excerpt when a bounded line range is supplied.
