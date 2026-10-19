@@ -2,7 +2,9 @@
 // Trusted generic harness: JSON describes interactions, never JavaScript or shell.
 const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const configPath='/project/horizon.browser.json';const cfg=fs.existsSync(configPath)?JSON.parse(fs.readFileSync(configPath,'utf8')):{};
-if(cfg.profile==='station-synthetic-v1'){require('./station-proof.cjs');}else{
+if(cfg.profile==='station-synthetic-v1'){require('./station-proof.cjs');}
+else if(cfg.profile==='interactive-flows-v1'){require('./interactive-proof.cjs');}
+else{
 const {chromium}=require('/opt/visual/node_modules/playwright');const out='/evidence';fs.mkdirSync(out,{recursive:true});const report={check:'browser-playwright',profile:'generic-static-v1',tests:0,passed:false,functional_scenarios:0,checks:[],screenshots:[],layout:[],consoleErrors:[],pageErrors:[],scope:cfg.steps?'Configured scenarios only':'Smoke only; no functional scenarios configured'};let browser,server,lastPage=null,lastViewport=null;
 function check(name,passed,details={}){report.tests++;report.checks.push({name,passed,...details});assert.ok(passed,name);}
 async function capture(page,viewport,suffix){
