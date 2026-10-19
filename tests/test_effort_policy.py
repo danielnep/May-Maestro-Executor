@@ -71,6 +71,18 @@ class MaestroEffortTests(unittest.TestCase):
         self.assertEqual(approval.approver, "maestro-policy-v1")
         self.assertEqual(select_deepseek_mode(approval)["reasoning_effort"], "high")
 
+    def test_repeated_same_check_only_escalates_after_source_changes(self):
+        base={"objective":"Reparar retorno inesperado","history":[],"effort_history":[corrected()]}
+        def observed(digest):
+            outcome=verification("python-unittest")
+            outcome["outcome"]["workspace_digest"]=digest*64
+            return outcome
+        no_progress=dict(base,effort_history=[corrected(),observed("a"),observed("a")])
+        self.assertFalse(decide(no_progress).approved)
+        progress=dict(base,effort_history=[corrected(),observed("a"),corrected(),observed("b")])
+        self.assertTrue(decide(progress).approved)
+        self.assertEqual(decide(progress).effort,"high")
+
     def test_three_checks_plus_risk_approve_max(self):
         approval = decide(context(objective="Corrigir deadlock de transacao e integridade",
                                   failures=["node-test","python-unittest","browser-playwright"]))
