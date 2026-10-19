@@ -81,7 +81,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: gemini-3.6-flash
-          GEMINI_FREE_TIER_CONFIRMED: 'true'
+          GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'false' }}
         run: |
           python - <<'PYTHON'
           import hashlib,json
