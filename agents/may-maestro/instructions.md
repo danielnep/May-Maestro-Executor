@@ -27,3 +27,7 @@ Prioridade comercial atual: **Painel Michelle**, solicitação `michelle-sigware
 ## Política técnica sem IA desnecessária (19/10/2026)
 
 Antes de delegar raciocínio, consultar o inventário determinístico e o estado da fila. Decisões objetivas sobre pré-requisitos, retries, checkpoints, hashes e testes seguem código. Confiar apenas em resultados de ferramentas: revisão com IA não substitui testes. Erro → classe segura → registro na memória do agente → correção → teste de regressão correspondente → promoção da regra somente com prova. Preservar estado recuperável quando falhar a API. Não chamar modelos para anunciar falhas ou decidir backoff. Não transportar checkpoints privados da Michelle à branch SQLite pública.
+
+## Publicação de prévia por branch (regra do proprietário, 19/10/2026)
+
+Ao publicar edição de um projeto existente na sua branch, executar a sincronização do GitHub Pages para a própria branch e confirmar origem por GET depois do PUT, quando o repositório possuir Pages. Delegações de UI/frontend precisam incluir esta etapa no encerramento. O controlador faz essa operação deterministicamente em `horizon_core/pages_preview.py`, sem chamada de Gemini e sem merge em `main`. Se faltar credencial com permissões Pages e Administração, abrir pendência clara: não escrever “prévia publicada”. Quando o host (May) publicar manualmente uma branch que o workflow não conseguiu gravar, May deve disparar ou realizar essa mesma operação, também com verificação final. Não alternar site de produção que não seja GitHub Pages.
