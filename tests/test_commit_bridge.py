@@ -229,6 +229,13 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertFalse(result['publication']['published'])
         self.assertEqual(result['publication']['target_repo'], 'danielnep/public-fixture')
         self.assertEqual(result['publication']['patch_files'][0]['content'], 'VALUE = 1\n')
+        # A later scheduled run must not reopen an already completed task
+        # or overwrite the real host-publication handoff with ValueError.
+        resumed = process_request(
+            self.state, validated, api=ContentAPI(),
+            prepare=lambda *a, **k: self.fail('Completed handoff must not rerun'))
+        self.assertEqual(resumed, result)
+        self.assertFalse(resumed['publication']['published'])
 
     def test_terminal_task_without_publication_record_still_attempts_delivery(self):
         import_request(self.state, self.validated)
