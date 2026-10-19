@@ -2,19 +2,13 @@
   "delivery_mode": "read_result_in_chat",
   "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
   "publication": {
-    "branch": "agent/chat-reservas-proof-v2",
-    "commit": "3615de3c5bd077da95cc339cddab0e1d81a9a1a6",
-    "files": [
-      "apps/chat-bridge-proof-v2/README.md",
-      "apps/chat-bridge-proof-v2/engine.py",
-      "apps/chat-bridge-proof-v2/tests/test_engine.py"
-    ],
     "main_pending_reason": "main_requires_completed_delivery_and_real_current_checks",
-    "published": true
+    "published": false,
+    "reason": "Generated content already published"
   },
   "request_id": "reservas-proof-v2",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/reservas-proof-v2.json",
-  "status": "pending",
+  "status": "reported_complete",
   "tasks": [
     {
       "agent": "may-maestro",
@@ -376,17 +370,29 @@
     },
     {
       "agent": "qa-engineer",
-      "attempts": 0,
-      "status": "queued",
-      "summary": "",
+      "attempts": 1,
+      "status": "succeeded",
+      "summary": "Executado com sucesso o check python-unittest em apps/chat-bridge-proof-v2. Todos os 4 testes unitários passaram (exit_code 0), validando a engine de reservas com isolamento por locatário, idempotência, conflitos de replay e cancelamento.",
       "task_id": "chat-reservas-proof-v2:qa-v9-reservas",
-      "verification": []
+      "verification": [
+        {
+          "backend": "railway-sdk",
+          "check": "python-unittest",
+          "cleanup_ok": true,
+          "exit_code": 0,
+          "passed": true,
+          "tests_run": 4,
+          "timed_out": false,
+          "truncated": false,
+          "workspace_digest": "10273d6fd9e7c99305c71dd42ef5041b424c6006232bf50203a3f047e231bcc8"
+        }
+      ]
     },
     {
       "agent": "software-architect",
-      "attempts": 0,
-      "status": "queued",
-      "summary": "",
+      "attempts": 1,
+      "status": "succeeded",
+      "summary": "Revisão independente concluída para apps/chat-bridge-proof-v2/. Os arquivos engine.py, tests/test_engine.py e README.md foram inspecionados e estão estruturados corretamente com isolamento por locatário, idempotência e tratamento de conflitos. Os testes unitários correspondentes já foram validados com sucesso (exit_code 0).",
       "task_id": "chat-reservas-proof-v2:review-v9-reservas",
       "verification": []
     }
