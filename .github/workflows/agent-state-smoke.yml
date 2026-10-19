@@ -60,3 +60,55 @@ jobs:
               finally:db.close()
           finally:os.unlink(path)
           PY
+      - name: Encrypt and verify full logical legacy snapshot for private archive
+        env:
+          HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          python -m pip install 'cryptography>=43,<48' --quiet
+          python - <<'PY'
+          import base64,gzip,hashlib,json,os,sqlite3,tempfile
+          from pathlib import Path
+          from cryptography.fernet import Fernet
+          from horizon_core.embedded_state import HorizonEmbeddedState
+          from urllib.request import urlopen
+          material=os.environ.get('HORIZON_SQLITE_ENCRYPTION_KEY') or os.environ.get('RAILWAY_API_TOKEN')
+          if not material or len(material)<24:raise RuntimeError('No durable encryption secret: archive not created')
+          source_name='HORIZON_SQLITE_ENCRYPTION_KEY' if os.environ.get('HORIZON_SQLITE_ENCRYPTION_KEY') else 'RAILWAY_API_TOKEN'
+          key=base64.urlsafe_b64encode(hashlib.sha256(('horizon-legacy-archive-v1:'+material).encode()).digest())
+          client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
+          client.requester=urlopen
+          client.token=client._oidc_token()
+          result=client._request('GET')
+          revision=result['revision']; raw=base64.b64decode(result['snapshot'],validate=True)
+          digest=hashlib.sha256(raw).hexdigest()
+          assert digest==result['checksum'] and raw.startswith(b'SQLite format 3\x00')
+          with tempfile.NamedTemporaryFile() as tmp:
+              tmp.write(raw);tmp.flush()
+              db=sqlite3.connect('file:'+tmp.name+'?mode=ro',uri=True)
+              try:
+                  assert db.execute('PRAGMA quick_check').fetchone()[0]=='ok'
+                  counts={t:db.execute('SELECT count(*) FROM "'+t+'"').fetchone()[0] for t in ('tasks','memory','events')}
+              finally:db.close()
+          packed=gzip.compress(raw,compresslevel=9,mtime=0)
+          cipher=Fernet(key).encrypt(packed)
+          restored=gzip.decompress(Fernet(key).decrypt(cipher))
+          assert restored==raw and hashlib.sha256(restored).hexdigest()==digest
+          dest=Path('backup');dest.mkdir(exist_ok=True)
+          (dest/'railway-agent-state-legacy.sqlite3.gz.fernet').write_bytes(cipher)
+          manifest={'format':'Fernet(gzip(SQLite))','kdf':'sha256(horizon-legacy-archive-v1:+source-secret)',
+             'secret_name':source_name,'revision':revision,'sha256':digest,
+             'sqlite_bytes':len(raw),'encrypted_bytes':len(cipher),'row_counts':counts,
+             'verified_roundtrip':True,'source':'horizon-site PGlite authenticated OIDC GET'}
+          (dest/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print(json.dumps({'archive_created':True,'verified_roundtrip':True,
+             'revision':revision,'sqlite_bytes':len(raw),'encrypted_bytes':len(cipher),
+             'records':counts,'source_key_name':source_name}))
+          PY
+      - name: Archive encrypted backup only
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-legacy-encrypted-20261019
+          path: backup/
+          retention-days: 7
+          if-no-files-found: error
