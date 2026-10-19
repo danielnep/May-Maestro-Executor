@@ -66,6 +66,44 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(result['checkpoint']['failure_counts']['check:python-unittest'],3)
         self.assertEqual(gateway.calls,3)
 
+    def test_identical_write_does_not_reset_failed_check_counter(self):
+        source=self.root/'src'/'feature.py'
+        source.parent.mkdir()
+        source.write_text('VALUE = 1\\n')
+        def decide(ctx):
+            n=ctx['completed_steps']
+            if n == 1:
+                return action('write_file',{'path':'src/feature.py','content':'VALUE = 1\\n'})
+            return action('finish') if n >= 4 else action('run_check',{'name':'python-unittest'})
+        gateway=Gateway(decide)
+        self.state.enqueue('noop','frontend-engineer','scope','Avoid fraudulent retry reset',
+                           payload={'branch':'fix/task','allowed_paths':['src/**']})
+        with patch.object(Tools,'run_check',
+                          return_value={'check':'python-unittest','passed':False,'tests_run':1,'exit_code':1}):
+            result=Worker(self.state,gateway,self.root).run_one()
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(result['error']['reason'],'retry_limit_exceeded')
+        self.assertEqual(result['checkpoint']['failure_counts']['check:python-unittest'],3)
+        self.assertEqual(gateway.calls,4)
+
+    def test_genuine_file_change_allows_fresh_three_check_budget(self):
+        source=self.root/'src'/'feature.py'
+        source.parent.mkdir()
+        source.write_text('VALUE = 1\\n')
+        def decide(ctx):
+            n=ctx['completed_steps']
+            if n == 1:
+                return action('write_file',{'path':'src/feature.py','content':'VALUE = 2\\n'})
+            return action('finish') if n >= 4 else action('run_check',{'name':'python-unittest'})
+        gateway=Gateway(decide)
+        self.state.enqueue('changed','frontend-engineer','scope','Allow correction to be tested',
+                           payload={'branch':'fix/task','allowed_paths':['src/**']})
+        with patch.object(Tools,'run_check',
+                          return_value={'check':'python-unittest','passed':False,'tests_run':1,'exit_code':1}):
+            result=Worker(self.state,gateway,self.root).run_one()
+        self.assertEqual(result['status'],'succeeded')
+        self.assertEqual(gateway.calls,5)
+
     def test_context_limited_but_checkpoint_keeps_full_tool_evidence(self):
         long='data:'+'x'*20000
         latest=[{'action':'read_file','summary':'inspect','outcome':{'path':'src/ui.js','content':long}} for _ in range(12)]
