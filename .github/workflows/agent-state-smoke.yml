@@ -42,4 +42,16 @@ jobs:
               raise
           assert type(value.get('revision')) is int
           print('Horizon embedded PostgreSQL: authenticated read succeeded; snapshot_revision='+str(value['revision']))
+          # Only task IDs and statuses are emitted. Never log objectives, payloads or checkpoints.
+          if value.get('snapshot'):
+              import tempfile, os, sqlite3
+              with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                  name=tmp.name
+                  tmp.write(base64.b64decode(value['snapshot']))
+              try:
+                  with sqlite3.connect(name) as db:
+                      rows=db.execute('SELECT task_id,status,attempts FROM tasks ORDER BY seq LIMIT 50').fetchall()
+                  print('Agent task states:',json.dumps(rows))
+              finally:
+                  os.unlink(name)
           PY
