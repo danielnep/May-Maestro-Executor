@@ -1,46 +1,47 @@
-"""Proof that a UI specialist actually saw a screenshot of the current work."""
-VISUAL_AGENTS = frozenset(("ui-ux-designer", "horizon-ui-guardian"))
+"""Verify desktop AND mobile UI by real rendered DOM tests, without mandatory vision API."""
+VISUAL_AGENTS = frozenset((
+    "frontend-engineer", "ui-ux-designer",
+    "horizon-ui-guardian", "mobile-app-builder",
+))
 
 
 def requires_visual_review(task):
-    payload = task.get("payload") or {}
-    configured = payload.get("visual_review_required")
-    if configured is None:
-        return task.get("agent") in VISUAL_AGENTS
-    if type(configured) is not bool:
-        raise ValueError("visual_review_required must be boolean")
-    return configured
+    override = (task.get("payload") or {}).get("visual_review_required")
+    if override is not None:
+        if type(override) is not bool:
+            raise ValueError("visual_review_required must be a boolean")
+        return override
+    return task.get("agent") in VISUAL_AGENTS
 
 
 def visual_review_status(history):
-    """Only post-edit browser PNG evidence *followed by* real image inspection qualifies."""
     if not isinstance(history, list):
-        return {"verified": False, "reason": "missing_browser_capture"}
-    last_edit = -1
-    for index, action in enumerate(history):
-        if isinstance(action, dict) and action.get("action") == "write_file":
-            # Any write requires fresh visual inspection afterwards.
-            last_edit = index
-    last_capture = -1
-    for index in range(last_edit + 1, len(history)):
-        action = history[index]
-        if not isinstance(action, dict) or action.get("action") != "run_check":
-            continue
-        outcome = action.get("outcome")
-        if not isinstance(outcome, dict) or outcome.get("check") != "browser-playwright":
-            continue
-        screenshots = outcome.get("screenshots")
-        if isinstance(screenshots, list) and screenshots and all(
-                isinstance(s, dict) and isinstance(s.get("sha256"), str)
-                and len(s["sha256"]) == 64 and isinstance(s.get("path"), str)
-                for s in screenshots):
-            last_capture = index
-    if last_capture < 0:
-        return {"verified": False, "reason": "missing_post_edit_browser_capture"}
-    for index in range(last_capture + 1, len(history)):
-        action = history[index]
-        if (isinstance(action, dict) and action.get("action") == "inspect_image"
-                and isinstance(action.get("outcome"), dict)
-                and action["outcome"].get("actual_image_provided") is True):
-            return {"verified": True, "reason": "real_browser_image_inspected"}
-    return {"verified": False, "reason": "missing_visual_image_inspection"}
+        return {"verified": False, "reason": "browser_check_missing_after_edit"}
+    last_edit = max((i for i, item in enumerate(history)
+                     if isinstance(item, dict) and item.get("action") == "write_file"), default=-1)
+    browser_checks = [item["outcome"] for item in history[last_edit + 1:]
+                      if isinstance(item, dict) and item.get("action") == "run_check"
+                      and isinstance(item.get("outcome"), dict)
+                      and item["outcome"].get("check") == "browser-playwright"]
+    if not browser_checks:
+        return {"verified": False, "reason": "browser_check_missing_after_edit"}
+    outcome = browser_checks[-1]
+    if not (outcome.get("passed") is True and outcome.get("source") == "runtime"
+            and outcome.get("simulated") is False and outcome.get("workspace_unchanged") is True):
+        return {"verified": False, "reason": "browser_check_not_verified"}
+    screenshots = outcome.get("screenshots")
+    names = {row.get("file") for row in screenshots if isinstance(row, dict)
+             and isinstance(row.get("sha256"), str) and len(row["sha256"]) == 64} if isinstance(screenshots, list) else set()
+    if names != {"mobile-rendered.png", "desktop-rendered.png"}:
+        return {"verified": False, "reason": "two_viewports_required"}
+    report = outcome.get("report") or {}
+    layouts = report.get("layout", [])
+    if (not isinstance(layouts, list)
+            or {entry.get("name") for entry in layouts if isinstance(entry, dict)} != {"mobile", "desktop"}):
+        return {"verified": False, "reason": "dom_geometry_missing"}
+    if any(entry.get("blocking_issues") for entry in layouts):
+        return {"verified": False, "reason": "layout_blocks_interaction"}
+    if type(report.get("functional_scenarios")) is not int or report["functional_scenarios"] < 2:
+        return {"verified": False, "reason": "real_interaction_missing"}
+    return {"verified": True, "reason": "two_viewports_measured_and_interactions_passed",
+            "vision_api_calls_required": 0}
