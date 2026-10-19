@@ -1,6 +1,7 @@
 """Browser journeys are executed in isolated Chromium, not simulated DOM."""
 import json
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +12,9 @@ class BrowserJourneyTests(unittest.TestCase):
     def test_real_browser_journey_and_evidence(self):
         if not shutil.which("docker"):
             self.skipTest("Docker not available")
+        if subprocess.run(["docker","image","inspect","horizon-web-proof:1.58.2"],
+                          stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode:
+            self.skipTest("Browser image not built yet")
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)/"app";root.mkdir()
             (root/"index.html").write_text('<!doctype html><html lang="pt-BR"><title>Teste</title><body><h1>Teste visual real</h1><button id="open" onclick="document.querySelector(\'#msg\').showModal()">Mensagens</button><dialog id="msg"><p>Conversa aberta e visível.</p><button onclick="document.querySelector(\'#msg\').close()">Fechar mensagens</button></dialog></body>',encoding="utf-8")
