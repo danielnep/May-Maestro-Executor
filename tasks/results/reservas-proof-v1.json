@@ -1,5 +1,21 @@
 {
   "delivery_mode": "read_result_in_chat",
+  "may_review": {
+    "branch": null,
+    "commit": null,
+    "handoff_mode": "durable_github_result_not_chat_push",
+    "notes": "No verified published preview and complete QA yet; do not claim an audit link was sent.",
+    "preview_url": null,
+    "repository": null,
+    "required_review": [
+      "mobile_and_desktop_flows",
+      "motion_and_transitions",
+      "gestures_and_dismissal",
+      "visual_hierarchy_icons_and_states"
+    ],
+    "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/reservas-proof-v1.json",
+    "status": "quality_blocked"
+  },
   "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
   "publication": {
     "main_pending_reason": "main_requires_completed_delivery_and_real_current_checks",
