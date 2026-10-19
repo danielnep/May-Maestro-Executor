@@ -7,7 +7,9 @@ import time
 import os
 from .context_budget import compact_memory, compact_history
 from .gateway import GatewayError, validate_action
-from .may_consultation import read_consultation, request_consultation
+from .may_consultation import (
+    MAX_CONSULTATIONS_PER_TASK, read_consultation, request_consultation
+)
 from .registry import load_agent
 from .tools import Tools
 from .deterministic import inspect_project, execute_read_only_with_retry
@@ -123,8 +125,11 @@ class Worker:
             may_decision = None
             pending_may = previous.get('pending_may')
             if pending_may:
+                # Older checkpoints use a plain hash (round zero).
+                pending_round = pending_may.get('round', 0) if isinstance(pending_may, dict) else 0
                 try:
-                    response = read_consultation(task_id, agent=agent['id'])
+                    response = read_consultation(task_id, agent=agent['id'],
+                                                 round_index=pending_round)
                 except Exception:
                     response = None
                 if response is None:
@@ -242,16 +247,22 @@ class Worker:
                     # This is a specialist-requested OPTIONAL third route.
                     # A model's question never authorizes public disclosure;
                     # the task contract must enable it separately.
-                    result = request_consultation(task, 'specialist_question',
-                                                  question=args.get('question'))
+                    consultation_round = sum(row.get('action') in ('consult_may', 'may_provider_fallback')
+                                             for row in history)
+                    result = (request_consultation(task, 'specialist_question',
+                                                  question=args.get('question'),
+                                                  round_index=consultation_round)
+                              if consultation_round < MAX_CONSULTATIONS_PER_TASK else
+                              {'status': 'consultation_budget_exhausted'})
                     step += 1
                     history.append({'action': 'consult_may', 'summary': 'Technical consultation requested',
-                                    'outcome': result})
+                                    'round': consultation_round, 'outcome': result})
                     if result.get('status') in ('requested', 'already_requested'):
                         self.state.checkpoint(task_id, self.worker_id,
                             {'step': step, 'history': history, 'checks': checks,
                              'delegated': delegated, 'failure_counts': failure_counts,
-                             'pending_may': result['ticket']})
+                             'pending_may': {'ticket': result['ticket'],
+                                             'round': consultation_round}})
                         self.state.defer(task_id, self.worker_id, seconds=900)
                         self.persist()
                         return self.state.get(task_id)
@@ -426,23 +437,32 @@ class Worker:
             if isinstance(error, GatewayError) and error.reason == 'providers_unavailable':
                 record_failure(self.state, task['project'], task['agent'], task_id,
                                'provider_unavailable', action='model_gateway')
+                consultation_round = sum(row.get('action') in ('consult_may', 'may_provider_fallback')
+                                         for row in history)
                 try:
-                    consultation = request_consultation(task, error.reason)
+                    consultation = (request_consultation(task, error.reason,
+                                    round_index=consultation_round)
+                                    if consultation_round < MAX_CONSULTATIONS_PER_TASK
+                                    else {'status': 'consultation_budget_exhausted'})
                 except Exception:
                     consultation = {'status': 'integration_unavailable'}
                 # Preserve the legacy safe error shape if no May channel is
                 # configured; record the side channel only when it exists.
                 if consultation.get('status') not in ('not_configured', 'not_applicable'):
                     details['may_consultation'] = consultation
-                if (not pending_may and consultation.get('status')
-                        in ('requested', 'already_requested')):
+                if consultation.get('status') in ('requested', 'already_requested'):
+                    # Distinct bounded rounds permit May to replace several
+                    # unavailable LLM steps without consulting forever.
+                    history.append({'action': 'may_provider_fallback',
+                                    'round': consultation_round, 'outcome': consultation})
                     # Suspend this specialist pending May's OWN reasoning.
                     # Never waste Gemini/DeepSeek tokens or retry attempts in
                     # a five-minute loop while an external answer is pending.
                     self.state.checkpoint(task_id, self.worker_id,
                         {'step': step, 'history': history, 'checks': checks,
                          'delegated': delegated, 'failure_counts': failure_counts,
-                         'pending_may': consultation['ticket']})
+                         'pending_may': {'ticket': consultation['ticket'],
+                                         'round': consultation_round}})
                     self.state.defer(task_id, self.worker_id, seconds=900)
                     self.persist()
                     return self.state.get(task_id)

@@ -29,7 +29,7 @@ autorizadas para aquele agente, e a verificação da ferramenta ocorrer.
 - Queda de ambos provedores só envia classe genérica, sem código, dados ou logs.
 - Aguardando May: fila suspensa por 15 minutos (not_before), sem consumir
   tentativas ou bater repetidamente nos provedores.
-- Deduplicação pela chave SHA256, resposta apenas de comentário autenticado
+- Até três perguntas sequenciais por agente/tarefa, com ticket SHA256 por rodada,\n  evitando loops de perguntas repetidas. Resposta apenas de comentário autenticado
   do proprietário, limites de tamanho, validação de esquema e controle de ACL.
 - O agendador verifica até três tickets por execução, sequencialmente.
   Não criar um chat por agente. Criar sucessor somente após prova de

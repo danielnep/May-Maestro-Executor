@@ -86,7 +86,7 @@ class WorkerIntegrationTests(unittest.TestCase):
              patch('horizon_core.worker.read_consultation', return_value=None):
             first = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(first['status'], 'queued')
-        self.assertEqual(first['checkpoint']['pending_may'], 'safe-key')
+        self.assertEqual(first['checkpoint']['pending_may'], {'ticket':'safe-key','round':0})
         self.assertEqual(first['attempts'], 0)
         self.assertEqual(len(gateway.calls), 1)
         self.assertIsNone(Worker(self.state, gateway, self.root).run_one())
@@ -109,7 +109,7 @@ class WorkerIntegrationTests(unittest.TestCase):
              patch('horizon_core.worker.read_consultation', return_value=None):
             queued = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(queued['status'], 'queued')
-        self.assertEqual(queued['checkpoint']['pending_may'], 'fallback')
+        self.assertEqual(queued['checkpoint']['pending_may'], {'ticket':'fallback','round':0})
         self.assertEqual(queued['attempts'], 0)
         allowed = {'decision_untrusted': {'action': 'finish', 'args': {},
                     'summary': 'May response is a result, not code or tests'},
@@ -119,6 +119,38 @@ class WorkerIntegrationTests(unittest.TestCase):
             completed = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(completed['status'], 'succeeded')
         self.assertEqual(len(gateway.calls), 1)
+
+    def test_three_distinct_may_decisions_can_replace_unavailable_models(self):
+        self.state.enqueue('triple-fallback', 'qa-engineer', 'fixture',
+                           'Use May when Gemini and DeepSeek are both down')
+        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(
+            GatewayError('providers gone', provider='all',
+                         reason='providers_unavailable', retryable=True)))
+        asked = []
+        def fake_request(task, reason, *, round_index=0):
+            asked.append(round_index)
+            return {'status': 'requested', 'ticket': 'slot-'+str(round_index), 'issue': 20+round_index}
+        def fake_read(task_id, *, agent=None, round_index=0):
+            decisions = [
+                {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Inspect source'},
+                {'action': 'remember', 'args': {'key': 'reviewed', 'value': True}, 'summary': 'Remember result'},
+                {'action': 'finish', 'args': {}, 'summary': 'Read-only May fallback completed'}
+            ]
+            return {'decision_untrusted': decisions[round_index], 'source':'public_owner_comment'}
+        with patch('horizon_core.worker.request_consultation', side_effect=fake_request), \
+             patch('horizon_core.worker.read_consultation', return_value=None):
+            job = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(job['status'], 'queued')
+        for index in range(3):
+            with patch('horizon_core.state.time.time', return_value=job['not_before']+1), \
+                 patch('horizon_core.worker.request_consultation', side_effect=fake_request), \
+                 patch('horizon_core.worker.read_consultation', side_effect=fake_read):
+                job = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(job['status'], 'succeeded')
+        self.assertEqual(asked, [0, 1, 2])
+        self.assertEqual(len(gateway.calls), 3)
+        self.assertTrue(self.state.recall('fixture', 'qa-engineer')['reviewed'])
+        self.assertEqual(job['attempts'], 1)
 
     def test_unapproved_may_response_cannot_execute_unauthorized_tool(self):
         self.state.enqueue('bad-reply', 'qa-engineer', 'fixture',
