@@ -25,7 +25,21 @@ jobs:
           client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
           client.requester=__import__('urllib.request',fromlist=['urlopen']).urlopen
           client.token=client._oidc_token()
-          value=client._request('GET')
+          import base64, json
+          claims=json.loads(base64.urlsafe_b64decode(client.token.split('.')[1]+'==='))
+          print('OIDC claims:',{key:claims.get(key) for key in ('iss','repository','ref','workflow_ref')})
+          try:
+              value=client._request('GET')
+          except Exception:
+              from urllib.request import Request
+              from urllib.error import HTTPError,URLError
+              request=Request('https://horizonsolucoes.com/api/internal/horizon-agent-state',
+                headers={'Authorization':'Bearer '+client.token,'User-Agent':'Horizon-State-Probe'})
+              try:
+                  with client.requester(request,timeout=15) as response: print('Probe status:',response.status)
+              except HTTPError as error: print('Probe HTTP:',error.code)
+              except URLError: print('Probe network error')
+              raise
           assert type(value.get('revision')) is int
           print('Horizon embedded PostgreSQL: authenticated read succeeded; revision available')
           PY
