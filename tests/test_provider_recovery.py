@@ -41,6 +41,17 @@ class ProviderRecoveryTests(unittest.TestCase):
         self.assertEqual(s.recover_provider_outages(now=1235),
                          {'requeued_provider_failures':0,'unblocked_dependents':0})
 
+    def test_noop_recovery_does_not_begin_transaction_or_snapshot(self):
+        s=self.state
+        s.enqueue('healthy','software-architect','michelle','Architecture finished')
+        original=s._tx
+        def refuse():
+            raise AssertionError('No-op recovery must never start transaction')
+        s._tx=refuse
+        self.assertEqual(s.recover_provider_outages(),
+                         {'requeued_provider_failures':0,'unblocked_dependents':0})
+        s._tx=original
+
     def test_unrelated_terminal_dependency_remains_blocked(self):
         s=self.state
         s.enqueue('bad','software-architect','other','Permanently invalid')
