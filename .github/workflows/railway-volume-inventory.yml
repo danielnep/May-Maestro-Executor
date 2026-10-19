@@ -34,6 +34,9 @@ jobs:
           s=Path('/tmp/volume.err').read_text(errors='replace').lower()
           reason='authentication' if 'auth' in s or 'login' in s or 'token' in s else ('ssh_key' if 'ssh' in s or 'key' in s else ('volume' if 'volume' in s else 'other'))
           print('Inventory failed: '+reason)
+          import re
+          safe=re.sub(r'(https?://\\S+|[A-Za-z0-9_./=-]{28,})','[redacted]',s)
+          print('Diagnostic:',safe[:350])
           PY
             exit "$CODE"
           fi
