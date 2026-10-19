@@ -110,6 +110,40 @@ class MaestroEffortTests(unittest.TestCase):
         self.assertEqual(requests[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"],"high")
         self.assertTrue(approved["metadata"]["maestro_effort_approval"]["approved"])
 
+    def test_retired_deepseek_names_do_not_enable_deep_thinking(self):
+        for obsolete in ("deepseek-chat", "deepseek-reasoner"):
+            requests=[]
+            def opener(req,timeout):
+                requests.append(json.loads(req.data))
+                return deepseek_envelope()
+            env=dict(self.env,DEEPSEEK_MODEL=obsolete)
+            result=DeepSeekGateway(env,opener).complete(load_agent("backend-engineer"),
+                [{"role":"user","content":"{}"}])
+            self.assertEqual(requests[-1]["model"],"deepseek-flash")
+            self.assertEqual(requests[-1]["thinking"],{"type":"disabled"})
+            self.assertTrue(result["metadata"]["retired_alias_normalized"])
+
+    def test_pro_requires_two_guards_not_just_agent_claim(self):
+        c=context(objective="Corrigir deadlock de integridade e transacao",
+                  failures=["node-test","python-unittest","browser-playwright"])
+        for allow,expected in ((False,"deepseek-flash"),(True,"deepseek-v4-pro")):
+            requests=[]
+            def opener(req,timeout):
+                requests.append(req)
+                if "googleapis" in req.full_url:
+                    raise urllib.error.HTTPError(req.full_url,429,"quota",{},io.BytesIO(b"secret"))
+                return deepseek_envelope()
+            env=dict(self.env)
+            if allow:env["DEEPSEEK_PRO_ALLOWED"]="true"
+            gw=ModelGateway(environ=env,opener=opener)
+            result=gw.complete(load_agent("backend-engineer"),
+                [{"role":"user","content":json.dumps(c)}])
+            self.assertTrue(result["metadata"]["maestro_effort_approval"]["approved"])
+            deep=json.loads(requests[-1].data)
+            self.assertEqual(deep["model"],expected)
+            self.assertEqual(deep["reasoning_effort"],"max")
+            self.assertEqual(result["metadata"]["pro_explicitly_authorized"],allow)
+
     def test_gemini_quota_switches_to_cheap_deepseek_not_max(self):
         requests=[]
         def open_stub(req,timeout):
