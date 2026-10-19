@@ -7,6 +7,8 @@ on:
       - 'tasks/chat/*.json'
       - '.github/workflows/chat-requests.yml'
       - 'horizon_core/commit_bridge.py'
+      - 'horizon_core/pages_preview.py'
+      - 'tests/test_pages_preview.py'
       - 'horizon_core/state.py'
       - 'horizon_core/gateway.py'
       - 'tests/test_gateway.py'
@@ -77,6 +79,7 @@ jobs:
           python -m unittest discover -s tests -p test_gemini_model_pin.py -v
           python -m unittest discover -s tests -p test_provider_access_probe.py -v
           python -m unittest discover -s tests -p test_agent_report_quality.py -v
+          python -m unittest discover -s tests -p test_pages_preview.py -v
       - name: Validar script isolado Node
         run: node --check synthetic_visual/node-proof.cjs
       - name: Preparar imagem isolada para testes Node e Playwright
@@ -95,6 +98,7 @@ jobs:
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           HORIZON_STATE_BACKEND: github-sqlite
           HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          HORIZON_PAGES_TOKEN: ${{ secrets.HORIZON_PAGES_TOKEN }}
         run: python -m horizon_core.commit_bridge --session-seconds 1200
       - name: Continuar imediatamente quando o checkpoint estiver pronto
         # O controlador pode registrar tarefas prontas e retornar erro por pedidos rejeitados.
