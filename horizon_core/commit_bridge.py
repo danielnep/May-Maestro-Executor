@@ -241,8 +241,17 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
     scoped = ScopedState(state, task['project'])
     previous = state.recall(task['project'], '__chat_controller__')
     tasks = scoped.tasks()
-    if previous.get('publication', {}).get('published') is True and tasks and all(row['status'] in ('succeeded', 'failed', 'blocked') for row in tasks):
-        return summarize(validated['id'], tasks, previous.get('publication'))
+    publication = previous.get('publication') or {}
+    terminal = bool(tasks) and all(
+        row['status'] in ('succeeded', 'failed', 'blocked') for row in tasks)
+    # A completed external-repository job waiting for an authorized host patch
+    # must not be re-executed on every scheduled controller run. Preserve its
+    # outstanding publication and QA evidence until the host reconciles it.
+    if (publication.get('published') is True and terminal) or (
+        publication.get('awaiting_host_publication') is True
+        and tasks and all(row['status'] == 'succeeded' for row in tasks)
+    ):
+        return summarize(validated['id'], tasks, publication)
     # This authorization originates from the controller, NEVER request JSON.
     target_repo = task['payload']['repository']
     existing_product = validated.get('delivery_type', 'new_product') == 'existing_product'
