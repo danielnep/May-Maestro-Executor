@@ -9,7 +9,8 @@ Official DeepSeek docs verified 2026-10-18:
 https://api-docs.deepseek.com/api/create-chat-completion/
 https://api-docs.deepseek.com/guides/thinking_mode/
 https://api-docs.deepseek.com/quick_start/pricing/
-They document deepseek-flash (V4.1-Flash-1017), JSON output and thinking effort max.
+They document deepseek-flash, JSON output and a thinking toggle.
+Routine requests disable thinking; Maestro-approved difficult cases select high.
 DEEPSEEK_MODEL overrides this documented default. No chain-of-thought is logged.
 """
 import json
@@ -194,7 +195,12 @@ class GeminiGateway(_HTTPGateway):
         if not key:
             raise self._error("Missing specialist Gemini API credential", "configuration")
         contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]} for m in _messages(messages)]
+        level = agent.get("_reasoning_level", "low")
+        if level not in ("low", "high"):
+            raise self._error("Invalid runtime reasoning level", "configuration")
         generation = {"responseMimeType": "application/json"}
+        if model.startswith("gemini-3."):
+            generation["thinkingConfig"] = {"thinkingLevel": "minimal" if model == "gemini-3.5-flash-lite" else level}
         if self.max_output_tokens is not None:
             generation["maxOutputTokens"] = self.max_output_tokens
         payload = {"systemInstruction": {"parts": [{"text": _prompt(agent)}]}, "contents": contents, "generationConfig": generation}
@@ -211,6 +217,7 @@ class GeminiGateway(_HTTPGateway):
             raise self._error("Gemini returned an invalid action envelope", "invalid_response", True) from None
         action = self._action(text, agent)
         action["metadata"] = self._metadata(agent, model, usage)
+        action["metadata"]["reasoning_level"] = level
         return action
 
 
@@ -225,8 +232,15 @@ class DeepSeekGateway(_HTTPGateway):
         model = agent.get("deepseek_model") or self.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
         if not isinstance(model, str) or not model.strip():
             raise self._error("DEEPSEEK_MODEL must be nonempty text", "configuration")
+        level = agent.get("_reasoning_level", "low")
+        if level not in ("low", "high"):
+            raise self._error("Invalid runtime reasoning level", "configuration")
         payload = {"model": model, "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
-                   "response_format": {"type": "json_object"}, "thinking": {"type": "enabled"}, "reasoning_effort": "max"}
+                   "response_format": {"type": "json_object"}}
+        if level == "high":
+            payload.update(thinking={"type": "enabled"}, reasoning_effort="high")
+        else:
+            payload.update(thinking={"type": "disabled"}, reasoning_effort="none", temperature=0.2)
         if self.max_output_tokens is not None:
             payload["max_tokens"] = self.max_output_tokens
         request = urllib.request.Request("https://api.deepseek.com/chat/completions", data=json.dumps(payload).encode(),
@@ -242,6 +256,7 @@ class DeepSeekGateway(_HTTPGateway):
             raise self._error("DeepSeek returned an invalid action envelope", "invalid_response", True) from None
         action = self._action(text, agent)
         action["metadata"] = self._metadata(agent, model, usage)
+        action["metadata"]["reasoning_level"] = level
         return action
 
 
@@ -327,7 +342,7 @@ class ModelGateway:
                     and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
                     and self.gemini is not None):
                 try:
-                    alternate = dict(agent, model=backup_model)
+                    alternate = dict(agent, model=backup_model, _reasoning_level="low")
                     action = self.gemini.complete(alternate, messages)
                     action["metadata"].update(
                         fallback_from="gemini_and_deepseek",
