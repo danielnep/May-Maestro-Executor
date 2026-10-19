@@ -12,6 +12,14 @@ on:
       - 'tests/test_gateway.py'
       - 'tests/test_provider_recovery.py'
       - 'horizon_core/embedded_state.py'
+      - 'horizon_core/github_sqlite_state.py'
+      - 'horizon_core/github_state.py'
+      - 'horizon_core/worker.py'
+      - 'horizon_core/learning.py'
+      - 'horizon_core/deterministic.py'
+      - 'tests/test_agent_learning.py'
+      - 'tests/test_github_sqlite_state.py'
+      - 'tests/test_github_state.py'
       - 'agents/knowledge/delivery-principles.md'
       - 'agents/may-maestro/instructions.md'
   workflow_dispatch:
@@ -57,6 +65,10 @@ jobs:
           python -m unittest discover -s tests -p test_handoff_workflow.py -v
           python -m unittest discover -s tests -p test_provider_recovery.py -v
           python -m unittest discover -s tests -p test_gateway.py -v
+          python -m unittest discover -s tests -p test_worker.py -v
+          python -m unittest discover -s tests -p test_github_state.py -v
+          python -m unittest discover -s tests -p test_github_sqlite_state.py -v
+          python -m unittest discover -s tests -p test_agent_learning.py -v
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -68,7 +80,7 @@ jobs:
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-          HORIZON_STATE_BACKEND: embedded-postgres
+          HORIZON_STATE_BACKEND: github-sqlite
         run: python -m horizon_core.commit_bridge --session-seconds 1200
       - name: Continuar imediatamente quando o checkpoint estiver pronto
         # O controlador pode registrar tarefas prontas e retornar erro por pedidos rejeitados.
