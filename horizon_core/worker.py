@@ -15,6 +15,7 @@ from .learning import record_failure, verify_check_recovery, useful_lessons
 from .verified_repairs import learn_from_verified_check, replay_if_exact
 from .visual_contract import requires_visual_review, visual_review_status
 from .ui_imagination import imagine_interface, UI_AGENTS
+from .effort_policy import evidence_for_router
 
 
 class PersistenceError(RuntimeError):
@@ -188,6 +189,7 @@ class Worker:
                            'ui_imagination': imagination if step == 0 else None,
                            'verified_and_observed_lessons': useful_lessons(self.state, task['project'], task['agent']),
                            'history': compact_history(history),
+                           'effort_history': evidence_for_router(history),
                            'history_omitted': max(0, len(history) - 4),
                            'completed_steps': step,
                            'remaining_steps': None if self.max_steps is None else self.max_steps - step,
