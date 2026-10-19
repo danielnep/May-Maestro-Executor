@@ -25,6 +25,18 @@ jobs:
             echo "::error::RAILWAY_API_TOKEN not configured"; exit 1
           fi
           set +e
+          railway link --project caf3c2ea-f857-4242-8fa3-5453ea1462ca --environment 6c3d13e1-d963-49c0-8121-8c75bd172766 --service b0a2cd36-3694-4bea-ab22-716ead95fe4c --json > /tmp/link.json 2>/tmp/link.err
+          LINK_CODE=$?
+          if [ "$LINK_CODE" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('/tmp/link.err').read_text(errors='replace').lower()
+          s=re.sub(r'(https?://\S+|[A-Za-z0-9_./=-]{28,})','[redacted]',s)
+          print('Railway link failed:',s[:350])
+          PY
+            exit "$LINK_CODE"
+          fi
           railway volume files --volume a7c1051d-cc63-4172-aa49-cb02db589d29 list / --json > /tmp/volume.json 2>/tmp/volume.err
           CODE=$?
           set -e
