@@ -76,6 +76,8 @@ jobs:
           python -m unittest discover -s tests -p test_agent_learning.py -v
           python -m unittest discover -s tests -p test_provider_access_probe.py -v
           python -m unittest discover -s tests -p test_agent_report_quality.py -v
+      - name: Validar script isolado Node
+        run: node --check synthetic_visual/node-proof.cjs
       - name: Preparar imagem isolada para testes Node e Playwright
         # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
         run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
