@@ -1,5 +1,12 @@
 # Horizon | Equipe de 17 especialistas
 
+> **Estado operacional 19/10/2026:** o controlador de pedidos do chat executa SQLite durável (branch `agent-state/runtime`, `runtime/state.sqlite3.gz` criptografado) por meio de GitHub Actions. PostgreSQL/PGlite Railway foi retirado do caminho ativo após esgotamento do volume; seus dados antigos permanecem preservados e **não foram migrados automaticamente**. O SQLite histórico anterior a essa troca pode estar defasado, portanto não tratar a restauração como equivalência comprovada entre os dois backends.
+>
+> **Execução inteligente híbrida:** inventário determinístico, retry de leituras, checks, fila e registros de incidentes são conduzidos por código, reservando IA para problemas ambíguos e desenvolvimento. Lições começam como observadas e só são promovidas após regressão correspondente aprovada. Política operacional em `agents/knowledge/delivery-principles.md`; testes em `tests/test_agent_learning.py`, `tests/test_github_sqlite_state.py` e `tests/test_github_state.py`.
+>
+> **Confidencialidade:** o novo SQLite é criptografado em repouso com Fernet, usando o secret dedicado `HORIZON_SQLITE_ENCRYPTION_KEY` ou temporariamente a credencial Railway já existente. Girar a credencial sem recriptografar pode impossibilitar restaurar o checkpoint. A versão legada não criptografada continua no histórico público; **não enviar dados privados de clientes à fila GitHub**. Não houve exclusão de bancos históricos.
+
+
 Runtime Python 3.11+ com chamadas diretas às APIs Gemini e DeepSeek e SDK oficial Railway em Node.js 22+. Não instala Codex CLI, Gemini CLI ou Railway CLI e não exige VPS. O SDK `railway@3.16.0` é uma biblioteca, não uma CLI. Os 17 agentes têm configuração, instruções, ferramentas, contexto de chamada e memória próprios. Gemini é o provedor preferido; DeepSeek assume quando ele não estiver disponível por qualquer motivo. Compartilham código de infraestrutura e podem compartilhar uma chave; o Maestro delega tarefas, não escreve as conclusões dos especialistas.
 
 ## Estado da entrega
