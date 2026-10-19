@@ -75,8 +75,6 @@ class Tools:
             return {'files': result, 'limit': 500}
         if action == 'read_file':
             path = self.path(args.get('path'))
-            if path.stat().st_size > 50000:
-                raise ValueError('File exceeds 50KB context budget')
             # Read only the relevant excerpt when a bounded line range is supplied.
             start, end = args.get('start_line'), args.get('end_line')
             if start is not None or end is not None:
@@ -85,8 +83,13 @@ class Tools:
                     raise ValueError('Provide a valid 1-based range of at most 200 lines')
                 with path.open(encoding='utf-8') as source:
                     selected = [line for number, line in enumerate(source, 1) if start <= number <= end]
+                excerpt = ''.join(selected)
+                if len(excerpt.encode('utf-8')) > 50000:
+                    raise ValueError('Excerpt exceeds 50KB context budget')
                 return {'path': args['path'], 'start_line': start, 'end_line': end,
-                        'content': ''.join(selected)}
+                        'content': excerpt}
+            if path.stat().st_size > 50000:
+                raise ValueError('File exceeds 50KB context budget; request line range')
             return {'path': args['path'], 'content': path.read_text(encoding='utf-8')}
         if action == 'write_file':
             path = self.path(args.get('path'), write=True)
