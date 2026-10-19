@@ -91,6 +91,7 @@ jobs:
           python -m unittest discover -s tests -p test_web_checks.py -v
           python -m unittest discover -s tests -p test_visual_contract.py -v
           python -m unittest discover -s tests -p test_ui_imagination.py -v
+          python -m unittest discover -s tests -p test_ui_runtime.py -v
           python -m unittest discover -s tests -p test_state.py -v
           python -m unittest discover -s tests -p test_tools.py -v
           python -m unittest discover -s tests -p test_agent_budgets.py -v
