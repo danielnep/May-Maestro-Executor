@@ -12,6 +12,7 @@ from .tools import Tools
 from .deterministic import inspect_project, execute_read_only_with_retry
 from .learning import record_failure, verify_check_recovery, useful_lessons
 from .verified_repairs import learn_from_verified_check, replay_if_exact
+from .visual_contract import requires_visual_review, visual_review_status
 
 
 class PersistenceError(RuntimeError):
@@ -196,6 +197,25 @@ class Worker:
                     raise ValueError('Specialist capability denied')
                 if name == 'finish':
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
+                    if requires_visual_review(task):
+                        visual = visual_review_status(history)
+                        if not visual['verified']:
+                            step += 1
+                            failure_counts['missing_visual_evidence'] = failure_counts.get('missing_visual_evidence', 0) + 1
+                            history.append({'action': 'visual_evidence_required',
+                              'outcome': {'reason': visual['reason'],
+                              'instruction': 'Use run_check browser-playwright, inspect_image with a real screenshot index after the last edit. Do not report UI approved without visual review.'}})
+                            self.state.checkpoint(task_id, self.worker_id,
+                                {'step': step, 'history': history, 'checks': checks,
+                                 'delegated': delegated, 'failure_counts': failure_counts})
+                            if failure_counts['missing_visual_evidence'] >= 3:
+                                self.state.fail(task_id, self.worker_id,
+                                    {'reason': 'visual_evidence_missing', 'detail': visual['reason'],
+                                     'max_identical_failures': 3}, retryable=False)
+                            self.persist()
+                            if failure_counts['missing_visual_evidence'] >= 3:
+                                return self.state.get(task_id)
+                            continue
                     # This system-owned memory cannot be marked verified by the
                     # model. Only post-edit non-simulated test evidence qualifies.
                     learn_from_verified_check(self.state, task, history)
