@@ -1,0 +1,31 @@
+name: Horizon - prova de banco dos agentes
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/agent-state-smoke.yml'
+      - 'horizon_core/embedded_state.py'
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  state-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verificar conexão OIDC e armazenamento Horizon, somente leitura
+        run: |
+          python - <<'PY'
+          from horizon_core.embedded_state import HorizonEmbeddedState
+          client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
+          client.requester=__import__('urllib.request',fromlist=['urlopen']).urlopen
+          client.token=client._oidc_token()
+          value=client._request('GET')
+          assert type(value.get('revision')) is int
+          print('Horizon embedded PostgreSQL: authenticated read succeeded; revision available')
+          PY
