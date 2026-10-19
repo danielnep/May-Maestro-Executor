@@ -49,6 +49,7 @@ on:
       - 'tests/test_visual_contract.py'
       - 'synthetic_visual/browser-proof.cjs'
       - 'synthetic_visual/interactive-proof.cjs'
+      - 'tests/test_browser_flow_cli.py'
       - 'synthetic_visual/generic-demo/**'
       - 'agents/ui-ux-designer/tools.json'
       - 'agents/horizon-ui-guardian/tools.json'
@@ -132,6 +133,8 @@ jobs:
       - name: Preparar imagem isolada para testes Node e Playwright
         # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
         run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
+      - name: Testar navegação real mobile + desktop com Chromium
+        run: python -m unittest discover -s tests -p test_browser_flow_cli.py -v
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}
