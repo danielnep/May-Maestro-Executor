@@ -10,6 +10,14 @@ import time
 KEY = "__learning_v1__"
 MAX_CASES = 24
 
+
+def learning_namespace(agent):
+    # Tool remember is agent-scoped. Keep observed/verified evidence in a separate
+    # runtime-owned namespace so model output cannot promote its own lesson.
+    if not isinstance(agent, str) or not agent or len(agent) > 90:
+        raise ValueError('Invalid learning namespace')
+    return '__agent_learning__:' + agent
+
 RULES = {
     "protocol_error": "Return exactly one JSON action, args object and summary text.",
     "invalid_delegation": "Validate specialist identifiers and topological prerequisites before enqueue.",
@@ -33,7 +41,7 @@ def record_failure(state, project, agent, task_id, kind, *, action="", check="")
     action = action[:48] if action.isidentifier() else ""
     check = check[:64] if all(c.isalnum() or c in "-_." for c in check) else ""
     fingerprint = incident_id(kind, action, check)
-    memory = state.recall(project, agent)
+    memory = state.recall(project, learning_namespace(agent))
     cases = list(memory.get(KEY, [])) if isinstance(memory.get(KEY, []), list) else []
     existing = next((case for case in cases if case.get("id") == fingerprint), None)
     if existing:
@@ -45,7 +53,7 @@ def record_failure(state, project, agent, task_id, kind, *, action="", check="")
             "status": "observed", "occurrences": 1,
             "latest_task_id": task_id[:100], "rule": RULES[kind],
         })
-    state.remember(project, agent, KEY, cases[-MAX_CASES:])
+    state.remember(project, learning_namespace(agent), KEY, cases[-MAX_CASES:])
     return fingerprint
 
 
@@ -53,7 +61,7 @@ def verify_check_recovery(state, project, agent, task_id, check, *, passed):
     """A matching failed check must pass in the same task to count as verified."""
     if passed is not True or not isinstance(check, str):
         return False
-    memory = state.recall(project, agent)
+    memory = state.recall(project, learning_namespace(agent))
     cases = list(memory.get(KEY, [])) if isinstance(memory.get(KEY, []), list) else []
     updated = False
     for case in cases:
@@ -64,12 +72,12 @@ def verify_check_recovery(state, project, agent, task_id, check, *, passed):
             case["status"] = "verified_by_matching_check"
             updated = True
     if updated:
-        state.remember(project, agent, KEY, cases[-MAX_CASES:])
+        state.remember(project, learning_namespace(agent), KEY, cases[-MAX_CASES:])
     return updated
 
 
 def useful_lessons(state, project, agent):
-    memory = state.recall(project, agent)
+    memory = state.recall(project, learning_namespace(agent))
     lessons = memory.get(KEY, [])
     if not isinstance(lessons, list):
         return []
