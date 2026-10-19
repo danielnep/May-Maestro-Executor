@@ -7,6 +7,9 @@ on:
       - 'tasks/chat/*.json'
       - '.github/workflows/chat-requests.yml'
       - 'horizon_core/commit_bridge.py'
+      - 'horizon_core/embedded_state.py'
+      - 'agents/knowledge/delivery-principles.md'
+      - 'agents/may-maestro/instructions.md'
   workflow_dispatch:
   schedule:
     # Retomar checkpoints a cada 5 min; novos pedidos disparam via push imediatamente.
@@ -56,7 +59,7 @@ jobs:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           HORIZON_STATE_BACKEND: embedded-postgres
-        run: python -m horizon_core.commit_bridge --session-seconds 2400
+        run: python -m horizon_core.commit_bridge --session-seconds 1200
       - name: Continuar imediatamente quando o checkpoint estiver pronto
         env:
           GITHUB_TOKEN: ${{ github.token }}
