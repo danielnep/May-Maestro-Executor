@@ -50,7 +50,8 @@ jobs:
                   tmp.write(base64.b64decode(value['snapshot']))
               try:
                   with sqlite3.connect(name) as db:
-                      rows=db.execute('SELECT task_id,status,attempts FROM tasks ORDER BY seq LIMIT 50').fetchall()
+                      rows=db.execute('SELECT task_id,status,attempts,error FROM tasks ORDER BY seq LIMIT 50').fetchall()
+                      rows=[(id,status,attempts,{key:detail.get(key) for key in ('kind','reason','status','retryable','failed_dependencies') if key in detail} if isinstance(detail,dict) else {'type':type(detail).__name__}) for id,status,attempts,raw in rows for detail in [json.loads(raw) if raw else {}]]
                   print('Agent task states:',json.dumps(rows))
               finally:
                   os.unlink(name)
