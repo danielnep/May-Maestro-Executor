@@ -12,7 +12,7 @@
   "tasks": [
     {
       "agent": "may-maestro",
-      "attempts": 1,
+      "attempts": 2,
       "status": "queued",
       "summary": "",
       "task_id": "chat-reservas-proof-v1",
