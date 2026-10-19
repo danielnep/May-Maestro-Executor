@@ -95,7 +95,7 @@ jobs:
                   request("POST", "/issues/" + str(existing["number"]) + "/comments",
                           {"body": message})
               else:
-                  request("POST", "/issues", {"title": title, "body": message +
+                  request("POST", "/issues", {"title": title, "assignees": ["danielnep"], "body": message +
                           "\\n\\nInvestigar a causa antes de marcar como resolvido."})
               print("Incident recorded in GitHub Issues")
           except (HTTPError, OSError, ValueError) as error:
