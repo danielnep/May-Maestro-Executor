@@ -28,7 +28,8 @@ class GitHubStateError(RuntimeError):
 class GitHubState:
     path = "runtime/state.sqlite3"
 
-    def __init__(self, repo, branch="agent-state/runtime", token=None, opener=None, compressed=False):
+    def __init__(self, repo, branch="agent-state/runtime", token=None, opener=None, compressed=False,
+                 encryption_key=None):
         if not isinstance(repo, str) or not re.fullmatch(
             r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo
         ) or any(part in (".", "..") for part in repo.split("/")):
@@ -41,6 +42,9 @@ class GitHubState:
         self.repo = repo
         self.branch = branch
         self.compressed = compressed
+        if encryption_key is not None and not compressed:
+            raise ValueError("Encrypted checkpoints require compression")
+        self.encryption_key = encryption_key
         self.path = "runtime/state.sqlite3.gz" if compressed else "runtime/state.sqlite3"
         self.restored_legacy = False
         self.token = token if token is not None else os.environ.get("GITHUB_TOKEN")
@@ -111,6 +115,12 @@ class GitHubState:
                 raise ValueError()
             content = base64.b64decode("".join(result["content"].split()), validate=True)
             if self.compressed and not self.restored_legacy:
+                if self.encryption_key is not None:
+                    from cryptography.fernet import Fernet, InvalidToken
+                    try:
+                        content = Fernet(self.encryption_key).decrypt(content)
+                    except (InvalidToken, ValueError, TypeError):
+                        raise ValueError("Checkpoint decryption failed") from None
                 content = gzip.decompress(content)
             if len(content) > 64 * 1024 * 1024 or not content.startswith(b"SQLite format 3\x00"):
                 raise ValueError()
@@ -170,8 +180,11 @@ class GitHubState:
                 with sqlite3.connect(snapshot) as copy:
                     original.backup(copy)
             original_bytes = snapshot.read_bytes()
-            payload = base64.b64encode(gzip.compress(original_bytes, compresslevel=6, mtime=0)
-                if self.compressed else original_bytes).decode("ascii")
+            packed = gzip.compress(original_bytes, compresslevel=6, mtime=0) if self.compressed else original_bytes
+            if self.encryption_key is not None:
+                from cryptography.fernet import Fernet
+                packed = Fernet(self.encryption_key).encrypt(packed)
+            payload = base64.b64encode(packed).decode("ascii")
         self._ensure_branch()
         body = {"message": "Checkpoint Horizon runtime", "branch": self.branch, "content": payload}
         sha = expected_sha if expected_sha is not None else self.sha
