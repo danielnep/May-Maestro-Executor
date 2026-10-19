@@ -220,7 +220,7 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
     scoped = ScopedState(state, task['project'])
     previous = state.recall(task['project'], '__chat_controller__')
     tasks = scoped.tasks()
-    if 'publication' in previous and tasks and all(row['status'] in ('succeeded', 'failed', 'blocked') for row in tasks):
+    if previous.get('publication', {}).get('published') is True and tasks and all(row['status'] in ('succeeded', 'failed', 'blocked') for row in tasks):
         return summarize(validated['id'], tasks, previous.get('publication'))
     # This authorization originates from the controller, NEVER request JSON.
     target_repo = task['payload']['repository']
@@ -298,6 +298,9 @@ def main(argv=None):
     else:
         from .railway_postgres import RailwayPostgresState
         state = RailwayPostgresState()
+    recovered = state.recover_provider_outages()
+    if any(recovered.values()):
+        print(json.dumps({'provider_recovery': recovered}))
     api = GitHubState(REPOSITORY)
     processed = rejected = 0
     started = time.monotonic()
