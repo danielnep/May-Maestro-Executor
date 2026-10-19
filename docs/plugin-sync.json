@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "updated_on": "2026-10-19",
+  "source_repo": "danielnep/May-Maestro-Executor",
+  "policy": "Quando o usuario pedir atualizar os agentes, atualizar tambem seus espelhos privados no ChatGPT, no mesmo turno, via Plugin Creator. Comparar antes e depois; usar os plugin_ids sem duplicar. Se indisponivel, registrar pendente, nao alegar sincronizacao.",
+  "automation": "in-chat-on-request; no autonomous access from GitHub Actions to Plugin Creator",
+  "agents": [
+    {
+      "id": "may-maestro",
+      "plugin_id": "plugins_6ad2d8cb1ff481918155636b10ce1c78",
+      "source": "agents/may-maestro/instructions.md",
+      "observed_source_sha": "0d3e66ba3593b5eed5d0da582a306c0566a315f9",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "horizon-project-studio",
+      "plugin_id": "plugins_6ad28e9f576c81919c2bcf1297e38986",
+      "source": "agents/horizon-project-studio/instructions.md",
+      "observed_source_sha": "84f50aabb533b9e41e7c8abcbee04ddb9469394c",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "software-architect",
+      "plugin_id": "plugins_6ad65c57a6f081919af0eecbdb52591d",
+      "source": "agents/software-architect/instructions.md",
+      "observed_source_sha": "d8fd7a151163345c55071d423c84dbd841b9e0d9",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "frontend-engineer",
+      "plugin_id": "plugins_6ad65c1d233881918fac91660d761606",
+      "source": "agents/frontend-engineer/instructions.md",
+      "observed_source_sha": "2092623949ae6c98ff2466d5c4beb507e27d0938",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "backend-engineer",
+      "plugin_id": "plugins_6ad65bf677108191a94f99ba9349f20b",
+      "source": "agents/backend-engineer/instructions.md",
+      "observed_source_sha": "901aac4e8571e91711fc8cf3f7ca3a77f12a3202",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "mobile-app-builder",
+      "plugin_id": "plugins_6ad65c38008c81919b0ae8b73a642b17",
+      "source": "agents/mobile-app-builder/instructions.md",
+      "observed_source_sha": "b963987fc7435f8d477b9e89798802b5f97b1b03",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "ui-ux-designer",
+      "plugin_id": "plugins_6ad65c62f80481919995e6aabff75be3",
+      "source": "agents/ui-ux-designer/instructions.md",
+      "observed_source_sha": "1b41654da43ef56af7c794221f487d7aa668590f",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "horizon-ui-guardian",
+      "plugin_id": "plugins_6ad28bfb661081919a20fd45806f3c54",
+      "source": "agents/horizon-ui-guardian/instructions.md",
+      "observed_source_sha": "becf207fa7435263c7e6d33510961ab196a4ef33",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "database-engineer",
+      "plugin_id": "plugins_6ad65c0786188191a954424c63fcc183",
+      "source": "agents/database-engineer/instructions.md",
+      "observed_source_sha": "e88d12f7b663e02e161921db8f105676f98c7927",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "integration-engineer",
+      "plugin_id": "plugins_6ad65c2795408191bb5cc19790e61666",
+      "source": "agents/integration-engineer/instructions.md",
+      "observed_source_sha": "767b95fde3179ea3d4e3342c64fdf697ae05deb3",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "qa-engineer",
+      "plugin_id": "plugins_6ad65c432f588191906b869e9a4b98d6",
+      "source": "agents/qa-engineer/instructions.md",
+      "observed_source_sha": "748aabe23f72ca922ddebf3904dd4d028e5be136",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "security-engineer",
+      "plugin_id": "plugins_6ad65c4d5a7c8191883cbea8947cfea0",
+      "source": "agents/security-engineer/instructions.md",
+      "observed_source_sha": "30f9ee4fa9412471312ac8a74f5727c1da8a0f05",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "devops-engineer",
+      "plugin_id": "plugins_6ad65c1250a48191b9d50ab254f1fc32",
+      "source": "agents/devops-engineer/instructions.md",
+      "observed_source_sha": "8390b2b2aefceb0d67c69634f1d045a946f072fd",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "horizon-evolution-agent",
+      "plugin_id": "plugins_6ad292dd3a108191bd868a5d14609a0a",
+      "source": "agents/horizon-evolution-agent/instructions.md",
+      "observed_source_sha": "e182b9bfc1e08055f83342b23b75b8637ee8d7a1",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "horizon-skills",
+      "plugin_id": "plugins_6ad2b3bdc9d08191abea836e62329919",
+      "source": "agents/horizon-skills/instructions.md",
+      "observed_source_sha": "77508207dc666a0bcfd7e63ea63183827ef6a3f7",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "corregedoria-may",
+      "plugin_id": "plugins_6ad2c7ad78f081918faf5ebde103166a",
+      "source": "agents/corregedoria-may/instructions.md",
+      "observed_source_sha": "afef4c1539a671ff97e7ffb27594238e6a81df2d",
+      "mirror_verified_against_current_source": false
+    },
+    {
+      "id": "may-persona",
+      "plugin_id": "plugins_6ad2b7424c9c8191aa71b4d54485b17c",
+      "source": "agents/may-persona/instructions.md",
+      "observed_source_sha": "1b791936e33b06b55ba7272b95c8b96974261e27",
+      "mirror_verified_against_current_source": false
+    }
+  ]
+}
