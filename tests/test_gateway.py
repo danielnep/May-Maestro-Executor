@@ -215,14 +215,55 @@ class FallbackTests(unittest.TestCase):
             return self.secondary_response()
         result = DeepSeekGateway(self.env, opener).complete(load_agent("frontend-engineer"), self.messages)
         payload = json.loads(self.requests[0].data)
-        self.assertEqual(payload["thinking"], {"type": "enabled"})
-        self.assertEqual(payload["reasoning_effort"], "max")
+        self.assertEqual(payload["thinking"], {"type": "disabled"})
+        self.assertEqual(payload["reasoning_effort"], "none")
+        self.assertEqual(payload["temperature"], 0.2)
         self.assertEqual(payload["response_format"], {"type": "json_object"})
         self.assertEqual(self.requests[0].get_header("Authorization"), "Bearer deepseek-test-secret")
         self.assertNotIn("deepseek-test-secret", self.requests[0].full_url)
         self.assertNotIn("max_tokens", payload)
         self.assertNotIn("private reasoning", json.dumps(result))
         self.assertEqual(result["metadata"]["model"], "deepseek-flash")
+
+    def test_deep_thinking_only_on_explicit_worker_level(self):
+        captured = []
+        def opener(req, timeout):
+            captured.append(json.loads(req.data))
+            return self.secondary_response()
+        gateway = DeepSeekGateway(self.env, opener)
+        agent = dict(load_agent("frontend-engineer"), _reasoning_level="high")
+        gateway.complete(agent, self.messages)
+        self.assertEqual(captured[-1]["thinking"], {"type": "enabled"})
+        self.assertEqual(captured[-1]["reasoning_effort"], "high")
+        self.assertNotIn("temperature", captured[-1])
+        with self.assertRaises(GatewayError):
+            gateway.complete(dict(agent, _reasoning_level="max"), self.messages)
+        self.assertEqual(len(captured), 1)
+
+    def test_gemini_lite_defaults_to_minimal_thinking(self):
+        captured = []
+        def opener(req, timeout):
+            captured.append(json.loads(req.data))
+            return envelope()
+        gateway = GeminiGateway(self.env, opener)
+        agent = load_agent("qa-engineer")
+        gateway.complete(dict(agent, model="gemini-3.6-flash"), self.messages)
+        self.assertEqual(captured[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "low")
+        gateway.complete(dict(agent, model="gemini-3.6-flash", _reasoning_level="high"), self.messages)
+        self.assertEqual(captured[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "high")
+        gateway.complete(dict(agent, model="gemini-3.5-flash-lite"), self.messages)
+        self.assertEqual(captured[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "minimal")
+
+    def test_retired_deepseek_model_aliases_are_normalized_without_deep_thinking(self):
+        captured = []
+        def opener(req, timeout):
+            captured.append(json.loads(req.data))
+            return self.secondary_response()
+        for model in ("deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"):
+            DeepSeekGateway(dict(self.env, DEEPSEEK_MODEL=model), opener).complete(
+                load_agent("qa-engineer"), self.messages)
+            self.assertEqual(captured[-1]["model"], "deepseek-flash")
+            self.assertEqual(captured[-1]["thinking"], {"type": "disabled"})
 
     def test_no_default_call_or_output_caps_but_explicit_override_available(self):
         gateway = GeminiGateway(self.env, lambda req, timeout: envelope())
