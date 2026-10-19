@@ -30,6 +30,12 @@ on:
       - 'horizon_core/provider_access_probe.py'
       - 'tests/test_provider_access_probe.py'
       - 'horizon_core/web_checks.py'
+      - 'horizon_core/visual_contract.py'
+      - 'tests/test_visual_contract.py'
+      - 'synthetic_visual/browser-proof.cjs'
+      - 'synthetic_visual/generic-demo/**'
+      - 'agents/ui-ux-designer/tools.json'
+      - 'agents/horizon-ui-guardian/tools.json'
       - 'tests/test_github_sqlite_state.py'
       - 'tests/test_github_state.py'
       - 'agents/knowledge/delivery-principles.md'
@@ -80,6 +86,8 @@ jobs:
           python -m unittest discover -s tests -p test_provider_recovery.py -v
           python -m unittest discover -s tests -p test_gateway.py -v
           python -m unittest discover -s tests -p test_worker.py -v
+          python -m unittest discover -s tests -p test_web_checks.py -v
+          python -m unittest discover -s tests -p test_visual_contract.py -v
           python -m unittest discover -s tests -p test_state.py -v
           python -m unittest discover -s tests -p test_tools.py -v
           python -m unittest discover -s tests -p test_agent_budgets.py -v
@@ -91,8 +99,10 @@ jobs:
           python -m unittest discover -s tests -p test_provider_access_probe.py -v
           python -m unittest discover -s tests -p test_agent_report_quality.py -v
           python -m unittest discover -s tests -p test_pages_preview.py -v
-      - name: Validar script isolado Node
-        run: node --check synthetic_visual/node-proof.cjs
+      - name: Validar scripts isolados Node
+        run: |
+          node --check synthetic_visual/node-proof.cjs
+          node --check synthetic_visual/browser-proof.cjs
       - name: Preparar imagem isolada para testes Node e Playwright
         # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
         run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
@@ -111,6 +121,14 @@ jobs:
           HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
           HORIZON_PAGES_TOKEN: ${{ secrets.HORIZON_PAGES_TOKEN }}
         run: python -m horizon_core.commit_bridge --session-seconds 1200
+      - name: Compartilhar prints dos agentes quando expressamente autorizado
+        if: ${{ always() && vars.HORIZON_VISUAL_ARTIFACTS_PUBLIC_SAFE == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-agent-ui-evidence
+          path: runtime/web-evidence/
+          if-no-files-found: ignore
+          retention-days: 3
       - name: Continuar imediatamente quando o checkpoint estiver pronto
         # O controlador pode registrar tarefas prontas e retornar erro por pedidos rejeitados.
         # Nao disparar em cancelamento; handoff.py exige marcador resume=true.

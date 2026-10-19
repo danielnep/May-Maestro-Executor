@@ -3,9 +3,9 @@ name: Horizon - 17 especialistas via API
 on:
   push:
     branches: ['main', 'feat/**', 'fix/**', 'agent/**', 'test/**']
-    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', 'benchmarks/**', 'requirements-postgres.txt', '.github/workflows/agent-executors.yml']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', 'benchmarks/**', 'requirements-postgres.txt', 'synthetic_visual/**', '.github/workflows/agent-executors.yml']
   pull_request:
-    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', 'benchmarks/**', 'requirements-postgres.txt', '.github/workflows/agent-executors.yml']
+    paths: ['horizon_core/**', 'agents/**', '!agents/checkpoints/**', 'tests/**', 'tasks/**', 'sandbox/**', 'benchmarks/**', 'requirements-postgres.txt', 'synthetic_visual/**', '.github/workflows/agent-executors.yml']
   workflow_dispatch:
   schedule:
     - cron: '17 * * * *'
@@ -51,6 +51,33 @@ jobs:
         run: node --test bridge.test.mjs postgres_bridge.test.mjs
       - name: Inventariar especialistas
         run: python -m horizon_core.app --list
+
+  visual-proof:
+    needs: verification
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verificar sintaxe do navegador isolado
+        run: node --check synthetic_visual/browser-proof.cjs
+      - name: Preparar Playwright com Chromium no Docker
+        run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
+      - name: Executar interface real sintética, abrir e fechar mensagens
+        run: python -m horizon_core.web_checks --root synthetic_visual/generic-demo --check browser-playwright --evidence runtime/visual-fixture
+      - name: Arquivar capturas demonstrativas
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: horizon-ui-proof
+          path: runtime/visual-fixture/
+          if-no-files-found: ignore
+          retention-days: 3
 
   configuration:
     if: github.event_name != 'pull_request'
