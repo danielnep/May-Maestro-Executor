@@ -13,6 +13,7 @@ from .deterministic import inspect_project, execute_read_only_with_retry
 from .learning import record_failure, verify_check_recovery, useful_lessons
 from .verified_repairs import learn_from_verified_check, replay_if_exact
 from .visual_contract import requires_visual_review, visual_review_status
+from .ui_imagination import imagine_interface, UI_AGENTS
 
 
 class PersistenceError(RuntimeError):
@@ -121,6 +122,9 @@ class Worker:
             # Counts repeated uncorrected faults, not every model step. Reset only
             # after a successful change to the source or a passing matching check.
             failure_counts = dict(previous.get('failure_counts') or {})
+            # Deterministic preflight before asking Gemini to reason.
+            imagination = (imagine_interface(self.root, task['objective'], agent=agent['id'])
+                           if agent['id'] in UI_AGENTS else None)
             if step == 0 and not previous:
                 # A proven fix may be replayed ONLY for identical objective, same
                 # source SHA, same permitted branch and fresh isolated QA pass.
@@ -135,6 +139,17 @@ class Worker:
                          'delegated': delegated, 'failure_counts': failure_counts,
                          'repair_source': reused['recipe_source']})
                     self.persist()
+                    if reused['verified'] and requires_visual_review(task):
+                        try:
+                            browser = tools.run_check({'name': 'browser-playwright'})
+                        except (OSError, ValueError, RuntimeError) as error:
+                            browser = {'check':'browser-playwright','passed':False,
+                                       'reason':type(error).__name__}
+                        history.append({'action':'run_check',
+                           'summary':'automatic dual-viewport QA after reused fix',
+                           'outcome':browser})
+                        checks.append(browser)
+                        reused['verified'] = visual_review_status(history)['verified']
                     if reused['verified']:
                         result = {'agent': agent['id'],
                                   'summary': 'Exact verified repair reused; isolated check passed',
@@ -160,6 +175,7 @@ class Worker:
                            'scope': task['payload'], 'dependencies': dependencies,
                            'memory': compact_memory(self.state.recall(task['project'], task['agent'])),
                            'project_inventory': inventory,
+                           'ui_imagination': imagination if step == 0 else None,
                            'verified_and_observed_lessons': useful_lessons(self.state, task['project'], task['agent']),
                            'history': compact_history(history),
                            'history_omitted': max(0, len(history) - 4),
@@ -199,12 +215,24 @@ class Worker:
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                     if requires_visual_review(task):
                         visual = visual_review_status(history)
+                        if visual['reason'] == 'browser_check_missing_after_edit':
+                            # Mandatory runtime verification, never an optional LLM suggestion.
+                            try:
+                                actual = tools.run_check({'name': 'browser-playwright'})
+                            except (OSError, ValueError, RuntimeError) as exc:
+                                actual = {'check': 'browser-playwright', 'passed': False,
+                                          'reason': type(exc).__name__}
+                            checks.append(actual)
+                            history.append({'action': 'run_check',
+                                'summary': 'automatic mobile and desktop Chromium validation',
+                                'outcome': actual})
+                            visual = visual_review_status(history)
                         if not visual['verified']:
                             step += 1
                             failure_counts['missing_visual_evidence'] = failure_counts.get('missing_visual_evidence', 0) + 1
                             history.append({'action': 'visual_evidence_required',
                               'outcome': {'reason': visual['reason'],
-                              'instruction': 'Use run_check browser-playwright, inspect_image with a real screenshot index after the last edit. Do not report UI approved without visual review.'}})
+                              'instruction': 'Fix the precise failed browser scenario and rerun real mobile and desktop layout checks. A Gemini screenshot call is optional when DOM evidence is ambiguous.'}})
                             self.state.checkpoint(task_id, self.worker_id,
                                 {'step': step, 'history': history, 'checks': checks,
                                  'delegated': delegated, 'failure_counts': failure_counts})

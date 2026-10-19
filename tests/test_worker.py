@@ -40,6 +40,9 @@ class WorkerIntegrationTests(unittest.TestCase):
         subprocess.run(['git', '-C', str(self.root), 'switch', '-c', 'feat/test'], check=True, capture_output=True)
         self.path = Path(self.tmp.name) / 'state.sqlite'
         self.state = State(self.path)
+        self._fixture_visual = patch('horizon_core.worker.requires_visual_review', return_value=False)
+        self._fixture_visual.start()
+        self.addCleanup(self._fixture_visual.stop)
 
     def tearDown(self):
         self.state.close()

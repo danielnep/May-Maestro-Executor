@@ -271,6 +271,20 @@ class FallbackTests(unittest.TestCase):
         for key in ('GEMINI_API_KEY', 'DEEPSEEK_API_KEY'):
             self.assertNotIn(env[key], json.dumps(result))
 
+    def test_flash_lite_requires_real_primary_429_and_failed_deepseek(self):
+        env=dict(self.env,GEMINI_FREE_FALLBACK_MODEL="gemini-3.5-flash-lite")
+        for first_status in (401,403,500,503):
+            requested=[]
+            def opener(req,timeout):
+                requested.append(req.full_url)
+                code=first_status if "googleapis" in req.full_url else 402
+                raise urllib.error.HTTPError(req.full_url,code,"unavailable",{},io.BytesIO(b"safe"))
+            with self.subTest(primary=first_status),self.assertRaises(GatewayError):
+                ModelGateway(environ=env,opener=opener).complete(
+                    load_agent("frontend-engineer"),self.messages)
+            self.assertEqual(len(requested),2)
+            self.assertFalse(any("flash-lite" in url for url in requested))
+
     def test_free_model_failure_preserves_all_three_safe_provider_errors(self):
         env = dict(self.env, GEMINI_FREE_FALLBACK_MODEL='gemini-3.5-flash-lite')
         def opener(request, timeout):
