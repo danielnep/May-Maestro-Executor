@@ -279,7 +279,7 @@ const {spawnSync} = require('node:child_process');
     }
   } finally {
     await page.close();
-    await browser.close();
+    // Leave Chrome and the reusable authenticated profile running.
   }
   process.stdout.write(JSON.stringify(outcome)+'\n',()=>process.exit(0));
 })().catch(()=>{
