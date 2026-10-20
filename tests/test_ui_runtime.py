@@ -38,7 +38,8 @@ class RuntimeVisualTest(unittest.TestCase):
         self.addCleanup(self.state.close)
 
     def test_two_views_checked_automatically_without_vision_call(self):
-        self.state.enqueue("ui1","ui-ux-designer","ronda-pro","Corrigir botão de mensagens")
+        self.state.enqueue("ui1","ui-ux-designer","ronda-pro","Corrigir botão de mensagens",
+                           payload={"visual_review_required": True})
         llm=Model()
         with patch.object(Tools,"run_check",return_value=proof()) as checker:
             result=Worker(self.state,llm,self.root).run_one()
@@ -51,7 +52,8 @@ class RuntimeVisualTest(unittest.TestCase):
         self.assertEqual(len(result["result"]["verification"][0]["screenshots"]),2)
 
     def test_real_browser_failure_is_never_marked_passed(self):
-        self.state.enqueue("ui2","horizon-ui-guardian","ronda-pro","Revisar navegação")
+        self.state.enqueue("ui2","horizon-ui-guardian","ronda-pro","Revisar navegação",
+                           payload={"visual_review_required": True})
         llm=Model()
         with patch.object(Tools,"run_check",return_value=proof(False)):
             result=Worker(self.state,llm,self.root).run_one()
