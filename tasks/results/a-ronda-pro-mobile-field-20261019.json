@@ -35,14 +35,10 @@
   "tasks": [
     {
       "agent": "may-maestro",
-      "attempts": 2,
-      "blocker": {
-        "code": "awaiting_may_consultation",
-        "round": 1,
-        "ticket": "1a1fd3fbe70aefe64ec3"
-      },
+      "attempts": 3,
+      "blocker": null,
       "model_used": null,
-      "status": "queued",
+      "status": "running",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019",
       "verification": []
