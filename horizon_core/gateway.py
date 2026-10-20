@@ -1,17 +1,4 @@
-"""Independent specialist calls through Gemini with an authorized DeepSeek fallback.
-
-No default call/token budget. Optional *_MAX_CALLS / *_MAX_OUTPUT_TOKENS are
-operator overrides only. HTTP timeout is a transport safeguard, not token rationing.
-GEMINI_FREE_TIER_CONFIRMED is an attestation, not a Google billing check. DeepSeek
-fallback was explicitly authorized and does not require a free-tier attestation.
-
-Official DeepSeek docs verified 2026-10-18:
-https://api-docs.deepseek.com/api/create-chat-completion/
-https://api-docs.deepseek.com/guides/thinking_mode/
-https://api-docs.deepseek.com/quick_start/pricing/
-They document deepseek-flash (V4.1-Flash-1017), JSON output and thinking effort max.
-DEEPSEEK_MODEL overrides this documented default. No chain-of-thought is logged.
-"""
+"""Groq specialist-model router with Gemini fallback; no deprecated provider calls."""
 import json
 import base64
 import os
@@ -20,7 +7,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
+GROQ_UI_AGENTS = frozenset({"frontend-engineer","mobile-app-builder","ui-ux-designer","horizon-ui-guardian"})
+DEFAULT_GROQ_UI_MODEL = "qwen/qwen3.8-27b"
+DEFAULT_GROQ_CODE_MODEL = "openai/gpt-oss-120b"
 ACTIONS = {"read_file", "list_files", "write_file", "run_check", "remember", "finish", "delegate", "search_web", "fetch_public", "inspect_image", "consult_may"}
 
 
@@ -128,7 +117,7 @@ class _HTTPGateway:
                 return json.loads(response.read())
         except urllib.error.HTTPError as exc:
             status = exc.code
-            reason = ("insufficient_balance" if status == 402 and self.provider == "deepseek"
+            reason = ("insufficient_balance" if status == 402
                       else "quota" if status == 429
                       else "authentication" if status in (401, 403)
                       else "server" if status >= 500 else "http")
@@ -221,171 +210,164 @@ class GeminiGateway(_HTTPGateway):
         return action
 
 
-class DeepSeekGateway(_HTTPGateway):
-    provider = "deepseek"
-    prefix = "DEEPSEEK"
+
+class GroqGateway(_HTTPGateway):
+    provider = "groq"
+    prefix = "GROQ"
+
+    def model_for(self, agent):
+        if agent.get("groq_model"):
+            return agent["groq_model"]
+        if agent.get("id") in GROQ_UI_AGENTS:
+            return self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
+        return self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
 
     def complete(self, agent, messages):
-        key = self.environ.get(agent.get("deepseek_api_key_env", "DEEPSEEK_API_KEY"))
+        key_name = agent.get("groq_api_key_env", "GROQ_API_KEY")
+        key = self.environ.get(key_name) or (
+            self.environ.get("API_IA_GROQ") if key_name == "GROQ_API_KEY" else None)
         if not key:
-            raise self._error("Missing DeepSeek API credential", "configuration")
-        model = agent.get("deepseek_model") or self.environ.get("DEEPSEEK_MODEL") or DEFAULT_DEEPSEEK_MODEL
+            raise self._error("Missing Groq API credential", "configuration")
+        model = self.model_for(agent)
         if not isinstance(model, str) or not model.strip():
-            raise self._error("DEEPSEEK_MODEL must be nonempty text", "configuration")
-        # Retired aliases must never accidentally select a deeper model.
-        if model in ("deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"):
-            model = "deepseek-flash"
+            raise self._error("Groq model is not configured", "configuration")
         level = agent.get("_reasoning_level", "low")
         if level not in ("low", "high"):
-            raise self._error("Reasoning escalation requires a verified Maestro decision", "configuration")
-        payload = {"model": model, "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
+            raise self._error("Invalid model reasoning escalation", "configuration")
+        payload = {"model": model,
+                   "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
                    "response_format": {"type": "json_object"}}
-        if level == "high":
-            payload.update(thinking={"type": "enabled"}, reasoning_effort="high")
-        else:
-            payload.update(thinking={"type": "disabled"}, reasoning_effort="none", temperature=0.2)
+        if level == "high" and model.startswith("openai/gpt-oss-"):
+            payload["reasoning_effort"] = "high"
         if self.max_output_tokens is not None:
             payload["max_tokens"] = self.max_output_tokens
-        request = urllib.request.Request("https://api.deepseek.com/chat/completions", data=json.dumps(payload).encode(),
-                                         headers={"Content-Type": "application/json", "Authorization": "Bearer " + key}, method="POST")
+        request = urllib.request.Request(
+            "https://api.groq.com/openai/v1/chat/completions",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
+            method="POST")
         result = self._request(request)
         try:
             choice = result["choices"][0]
             if choice.get("finish_reason") != "stop":
-                raise self._error("DeepSeek response was incomplete or blocked", "blocked_response", True)
-            text = choice["message"]["content"]
+                raise self._error("Groq response was incomplete", "blocked_response", True)
+            body = choice["message"]["content"]
+            if not isinstance(body, str):
+                raise ValueError("Expected text")
             usage = result.get("usage", {})
-        except (KeyError, IndexError, TypeError, AttributeError):
-            raise self._error("DeepSeek returned an invalid action envelope", "invalid_response", True) from None
-        action = self._action(text, agent)
+        except (KeyError, IndexError, TypeError, AttributeError, ValueError):
+            raise self._error("Invalid Groq completion", "invalid_response", True) from None
+        action = self._action(body, agent)
         action["metadata"] = self._metadata(agent, model, usage)
         action["metadata"]["reasoning_level"] = level
         return action
 
 
 class ModelGateway:
-    """One shared gateway for all specialists with persisted Gemini cooldown.
+    """Preserve checkpoint safety while trying Groq, then Gemini."""
 
-    Circuit data contains timestamps and enumerated failure reasons only. It never
-    includes messages, provider response bodies, authorization headers or keys.
-    A call generates one next action; fallback never executes/replays a tool.
-    """
     def __init__(self, state=None, environ=None, opener=None):
         self.state = state
         self.environ = os.environ if environ is None else environ
         self._init_errors = {}
-        for name, implementation in (("gemini", GeminiGateway), ("deepseek", DeepSeekGateway)):
+        for name, implementation in (("groq", GroqGateway), ("gemini", GeminiGateway)):
             try:
                 setattr(self, name, implementation(self.environ, opener))
             except GatewayError as exc:
                 exc.provider = name
                 self._init_errors[name] = exc
                 setattr(self, name, None)
-        self.cooldown_seconds = _positive(self.environ, "GEMINI_COOLDOWN_SECONDS", 300)
+        self.cooldown_seconds = _positive(self.environ, "GROQ_COOLDOWN_SECONDS", 300)
         self._circuit = {}
         self._load_circuit()
 
     @property
     def calls(self):
-        return sum(provider.calls for provider in (self.gemini, self.deepseek) if provider is not None)
+        return sum(provider.calls for provider in (self.groq, self.gemini) if provider is not None)
 
     def _load_circuit(self):
         if self.state is not None:
             self._circuit = self.state.recall("__runtime__", "gateway").get("circuit", {})
-
-    def inspect_image(self, agent, data, question):
-        """Use the actual PNG, with a free-only vision fallback after HTTP 429.
-
-        DeepSeek in this executor is text-only. Never pretend that a text
-        response or an OCR extraction proves an image was inspected.
-        """
-        if self.gemini is None:
-            raise self._init_errors['gemini']
-        try:
-            return self.gemini.inspect_image(agent, data, question)
-        except GatewayError as primary:
-            alternate_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
-            # Same strict free-tier/HTTP-429 policy as textual fallback.
-            if not (primary.provider == "gemini" and primary.reason == "quota"
-                    and primary.status == 429
-                    and alternate_model == "gemini-3.5-flash-lite"
-                    and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
-                    and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != alternate_model):
-                raise
-            try:
-                report = self.gemini.inspect_image(dict(agent, model=alternate_model),
-                                                   data, question)
-            except GatewayError as backup:
-                raise GatewayError(
-                    "Both permitted Gemini visual routes failed; retain browser evidence",
-                    retryable=primary.retryable or backup.retryable,
-                    provider="gemini", reason="vision_unavailable",
-                    failures=[primary.as_dict(), backup.as_dict()]) from None
-            report["metadata"]["fallback_from"] = "gemini"
-            report["metadata"]["fallback_reason"] = primary.as_dict()
-            report["metadata"]["free_tier_model"] = True
-            return report
 
     def _save_circuit(self, value):
         self._circuit = value
         if self.state is not None:
             self.state.remember("__runtime__", "gateway", "circuit", value)
 
+    def inspect_image(self, agent, data, question):
+        """Use the Gemini vision route, not a fictitious text-image inspection."""
+        if self.gemini is None:
+            raise self._init_errors["gemini"]
+        try:
+            return self.gemini.inspect_image(agent, data, question)
+        except GatewayError as error:
+            backup = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
+            if not (error.reason == "quota" and error.status == 429
+                    and backup == "gemini-3.5-flash-lite"
+                    and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
+                    and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
+                raise
+            report = self.gemini.inspect_image(dict(agent, model=backup), data, question)
+            report["metadata"].update(fallback_from="gemini", fallback_reason=error.as_dict(),
+                                      free_tier_model=True)
+            return report
+
     def complete(self, agent, messages):
         self._load_circuit()
         now = time.time()
-        if now < self._circuit.get("retry_after", 0):
-            primary = self._circuit.get("failure", {"provider": "gemini", "reason": "cooldown", "status": None, "retryable": True})
-            skipped = True
+        failures = []
+        skipped = now < self._circuit.get("groq_retry_after", 0)
+        if skipped:
+            failures.append(self._circuit.get("failure", {
+                "provider": "groq", "reason": "cooldown", "status": None, "retryable": True}))
         else:
             try:
-                if "gemini" in self._init_errors:
-                    raise self._init_errors["gemini"]
-                action = self.gemini.complete(agent, messages)
+                if "groq" in self._init_errors:
+                    raise self._init_errors["groq"]
+                action = self.groq.complete(agent, messages)
                 self._save_circuit({})
                 return action
-            except GatewayError as exc:
-                primary = exc.as_dict()
-                self._save_circuit(dict(self._circuit, retry_after=now + self.cooldown_seconds, failure=primary))
-                skipped = False
+            except GatewayError as error:
+                failures.append(error.as_dict())
+                production_model = self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
+                if (self.groq is not None
+                        and self.groq.model_for(agent) != production_model
+                        and error.status in (400, 403, 404, 429, 500, 502, 503)):
+                    try:
+                        action = self.groq.complete(dict(agent, groq_model=production_model), messages)
+                        action["metadata"].update(fallback_from="groq_ui",
+                                                  fallback_reason=error.as_dict())
+                        return action
+                    except GatewayError as secondary:
+                        failures.append(secondary.as_dict())
+                if error.reason in ("quota", "transport", "server") or error.status == 402:
+                    self._save_circuit({"groq_retry_after": now + self.cooldown_seconds,
+                                        "failure": error.as_dict()})
+                else:
+                    self._save_circuit({})
+
         try:
-            if now < self._circuit.get("deepseek_retry_after", 0):
-                raise GatewayError("DeepSeek payment block cooldown", provider="deepseek",
-                                   reason="insufficient_balance", status=402)
-            if "deepseek" in self._init_errors:
-                raise self._init_errors["deepseek"]
-            action = self.deepseek.complete(agent, messages)
-        except GatewayError as exc:
-            failures = [primary, exc.as_dict()]
-            # A payment-required response is not transient. Preserve its precise
-            # classification for incident reporting; do not retry it blindly.
-            deepseek_payment_blocked = exc.status == 402
-            if deepseek_payment_blocked:
-                self._save_circuit(dict(self._circuit, deepseek_retry_after=now + 3600))
-            # Zero-cost third route, explicitly enabled only after a real
-            # free-tier probe. Never opt into paid model inference.
-            backup_model = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
-            # Only consider the least costly tier after actual primary quota
-            # exhaustion and DeepSeek unavailability. Never on auth/config errors.
-            if (backup_model == "gemini-3.5-flash-lite"
-                    and primary.get("reason") == "quota"
-                    and primary.get("status") == 429
+            if "gemini" in self._init_errors:
+                raise self._init_errors["gemini"]
+            action = self.gemini.complete(agent, messages)
+        except GatewayError as error:
+            failures.append(error.as_dict())
+            backup = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
+            if (error.reason == "quota" and error.status == 429
+                    and backup == "gemini-3.5-flash-lite"
                     and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
-                    and self.gemini is not None):
+                    and self.gemini is not None
+                    and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
                 try:
-                    alternate = dict(agent, model=backup_model, _reasoning_level="low")
-                    action = self.gemini.complete(alternate, messages)
-                    action["metadata"].update(
-                        fallback_from="gemini_and_deepseek",
-                        fallback_reasons=failures,
-                        free_tier_model=True)
+                    action = self.gemini.complete(dict(agent, model=backup, _reasoning_level="low"), messages)
+                    action["metadata"].update(fallback_from="groq_and_gemini",
+                                              fallback_reasons=failures, free_tier_model=True)
                     return action
-                except GatewayError as free_error:
-                    failures.append(free_error.as_dict())
-            message = ("Model providers unavailable: Gemini " + str(primary["reason"]) +
-                       "; DeepSeek " + exc.reason +
-                       "; free fallback exhausted/unavailable. Checkpoint and retry without replaying completed tools.")
-            raise GatewayError(message, retryable=True,
-                               provider="all", reason="providers_unavailable", failures=failures) from None
-        action["metadata"].update(fallback_from="gemini", fallback_reason=primary, gemini_cooldown_skipped=skipped)
+                except GatewayError as backup_error:
+                    failures.append(backup_error.as_dict())
+            raise GatewayError("Model providers unavailable; checkpoint and retry safely",
+                               retryable=True, provider="all", reason="providers_unavailable",
+                               failures=failures) from None
+        action["metadata"].update(fallback_from="groq", fallback_reasons=failures,
+                                  groq_cooldown_skipped=skipped)
         return action
