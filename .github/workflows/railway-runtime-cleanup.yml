@@ -1,0 +1,36 @@
+name: Horizon - aposentar agendadores de agentes no Actions
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/railway-runtime-cleanup.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cleanup:
+    if: github.repository == 'danielnep/May-Maestro-Executor' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Desabilitar somente central e watchdog legados; preservar CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          for wf in horizon-agent-central.yml agent-watchdog.yml restore-agent-workflows.yml; do
+            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq '.state')"
+            echo "before $wf=$state"
+            case "$state" in
+              active) gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/disable" >/dev/null ;;
+              disabled_manually|disabled_inactivity) ;;
+              *) echo "::error::Cannot verify $wf: $state"; exit 1 ;;
+            esac
+            after="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq '.state')"
+            echo "after $wf=$after"
+            test "$after" != active
+          done
+          state="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/groq-migration-validation.yml" --jq '.state')"
+          echo "offline_ci=$state"
+          test "$state" = active
