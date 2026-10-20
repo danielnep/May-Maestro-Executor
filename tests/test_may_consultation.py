@@ -153,6 +153,34 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
         self.assertEqual(got["agent"], "may-maestro")
         self.assertIsNone(read_consultation(self.task["task_id"], agent="qa-engineer", api=api))
 
+    def test_read_authentic_reply_after_one_hundred_comments(self):
+        class PaginatedIssues(FakeIssues):
+            def __init__(self):
+                super().__init__()
+                self.read_pages = []
+
+            def __call__(self, method, path, *, body=None):
+                if method == "GET" and "/comments?" in path:
+                    number = int(path.split("/")[2])
+                    page = int(path.rsplit("page=", 1)[1])
+                    self.read_pages.append(page)
+                    all_comments = self.comments.get(number, [])
+                    return all_comments[(page - 1) * 100:page * 100]
+                return super().__call__(method, path, body=body)
+
+        api = PaginatedIssues()
+        request_consultation(self.task, "providers_unavailable", api=api)
+        action = {"action": "read_file", "args": {"path": "README.md"},
+                  "summary": "Inspect the repository docs before working."}
+        api.comments[1] = [
+            {"user": {"login": "stranger"}, "body": "no owner approval"}
+            for _ in range(100)
+        ] + [{"user": {"login": "danielnep"},
+              "body": REPLY_MARKER + "\n" + json.dumps(action)}]
+        reply = read_consultation(self.task["task_id"], api=api, agent="may-maestro")
+        self.assertEqual(reply["decision_untrusted"], action)
+        self.assertEqual(api.read_pages, [1, 2])
+
     def test_reply_as_diagnosis_and_invalid_schema_not_executable(self):
         api = FakeIssues()
         request_consultation(self.task, "providers_unavailable", api=api)

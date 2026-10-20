@@ -229,14 +229,26 @@ def read_consultation(task_id, *, api=None, agent=None, round_index=0):
     row = _find_issue(call, ticket(task_id, agent, round_index), legacy=agent is None)
     if row is None:
         return None
-    comments = call("GET", "/issues/" + str(row["number"]) + "/comments?per_page=100")
-    for comment in reversed(comments):
-        if comment.get("user", {}).get("login", "").lower() != "danielnep":
-            continue
-        if agent is not None and not (comment.get("body") or "").startswith(REPLY_MARKER + "\n"):
-            continue
-        parsed = _valid_reply(comment.get("body"))
-        if parsed is not None:
-            return {"issue": row["number"], **parsed,
-                    "source": "public_owner_comment", "agent": agent}
-    return None
+    # GitHub's issue comments are paginated oldest first. An owner's reply
+    # after the first hundred must not be mistaken for an unanswered ticket.
+    # A saturated bound fails closed rather than silently trusting old pages.
+    latest = None
+    for page in range(1, 11):
+        comments = call("GET", "/issues/" + str(row["number"])
+                        + "/comments?per_page=100&page=" + str(page))
+        if not isinstance(comments, list):
+            raise RuntimeError("Invalid consultation comments response")
+        for comment in comments:
+            if not isinstance(comment, dict):
+                continue
+            if comment.get("user", {}).get("login", "").lower() != "danielnep":
+                continue
+            if agent is not None and not (comment.get("body") or "").startswith(REPLY_MARKER + "\n"):
+                continue
+            parsed = _valid_reply(comment.get("body"))
+            if parsed is not None:
+                latest = {"issue": row["number"], **parsed,
+                          "source": "public_owner_comment", "agent": agent}
+        if len(comments) < 100:
+            return latest
+    raise RuntimeError("Consultation comment pagination cap reached")
