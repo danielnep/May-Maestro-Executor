@@ -55,8 +55,10 @@ class RuntimeVisualTest(unittest.TestCase):
         llm=Model()
         with patch.object(Tools,"run_check",return_value=proof(False)):
             result=Worker(self.state,llm,self.root).run_one()
-        self.assertEqual(result["status"],"failed")
-        self.assertEqual(result["error"]["reason"],"visual_evidence_missing")
+        self.assertEqual(result["status"],"queued")
+        self.assertIsNone(result.get("result"))
+        self.assertTrue(any(item.get("action") == "repair_cycle"
+                            for item in result["checkpoint"]["history"]))
         self.assertGreaterEqual(len(llm.contexts),3)
 
 if __name__=="__main__":
