@@ -253,6 +253,74 @@ class State:
         except (ValueError, TypeError):
             return None
 
+    def wake_may_reply(self, task_id, ticket, round_index, now=None):
+        """Expedite only an exact queued V2 consultation after verified owner reply."""
+        if (not isinstance(task_id, str) or not isinstance(ticket, str)
+                or type(round_index) is not int or round_index < 0):
+            raise ValueError("Invalid May wakeup")
+        now = time.time() if now is None else now
+        with self._lock:
+            row = self.db.execute("SELECT status,project,not_before,checkpoint FROM tasks WHERE task_id=?",
+                                  (task_id,)).fetchone()
+            if not row or row["status"] != "queued" or not row["project"].startswith("chat:"):
+                return False
+            checkpoint = self._safe_failure_json(row["checkpoint"])
+            pending = checkpoint.get("pending_may") if isinstance(checkpoint, dict) else None
+            if (not isinstance(pending, dict)
+                    or pending.get("transport") == "kernel"
+                    or pending.get("ticket") != ticket
+                    or pending.get("round", 0) != round_index
+                    or row["not_before"] <= now):
+                return False
+            with self._tx():
+                self.db.execute("UPDATE tasks SET not_before=? WHERE task_id=? AND status='queued'",
+                                (now, task_id))
+                self._event(task_id, "may_reply_ready", {"round": round_index}, now)
+                return True
+
+    def recover_p0_visual_audit(self, task_id, now=None):
+        """One-time targeted retry without losing evidence or releasing dependents.
+
+        Explicit P0 ID and exact old browser failure are required. The task is
+        *not* completed: it must pass the KERNEL review contract afterward.
+        """
+        if task_id != "chat-a-ronda-pro-auditoria-total-20261019:audit-ui":
+            return False
+        now = time.time() if now is None else now
+        with self._lock:
+            row = self.get(task_id)
+            if not row or row["status"] != "failed" or row["agent"] != "horizon-ui-guardian":
+                return False
+            error = row.get("error") or {}
+            checkpoint = row.get("checkpoint") or {}
+            if (not isinstance(error, dict) or not isinstance(checkpoint, dict)
+                    or error.get("reason") != "visual_evidence_missing"
+                    or error.get("detail") != "browser_check_not_verified"
+                    or checkpoint.get("kernel_visual_recovery_used")
+                    or row["attempts"] >= row["max_attempts"]):
+                return False
+            history = checkpoint.get("history") or []
+            if (not isinstance(history, list) or
+                    any(isinstance(a, dict) and a.get("action") == "write_file"
+                        for a in history) or
+                    not any(isinstance(a, dict) and a.get("action") == "run_check"
+                            and isinstance(a.get("outcome"), dict)
+                            and a["outcome"].get("check") == "browser-playwright"
+                            and a["outcome"].get("passed") is False for a in history)):
+                return False
+            preserved = dict(checkpoint)
+            preserved["kernel_visual_recovery_used"] = True
+            preserved["prior_visual_failure"] = error
+            # Count previous failures unchanged; append a recovery event only.
+            with self._tx():
+                self.db.execute(
+                    "UPDATE tasks SET status='queued',not_before=?,checkpoint=?,"
+                    "lease_owner=NULL,lease_until=NULL WHERE task_id=? AND status='failed'",
+                    (now, _json(preserved), task_id))
+                self._event(task_id, "p0_visual_recovery_requested",
+                            {"reason": "kernel_live_review_required"}, now)
+            return True
+
     def recover_provider_outages(self, now=None):
         """Unstick only failed retryable provider tasks and their dependents.
 
@@ -276,7 +344,7 @@ class State:
             eligible_blocked = any(
                 all(self.db.execute("SELECT status FROM tasks WHERE task_id=?", (dep,)).fetchone()
                     and self.db.execute("SELECT status FROM tasks WHERE task_id=?", (dep,)).fetchone()["status"]
-                        in ("queued", "running", "succeeded")
+                        == "succeeded"
                     for dep in json.loads(row["depends_on"]))
                 for row in self.db.execute("SELECT depends_on FROM tasks WHERE status='blocked'"))
             if not eligible_failed and not eligible_blocked:
@@ -305,7 +373,7 @@ class State:
                     deps = json.loads(row["depends_on"])
                     statuses = [self.db.execute("SELECT status FROM tasks WHERE task_id=?",
                                 (dep,)).fetchone() for dep in deps]
-                    if not all(item and item["status"] in ("succeeded","queued","running")
+                    if not all(item and item["status"] == "succeeded"
                                for item in statuses):
                         continue
                     self.db.execute(
