@@ -1,0 +1,60 @@
+name: Horizon - prova real de dois modelos Groq
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/groq-two-model-live-smoke.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: horizon-groq-two-model-live-smoke
+  cancel-in-progress: false
+jobs:
+  inference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_UI_MODEL: qwen/qwen3.8-27b
+      GROQ_CODE_MODEL: openai/gpt-oss-120b
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fazer só duas chamadas reais gratuitas e verificar JSON de ação
+        run: |
+          python - <<'PY'
+          import json, os
+          from horizon_core.gateway import GroqGateway
+          from horizon_core.registry import load_agent
+          from horizon_core.state import State
+          if not os.getenv("GROQ_API_KEY"):
+              raise SystemExit("Missing GROQ_API_KEY")
+          state = State(":memory:")
+          try:
+              gateway = GroqGateway(state=state)
+              cases = [("ui-ux-designer", "qwen/qwen3.8-27b"),
+                       ("backend-engineer", "openai/gpt-oss-120b")]
+              for agent_id, expected_model in cases:
+                  agent = load_agent(agent_id)
+                  prompt = ("Contrato de teste sintético. Não acesse arquivos, não execute "
+                            "ferramentas e não inclua raciocínio. Retorne SOMENTE um objeto "
+                            "JSON com action=finish, args={}, summary=SMOKE_OK.")
+                  action = gateway.complete(agent, [{"role": "user", "content": prompt}])
+                  metadata = action["metadata"]
+                  if metadata["provider"] != "groq" or metadata["model"] != expected_model:
+                      raise AssertionError("Wrong authorized model")
+                  if action["action"] != "finish":
+                      raise AssertionError("Model did not follow isolated finish contract")
+                  print(json.dumps({"agent":agent_id, "provider":"groq",
+                                    "model":expected_model, "contract":"passed",
+                                    "used_tokens":metadata["usage"].get("total_tokens")},
+                                   ensure_ascii=False), flush=True)
+              print("TWO_GROQ_MODELS_LIVE_OK")
+          finally:
+              state.close()
+          PY
