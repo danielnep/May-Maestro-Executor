@@ -1,8 +1,8 @@
 {
   "schema": "horizon.agent.attendance.cursor.v1",
   "last_ids": {
-    "a-ronda-pro-auditoria-total-20261019": 907,
-    "a-ronda-pro-mobile-field-20261019": 909,
+    "a-ronda-pro-auditoria-total-20261019": 911,
+    "a-ronda-pro-mobile-field-20261019": 913,
     "michelle-sigware-ai-coi-20261018": 195,
     "reservas-proof-v1": 280,
     "reservas-proof-v2": 666,
