@@ -1,5 +1,21 @@
 # Horizon | Central única dos agentes (19/10/2026)
 
+
+## Acesso direto Python, sem GitHub como intermediário de mensagens
+
+A preferência operacional é horizon_core/direct_chat.py, usando o mesmo chat
+autenticado. Dentro da VM KERNEL, o processo Python chama o Chrome local por
+Node/Playwright-CDP. De um executor externo, exige KERNEL_API_KEY guardada como
+secret do projeto KERNEL. O agente pode enviar e ler a resposta por ticket
+sem abrir Issue, sem esperar uma hora e sem usar plugin do ChatGPT.
+
+**Conexão documentada não significa conexão provisionada.** Se o secret não
+existir no ambiente do Worker, ou o navegador não estiver autenticado, fica
+ativo o fluxo de contingência por GitHub Issues e automação horária. Uma
+mensagem de entrega incerta não deve ser duplicada por outro transporte.
+Detalhes, testes e segurança: docs/direct-chat-agent-bridge.md.
+
+
 ## Fluxo e agentes
 O Maestro coordena a fila, mas qualquer um dos 17 especialistas pode consultar
 May e precisa identificar o agente e um ticket. Cada especialista conserva

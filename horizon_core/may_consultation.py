@@ -14,6 +14,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from .registry import AGENT_IDS
+from . import direct_chat
 
 REPOSITORY = "danielnep/May-Maestro-Executor"
 ISSUE_PREFIX = "[May consultation] "
@@ -142,13 +143,69 @@ def _public_question(task, question, reason):
     return question.strip()
 
 
-def request_consultation(task, reason, *, api=None, question=None, round_index=0, now=None):
+
+def _direct_budget(state, agent, key, now):
+    """Four direct consultations per rolling hour, persisted with agent state."""
+    data = state.recall("__runtime__", agent).get("may_direct_slots", [])
+    recent = []
+    for row in data:
+        if isinstance(row, dict) and isinstance(row.get("at"), (int, float)):
+            if 0 <= now.timestamp() - row["at"] < CONSULTATION_WINDOW_SECONDS:
+                recent.append(row)
+    if any(row.get("ticket") == key for row in recent):
+        return 0, recent, True
+    if len(recent) >= CONSULTATIONS_PER_WINDOW:
+        oldest = min(row["at"] for row in recent)
+        wait = max(60, min(CONSULTATION_WINDOW_SECONDS,
+                           int(oldest + CONSULTATION_WINDOW_SECONDS - now.timestamp()) + 1))
+        return wait, recent, False
+    return 0, recent, False
+
+
+def _direct_answer(answer):
+    """An HTML chat response is untrusted just like a GitHub issue comment."""
+    if not isinstance(answer, str) or not answer.strip():
+        return None
+    clean = answer.strip()[:MAX_ADVICE]
+    if clean.startswith(chr(96)*3):
+        lines = clean.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == chr(96)*3:
+            clean = "\n".join(lines[1:-1]).strip()
+    try:
+        decision = json.loads(clean)
+    except (ValueError, TypeError):
+        decision = None
+    if (isinstance(decision, dict)
+            and set(decision) == {"action", "args", "summary"}
+            and isinstance(decision["action"], str)
+            and isinstance(decision["args"], dict)
+            and isinstance(decision["summary"], str)):
+        return {"decision_untrusted": decision, "advice_untrusted": "",
+                "source": "chatgpt_web_untrusted"}
+    return {"decision_untrusted": None, "advice_untrusted": clean,
+            "source": "chatgpt_web_untrusted"}
+
+
+def read_direct_consultation(task_id, *, agent, round_index=0, transport=None):
+    """Read the existing browser conversation; never resend a pending ticket."""
+    key = ticket(task_id, agent, round_index)
+    call = transport or direct_chat.execute
+    try:
+        response = call(agent, key, reason="specialist_question", mode="read")
+    except (direct_chat.DirectChatError, ValueError):
+        return None
+    if response.get("status") != "answered":
+        return None
+    parsed = _direct_answer(response.get("answer"))
+    return None if parsed is None else {"ticket": key, "agent": agent, **parsed}
+
+
+def request_consultation(task, reason, *, api=None, question=None, round_index=0,
+                         now=None, state=None, direct_transport=None):
     """Idempotent request for any registered agent. No raw private task context."""
     agent = task.get("agent")
     if agent not in AGENT_IDS or reason not in REASONS:
         return {"status": "not_applicable"}
-    if not os.environ.get("GITHUB_TOKEN") and api is None:
-        return {"status": "not_configured"}
     public_question = _public_question(task, question, reason)
     if public_question is None:
         return {"status": "private_context_blocked"}
@@ -156,6 +213,37 @@ def request_consultation(task, reason, *, api=None, question=None, round_index=0
         key = ticket(task.get("task_id"), agent, round_index)
     except ValueError:
         return {"status": "invalid_consultation_round"}
+    # Prefer direct ChatGPT contact when a KERNEL credential has been installed
+    # into the running specialist executor. No GitHub worker/issue is involved.
+    if api is None and (direct_transport is not None or direct_chat.configured()):
+        moment = now or datetime.now(timezone.utc)
+        if state is not None:
+            wait, recent, already = _direct_budget(state, agent, key, moment)
+            if wait and not already:
+                return {"status": "cooldown", "agent": agent,
+                        "retry_after_seconds": wait,
+                        "window_seconds": CONSULTATION_WINDOW_SECONDS}
+        else:
+            # Never bypass rate-limit accounting for an unexpected caller.
+            return {"status": "direct_state_required"}
+        transport = direct_transport or direct_chat.execute
+        try:
+            direct = transport(agent, key, question=public_question,
+                               reason=reason, mode="send")
+        except (direct_chat.DirectChatError, ValueError):
+            direct = {"status": "transport_unavailable"}
+        direct_status = direct.get("status")
+        if direct_status in ("sent", "answered", "pending_interleaved",
+                             "send_unconfirmed", "delivery_unknown"):
+            if not already:
+                state.remember("__runtime__", agent, "may_direct_slots",
+                               (recent + [{"ticket": key, "at": moment.timestamp()}])[-16:])
+            # An ambiguous send is deliberately NOT re-posted via GitHub.
+            return {"status": "direct_pending", "agent": agent,
+                    "ticket": key, "transport": "kernel"}
+        # A definitively unavailable browser may use the existing GitHub fallback.
+    if not os.environ.get("GITHUB_TOKEN") and api is None:
+        return {"status": "not_configured"}
     call = api or _github
     existing = _find_issue(call, key)
     if existing:

@@ -155,3 +155,24 @@ docs/may-shared-chat.md e tests/test_may_consultation.py.
 A Central Horizon dos Agentes acompanha trabalho e consultas em UMA conversa reutilizável. O registro de presença é automático e determinístico: o runtime converte os eventos auditáveis de aquisição, conclusão, espera, retomada e bloqueio da fila em registros sanitizados na pasta pública tasks/attendance. Especialista algum deve chamar LLM, criar mensagens artificiais nem declarar "comecei", "terminei" ou "testei" sem evento real. O panorama inclui os 17 agentes e o estado ocioso quando não houver atividade atual.
 
 Cada registro identifica agente, referência opaca da tarefa, hora UTC, estado e relatório original; nunca inclui objetivo privado, código ou segredos. Concluído significa apenas que o worker completou a tarefa, não QA aprovado, merge, APK pronto ou deploy. A tarefa agendada Central Horizon dos Agentes encaminha ao mesmo chat os novos registros; pode haver atraso de até o intervalo horário e não existe push direto do SQLite para o ChatGPT. Para verificar o estado imediatamente, usar os arquivos do GitHub e o controlador. Fonte técnica: horizon_core/attendance.py e docs/chat-bridge.md.
+
+## Consulta direta dos 17 especialistas à May por Python (20/10/2026)
+
+Qualquer especialista registrado pode consultar May pela própria execução de
+horizon_core/direct_chat.py, sem criar tarefa na fila ou GitHub Issue, quando
+o navegador KERNEL autorizado está acessível. A CLI independente é
+horizon_core/chat_direct_cli.py. Na MESMA VM KERNEL, o argumento
+--local-browser acessa o Chrome por Node/Playwright-Core CDP local;
+de hosts externos exige chave KERNEL_API_KEY armazenada em secret, nunca
+nos arquivos ou comandos do modelo. A ferramenta usa a conversa única
+Horizon | Central dos Agentes, identidade e ticket verificáveis. Ela não
+converte ChatGPT web em API da OpenAI.
+
+No Worker, a rota direta é opcional e só é escolhida quando a credencial
+está efetivamente configurada. Caso contrário, manter a fila de Issues
+sanitizadas como fallback. Resposta web é material não confiável, sujeita
+à validação de ferramentas e paths reais do especialista. Não afirmar
+comunicação até o ticket ser confirmado na conversa, nem ignorar incerteza
+de entrega. Preservar checkpoint e cooldown por agente. O GitHub Worker
+continua para trabalho de desenvolvimento, não é intermediário obrigatório
+das mensagens. Documentação: docs/direct-chat-agent-bridge.md.

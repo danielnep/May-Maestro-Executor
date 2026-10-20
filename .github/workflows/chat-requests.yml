@@ -18,7 +18,10 @@ on:
       - 'horizon_core/reasoning_policy.py'
       - 'tests/test_reasoning_policy.py'
       - 'horizon_core/may_consultation.py'
+      - 'horizon_core/direct_chat.py'
+      - 'horizon_core/chat_direct_cli.py'
       - 'tests/test_may_consultation.py'
+      - 'tests/test_direct_chat.py'
       - 'tests/test_gateway.py'
       - 'tests/test_vision.py'
       - 'tests/test_provider_recovery.py'
@@ -108,6 +111,7 @@ jobs:
           python -m unittest discover -s tests -p test_vision.py -v
           python -m unittest discover -s tests -p test_reasoning_policy.py -v
           python -m unittest discover -s tests -p test_may_consultation.py -v
+          python -m unittest discover -s tests -p test_direct_chat.py -v
           python -m unittest discover -s tests -p test_worker.py -v
           python -m unittest discover -s tests -p test_web_checks.py -v
           python -m unittest discover -s tests -p test_visual_contract.py -v
@@ -152,6 +156,8 @@ jobs:
           HORIZON_STATE_BACKEND: github-sqlite
           HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
           HORIZON_PAGES_TOKEN: ${{ secrets.HORIZON_PAGES_TOKEN }}
+          # Optional secret. Without it, only the verified GitHub fallback is active.
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
         run: python -m horizon_core.commit_bridge --session-seconds 1200
       - name: Publicar aprendizados verificados no GitHub com verificacao de integridade
         # O checkpoint privado permanece criptografado em agent-state/runtime.
