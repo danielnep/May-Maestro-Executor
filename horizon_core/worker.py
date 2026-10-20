@@ -119,46 +119,67 @@ class Worker:
             'steps': step,
         })
         self.persist()
+        print(json.dumps({
+            'event': 'may_delegation_released',
+            'task_id': task['task_id'],
+            'delegated_count': len(delegated),
+            'stage': 'delegated_implementation_pending',
+            'qa_verified': False,
+        }, sort_keys=True), flush=True)
         return self.state.get(task['task_id'])
 
-    def _recover_delegated_maestro(self, task, previous, pending):
-        """Retire a superseded provider ticket only after durable delegation proof.
+    def _recover_delegated_maestro(self, task, previous):
+        """Release a fully recorded Maestro DAG without another May/model reply.
 
-        Old V2 checkpoints may already have delegated children before opening a
-        second outage consultation. They must not wait on that unrelated reply
-        forever. Keep the public Issue untouched and verify the child DAG first.
+        Older checkpoints may contain a second unanswered consultation even
+        though the first owner-approved delegation was already saved. Inspect
+        ALL durable delegation receipts, not just the last two history items.
+        Never treat a mere task count, a plan, or a consultation as evidence.
+        Only the parent orchestration completes; child QA/publication does not.
         """
-        if (task['agent'] != 'may-maestro' or not isinstance(pending, dict)
-                or pending.get('transport') == 'kernel'
-                or not isinstance(pending.get('round'), int)
-                or pending['round'] < 1 or previous.get('may_plan')):
+        if task['agent'] != 'may-maestro' or not isinstance(previous, dict):
+            return None
+        children = previous.get('delegated')
+        if not isinstance(children, list) or not 1 <= len(children) <= 17:
+            return None
+        remaining = previous.get('may_plan') or []
+        # A queued non-finish tool action must not be silently discarded.
+        if (not isinstance(remaining, list) or
+                any(not isinstance(step, dict) or step.get('action') != 'finish'
+                    for step in remaining)):
             return None
         history = previous.get('history') or []
-        delegated = previous.get('delegated') or []
-        if len(history) < 3 or not delegated:
+        if not isinstance(history, list):
             return None
-        latest, handoff = history[-1], history[-2]
-        if (latest.get('action') != 'may_provider_fallback'
-                or latest.get('round') != pending['round']
-                or latest.get('outcome', {}).get('ticket') != pending.get('ticket')
-                or handoff.get('action') != 'delegate'
-                or handoff.get('outcome', {}).get('delegated') != delegated
-                or not any(entry.get('action') == 'may_provider_fallback'
-                           and isinstance(entry.get('round'), int)
-                           and entry['round'] < pending['round']
-                           for entry in history[:-2])):
+        recorded = []
+        for entry in history:
+            if not isinstance(entry, dict) or entry.get('action') != 'delegate':
+                continue
+            outcome = entry.get('outcome')
+            ids = outcome.get('delegated') if isinstance(outcome, dict) else None
+            if not isinstance(ids, list) or not ids:
+                return None
+            recorded.extend(ids)
+        if (not recorded or len(set(recorded)) != len(recorded)
+                or recorded != children):
             return None
-        if any(not isinstance(child, str) or not child.startswith(task['task_id'] + ':')
-               or not (row := self.state.get(child))
-               or task['task_id'] not in row['depends_on']
-               for child in delegated):
-            return None
+        # Recheck the persisted child DAG. A forged, half-written or missing
+        # delegation must stay pending, including the unanswered May ticket.
+        for child in children:
+            if not isinstance(child, str) or not child.startswith(task['task_id'] + ':'):
+                return None
+            row = self.state.get(child)
+            if (not row or row.get('agent') == 'may-maestro'
+                    or row.get('project') != task['project']
+                    or row.get('payload') != task['payload']
+                    or task['task_id'] not in row.get('depends_on', [])):
+                return None
         return self._finish_delegation(
             task, task['agent'], previous.get('step', 0), history,
-            previous.get('checks', []), delegated,
+            previous.get('checks', []), children,
             previous.get('failure_counts', {}),
-            'Maestro delegation resumed from a verified checkpoint; '
-            'specialist execution and QA remain pending.')
+            'Maestro delegation recovered from validated durable child receipts; '
+            'specialist implementation and QA are not yet verified.')
 
     def run_one(self):
         task = self.state.claim(self.worker_id, lease_seconds=1800)
@@ -168,6 +189,13 @@ class Worker:
         started = time.monotonic()
         self.persist()
         try:
+            # Parent handoff has no workspace to restore. A previously stored
+            # and verified delegation must recover before transport/model calls
+            # or replaying unrelated workspace changes.
+            previous = task.get('checkpoint') or {}
+            recovered = self._recover_delegated_maestro(task, previous)
+            if recovered is not None:
+                return recovered
             self.restore_workspace(task)
             agent = load_agent(task['agent'])
             inventory = inspect_project(self.root)
@@ -225,9 +253,8 @@ class Worker:
             pending_may = previous.get('pending_may')
             recovery_pending = None
             if pending_may:
-                recovered = self._recover_delegated_maestro(task, previous, pending_may)
-                if recovered is not None:
-                    return recovered
+                # The durable DAG has already been checked above. No reply to
+                # a superseded ticket is required when its children were proven.
                 # Older checkpoints use a plain hash (round zero).
                 pending_round = pending_may.get('round', 0) if isinstance(pending_may, dict) else 0
                 is_direct = (isinstance(pending_may, dict)
