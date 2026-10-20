@@ -6,5 +6,7 @@
   "finish",
   "search_web",
   "fetch_public",
-  "inspect_image"
+  "inspect_image",
+  "read_knowledge",
+  "read_document"
 ]

@@ -130,10 +130,32 @@ class Tools:
             if expected is not None and expected != hashlib.sha256(previous).hexdigest() and new_hash != hashlib.sha256(previous).hexdigest():
                 raise ValueError('File changed since specialist read it')
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding='utf-8')
+            # Same-directory rename: interrupted writes never truncate the
+            # previous source. Flush bytes before returning a mutation receipt.
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='wb', dir=path.parent,
+                                                 prefix='.horizon-write-', delete=False) as stream:
+                    temporary = stream.name
+                    if path.exists():
+                        os.fchmod(stream.fileno(), path.stat().st_mode & 0o777)
+                    stream.write(content.encode('utf-8'))
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, path)
+                temporary = None
+            finally:
+                if temporary is not None:
+                    Path(temporary).unlink(missing_ok=True)
             return {'path': args['path'], 'sha256': new_hash, 'bytes': len(content.encode())}
         if action == 'run_check':
             return self.run_check(args)
+        if action == 'read_document':
+            from .document_ingest import read_document
+            return read_document(self.path(args.get('path')))
+        if action == 'read_knowledge':
+            from .academic_knowledge import read_knowledge
+            return read_knowledge(self.agent['id'], args)
         if action == 'search_web':
             from .research import search_web
             return search_web(args.get('query'))
