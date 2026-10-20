@@ -19,9 +19,6 @@ from .registry import AGENT_IDS
 
 CENTRAL_URL = "https://chatgpt.com/c/6ad68dab-1178-83e9-a409-7c7014281b68"
 BROWSER_NAME = "may-chatgpt-72h"
-ENDPOINT = ("https://api.onkernel.com/browsers/"
-            + urllib.parse.quote(BROWSER_NAME, safe="")
-            + "/playwright/execute")
 TICKET_PATTERN = re.compile(r"^[a-f0-9]{16,32}$")
 MAX_MESSAGE = 1400
 MAX_REPLY = 3000
