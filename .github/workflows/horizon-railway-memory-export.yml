@@ -7,12 +7,13 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   export-sealed:
     if: github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +23,47 @@ jobs:
           python-version: '3.12'
       - name: Load only required cryptography
         run: python -m pip install cryptography==46.0.3
+      - name: Confirm Railway public recipient is ready
+        run: |
+          python - <<'PY'
+          import json,urllib.request
+          url='https://horizonsolucoes.com/api/internal/horizon-checkpoint-public-key'
+          with urllib.request.urlopen(url,timeout=18) as r: doc=json.load(r)
+          if doc.get('schema')!='horizon.checkpoint.public-key.v1':
+              raise SystemExit('Railway public recipient is not ready')
+          print('RAILWAY_PUBLIC_KEY_READY=true')
+          PY
+      - name: Stop new competing Actions writers and wait for existing runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json,os,time,urllib.request
+          base='https://api.github.com/repos/danielnep/May-Maestro-Executor'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                   'Accept':'application/vnd.github+json','User-Agent':'Horizon-Safe-Checkpoint-Cutover/1'}
+          targets=['chat-requests.yml','agent-executors.yml','agent-watchdog.yml']
+          for target in targets:
+              req=urllib.request.Request(base+'/actions/workflows/'+target+'/disable',
+                     headers=headers,method='PUT')
+              with urllib.request.urlopen(req,timeout=25) as result:
+                  if result.status!=204:raise RuntimeError('Cannot freeze '+target)
+              print('FROZEN_WORKFLOW='+target)
+          for _ in range(60):
+              waiting=[]
+              for target in targets[:2]:
+                  url=base+'/actions/workflows/'+target+'/runs?per_page=50'
+                  with urllib.request.urlopen(urllib.request.Request(url,headers=headers),timeout=25) as res:
+                      rows=json.load(res).get('workflow_runs',[])
+                  waiting.extend([(target,row['id']) for row in rows if row['status'] in (
+                      'in_progress','queued','pending','waiting','requested')])
+              if not waiting:
+                  print('EXCLUSIVE_STATE_WRITER_DRAINED=true')
+                  break
+              print('PENDING_ACTIONS_WRITERS='+str(len(waiting)))
+              time.sleep(15)
+          else:raise RuntimeError('Existing jobs did not finish: no checkpoint exported')
+          PY
       - name: Seal verified existing checkpoint to Railway PUBLIC RSA key
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -88,3 +130,20 @@ jobs:
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
+      - name: Restore old Actions on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os,urllib.request
+          base='https://api.github.com/repos/danielnep/May-Maestro-Executor/actions/workflows/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                   'Accept':'application/vnd.github+json','User-Agent':'Horizon-Actions-Restore/1'}
+          for target in ('chat-requests.yml','agent-executors.yml','agent-watchdog.yml'):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(base+target+'/enable',
+                       headers=headers,method='PUT'),timeout=25) as res:pass
+                  print('RESTORED_ACTIONS='+target)
+              except Exception:print('RESTORE_ACTIONS_FAILED='+target)
+          PY
