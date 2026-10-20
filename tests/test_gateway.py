@@ -149,7 +149,7 @@ class GroqRoutingTests(unittest.TestCase):
         self.assertEqual(len(self.requests), 17)
         self.assertEqual(gateway.groq.calls, 0)
 
-    def test_gemini_outage_selects_gpt_oss_for_all_17(self):
+    def test_gemini_outage_routes_each_specialist_to_its_groq_model(self):
         def no_gemini(req, timeout):
             self.requests.append(req)
             if "generativelanguage.googleapis.com" in req.full_url:
@@ -163,7 +163,10 @@ class GroqRoutingTests(unittest.TestCase):
                    "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
             for agent_id in AGENT_IDS:
                 action = gateway.complete(load_agent(agent_id), self.messages)
-                self.assertEqual(action["metadata"]["model"], "openai/gpt-oss-120b")
+                expected = ("qwen/qwen3.8-27b" if agent_id in
+                    ("frontend-engineer", "mobile-app-builder", "ui-ux-designer",
+                     "horizon-ui-guardian") else "openai/gpt-oss-120b")
+                self.assertEqual(action["metadata"]["model"], expected)
                 self.assertEqual(action["metadata"]["provider"], "groq")
         self.assertEqual(gateway.groq.calls, 17)
         self.assertNotIn("PRIVATE", json.dumps(self.requests[-1].full_url))
@@ -178,7 +181,7 @@ class GroqRoutingTests(unittest.TestCase):
                 raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"PRIVATE"))
             return self.groq_response()
         action = ModelGateway(environ=self.env, opener=failing).complete(
-            load_agent("frontend-engineer"), self.messages)
+            load_agent("backend-engineer"), self.messages)
         self.assertEqual(action["metadata"]["provider"], "groq")
         self.assertEqual(action["metadata"]["model"], "qwen/qwen3.8-27b")
         self.assertEqual(len(self.requests), 3)
@@ -193,7 +196,7 @@ class GroqRoutingTests(unittest.TestCase):
                 return None, 120, 1500
             return "ok", 0, 1500
         with patch.object(gateway.groq.minute_budget, "reserve", side_effect=fake_reserve):
-            result = gateway.complete(load_agent("frontend-engineer"), self.messages)
+            result = gateway.complete(load_agent("backend-engineer"), self.messages)
         self.assertEqual(result["metadata"]["model"], "qwen/qwen3.8-27b")
         self.assertEqual(len(self.requests), 1)
 
