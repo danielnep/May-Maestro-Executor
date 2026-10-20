@@ -151,7 +151,7 @@ jobs:
           GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_UI_MODEL: qwen/qwen3.8-27b
-          GROQ_CODE_MODEL: llama-3.3-70b-versatile
+          GROQ_CODE_MODEL: openai/gpt-oss-120b
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           HORIZON_STATE_BACKEND: github-sqlite
