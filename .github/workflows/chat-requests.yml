@@ -82,8 +82,10 @@ jobs:
       github.ref == 'refs/heads/main' &&
       (github.event_name != 'issue_comment' ||
        (github.event.comment.user.login == 'danielnep' &&
-        startsWith(github.event.comment.body, 'MAY_CONSULT_REPLY_V2') &&
-        startsWith(github.event.issue.title, '[May consultation] ') &&
+        (startsWith(github.event.comment.body, 'MAY_CONSULT_REPLY_V2') ||
+         startsWith(github.event.comment.body, 'MAY_KERNEL_REVIEW_V1')) &&
+        (startsWith(github.event.issue.title, '[May consultation] ') ||
+         startsWith(github.event.issue.title, '[May live review] ')) &&
         github.event.issue.pull_request == null))
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -145,11 +147,8 @@ jobs:
           node --check synthetic_visual/node-proof.cjs
           node --check synthetic_visual/browser-proof.cjs
           node --check synthetic_visual/interactive-proof.cjs
-      - name: Preparar imagem isolada para testes Node e Playwright
-        # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
-        run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
-      - name: Testar navegação real mobile + desktop com Chromium
-        run: python -m unittest discover -s tests -p test_browser_flow_cli.py -v
+      - name: Validar contrato de KERNEL sem alegar prova visual
+        run: python -m unittest discover -s tests -p test_kernel_live.py -v
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -167,6 +166,7 @@ jobs:
           HORIZON_PAGES_TOKEN: ${{ secrets.HORIZON_PAGES_TOKEN }}
           # Optional secret. Without it, only the verified GitHub fallback is active.
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+          HORIZON_P0_KERNEL_RECOVERY_ENABLED: 'true'
         run: python -m horizon_core.commit_bridge --session-seconds 1200
       - name: Publicar aprendizados verificados no GitHub com verificacao de integridade
         # O checkpoint privado permanece criptografado em agent-state/runtime.
