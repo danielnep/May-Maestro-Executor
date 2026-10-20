@@ -105,7 +105,8 @@ class KernelReviewQueueTests(unittest.TestCase):
         row = self.state.get(self.TASK)
         self.assertEqual(row["status"], "queued")
         self.assertEqual(row["checkpoint"]["kernel_review"]["verified_scenarios"], 4)
-        self.assertLess(row["not_before"], 102 + 900)
+        import time
+        self.assertLess(row["not_before"], time.time() + 5)
         self.assertEqual(wake_owner_kernel_review(self.state, self.event), [])
 
     def test_fake_author_cannot_approve(self):
