@@ -10,6 +10,15 @@
 
 Runtime Python 3.11+ com chamadas diretas às APIs Groq e Gemini e SDK oficial Railway em Node.js 22+. Não instala Codex CLI, Gemini CLI ou Railway CLI e não exige VPS. O SDK `railway@3.16.0` é uma biblioteca, não uma CLI. Os 17 agentes têm configuração, instruções, ferramentas, contexto de chamada e memória próprios. Groq é o provedor preferido por especialidade; Gemini assume quando a Groq não estiver disponível. Compartilham código de infraestrutura e podem compartilhar uma chave; o Maestro delega tarefas, não escreve as conclusões dos especialistas.
 
+## Controle Groq Free: RPM e TPM
+
+- **Limites publicados em 20/10/2026:** tanto `qwen/qwen3.8-27b` quanto `openai/gpt-oss-120b` possuem **30 RPM / 8.000 TPM / 1.000 RPD / 200.000 TPD** no plano gratuito. Fonte: https://console.groq.com/docs/rate-limits. O limite real do projeto/organização pode ser mais restrito.
+- **Orçamento preventivo do runtime:** no máximo **24 chamadas e 7.200 tokens estimados por modelo em 65 segundos**; ao menos 2,5s entre chamadas do mesmo modelo, priorizando menor risco de HTTP 429. É compartilhado entre todos os especialistas, por modelo, via checkpoint SQLite.
+- **Controle de tokens:** instruções compactadas para Groq (as instruções integrais permanecem em memória e na rota Gemini), limite dinâmico de geração por chamada, medição da utilização real e ajuste pelos cabeçalhos de TPM da Groq. Não interpreta RPD como RPM.
+- **Se não houver espaço na janela:** espera curta ou reagendamento durável sem perder testes/checkpoints e sem consumir tentativas. **Sem limite diário artificial**: cotas diárias seguem aplicadas pelo próprio provedor.
+- **Segredos e ativação:** configurar `GROQ_API_KEY` em GitHub Actions > Secrets and variables > Actions do repo. A variável `API_IA_GROQ` do projeto Railway da Michelle não é compartilhada automaticamente. O código reconhece o alias apenas quando presente no mesmo executor. Execução real e plano da conta exigem confirmação separada.
+- **Revisão de UI e arquitetura:** Qwen para UI/frontend/mobile; GPT-OSS para demais especialistas; Gemini como alternativa externa. As consultas à May/ChatGPT estão desabilitadas no worker.
+
 ## Estado da entrega
 
 Implementados: 17 perfis, gateway REST, fila SQLite, agendamento, dependências, memória por agente/projeto, checkpoints com retomada, ferramentas de leitura/escrita, testes isolados em Docker, persistência GitHub por API e publicação em branch de trabalho. A suíte usa HTTP simulado para verificar o contrato sem consumir API.
