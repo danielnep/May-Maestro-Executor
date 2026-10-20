@@ -29,12 +29,12 @@
     },
     {
       "agent": "frontend-engineer",
-      "blocked": 0,
+      "blocked": 1,
       "finished": 3,
-      "queued": 2,
+      "queued": 1,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "cbf18d747dc6"
+      "task_ref": "14cd4fbc3ad4"
     },
     {
       "agent": "backend-engineer",
@@ -47,12 +47,12 @@
     },
     {
       "agent": "mobile-app-builder",
-      "blocked": 0,
+      "blocked": 1,
       "finished": 0,
-      "queued": 2,
+      "queued": 1,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "58d40897c9a8"
+      "task_ref": "f51694b7e191"
     },
     {
       "agent": "ui-ux-designer",
@@ -65,12 +65,12 @@
     },
     {
       "agent": "horizon-ui-guardian",
-      "blocked": 0,
+      "blocked": 1,
       "finished": 0,
-      "queued": 2,
+      "queued": 1,
       "running": 0,
-      "status": "aguardando",
-      "task_ref": "175fcce0a3f4"
+      "status": "na_fila",
+      "task_ref": "dca9862e0316"
     },
     {
       "agent": "database-engineer",
@@ -92,12 +92,12 @@
     },
     {
       "agent": "qa-engineer",
-      "blocked": 0,
+      "blocked": 1,
       "finished": 10,
-      "queued": 2,
+      "queued": 1,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "a79a05c39981"
+      "task_ref": "61f642a63f49"
     },
     {
       "agent": "security-engineer",
@@ -137,12 +137,12 @@
     },
     {
       "agent": "corregedoria-may",
-      "blocked": 0,
+      "blocked": 1,
       "finished": 2,
-      "queued": 2,
+      "queued": 1,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "68616972be0c"
+      "task_ref": "da87d4d69785"
     },
     {
       "agent": "may-persona",
