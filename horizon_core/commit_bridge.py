@@ -271,7 +271,7 @@ def summarize(request_id, tasks, publication=None):
         model = result.get('model') or {}
         model = model if isinstance(model, dict) else {}
         provider = model.get('provider')
-        provider = provider if provider in ('gemini', 'deepseek') else None
+        provider = provider if provider in ('gemini', 'groq') else None
         identifier = model.get('model')
         identifier = identifier if (isinstance(identifier, str) and
                                    re.fullmatch(r'[A-Za-z0-9_.-]{1,90}', identifier)) else None
