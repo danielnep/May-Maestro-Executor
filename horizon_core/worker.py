@@ -8,7 +8,9 @@ import os
 from .context_budget import compact_memory, compact_history
 from .gateway import GatewayError, validate_action
 from .may_consultation import (read_consultation, read_direct_consultation,
-                               request_consultation)
+                               request_consultation, ticket as may_ticket,
+                               _public_question)
+from . import direct_chat
 from .registry import load_agent
 from .tools import Tools
 from .deterministic import inspect_project, execute_read_only_with_retry
@@ -272,6 +274,39 @@ class Worker:
                             task_id, agent=agent['id'], round_index=pending_round)
                 except Exception:
                     response = None
+                # Preserve existing Issues while giving their unanswered V2
+                # outage tickets the same authenticated Railway browser route.
+                # No sensitive task payload enters the public prompt.
+                if (response is None and not is_direct and provider_fallback
+                        and direct_chat.configured()
+                        and isinstance(pending_may, dict)
+                        and pending_may.get('ticket') == may_ticket(
+                            task_id, agent['id'], pending_round)):
+                    question = _public_question(task, None, 'providers_unavailable')
+                    try:
+                        sent = direct_chat.execute(
+                            agent['id'], pending_may['ticket'],
+                            question=question, reason='providers_unavailable',
+                            mode='send')
+                    except (direct_chat.DirectChatError, ValueError):
+                        sent = {'status': 'transport_unavailable'}
+                    if sent.get('status') in (
+                            'sent', 'answered', 'send_unconfirmed',
+                            'delivery_unknown', 'pending_interleaved'):
+                        # Possible delivery uncertainty: future cycles only
+                        # READ this exact ticket without creating another Issue.
+                        updated = dict(previous)
+                        updated['pending_may'] = dict(pending_may,
+                                                      transport='kernel')
+                        self.state.checkpoint(task_id, self.worker_id, updated)
+                        self.state.defer(task_id, self.worker_id, seconds=75)
+                        self.persist()
+                        return self.state.get(task_id)
+                    # If another tab contains a draft, preserve it and wait.
+                    # No new ticket, Issue, or browser tab is created.
+                    self.state.defer(task_id, self.worker_id, seconds=300)
+                    self.persist()
+                    return self.state.get(task_id)
                 if response is not None:
                     may_decisions = list(response.get('decisions_untrusted') or (
                         [response['decision_untrusted']] if response.get('decision_untrusted') else []))
