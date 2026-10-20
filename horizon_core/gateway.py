@@ -414,10 +414,16 @@ class ModelGateway:
         else:
             failures.append({"provider": "gemini", "reason": "cooldown",
                              "status": None, "retryable": True})
-        models = [
-            self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL,
-            self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL,
-        ]
+        # Preserve each agent's specialty when Gemini is unavailable:
+        # visual/mobile specialists get Qwen, architecture/backend GPT-OSS.
+        preferred = (self.groq.model_for(agent) if self.groq is not None
+                     else (self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
+                           if agent.get("id") in GROQ_UI_AGENTS else
+                           self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL))
+        other = (self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
+                 if preferred.startswith("qwen/") else
+                 self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL)
+        models = [preferred, other]
         attempted = set()
         for model in models:
             if model in attempted:
