@@ -237,9 +237,9 @@ class GroqGateway(_HTTPGateway):
         payload = {"model": model,
                    "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
                    "response_format": {"type": "json_object"}}
-        # The requested Llama 3.3 does not accept Qwen reasoning parameters.
-        if model.startswith("qwen/"):
-            payload["reasoning_effort"] = "high" if level == "high" else "low"
+        if model.startswith("qwen/") or model.startswith("openai/gpt-oss-"):
+            payload["reasoning_effort"] = "high" if level == "high" else (
+                "medium" if model.startswith("openai/gpt-oss-") else "low")
             payload["reasoning_format"] = "hidden"
         if self.max_output_tokens is not None:
             payload["max_tokens"] = self.max_output_tokens
@@ -331,13 +331,18 @@ class ModelGateway:
                 return action
             except GatewayError as error:
                 failures.append(error.as_dict())
-                # Enterprise Llama may be inaccessible; use Qwen as no-GPT backup.
-                alternate = self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
-                if (self.groq is not None and self.groq.model_for(agent) != alternate
-                        and error.status in (400, 403, 404, 429, 500, 502, 503)):
+                # Model retirement/preview unavailability: switch to the
+                # other allowed Groq model, preserving both minute quotas.
+                current_model = self.groq.model_for(agent) if self.groq is not None else None
+                alternative = (self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
+                               if current_model.startswith("qwen/") else
+                               self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
+                               ) if current_model else None
+                if (alternative and current_model != alternative
+                        and error.status in (400, 403, 404, 500, 502, 503)):
                     try:
-                        action = self.groq.complete(dict(agent, groq_model=alternate), messages)
-                        action["metadata"].update(fallback_from="groq_llama",
+                        action = self.groq.complete(dict(agent, groq_model=alternative), messages)
+                        action["metadata"].update(fallback_from="groq_model",
                                                   fallback_reason=error.as_dict())
                         return action
                     except GatewayError as secondary:
