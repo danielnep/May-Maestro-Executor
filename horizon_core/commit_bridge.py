@@ -166,6 +166,53 @@ def _checkout_existing_work_branch(root, branch):
         raise ValueError('Cannot inspect published work branch')
 
 
+def build_may_review_handoff(request_id, status, quality_approved, publication):
+    """System-owned, compact review packet; only verified page URLs are usable previews.
+
+    A GitHub result is a durable handoff, NOT a spontaneous ChatGPT message.
+    Never promote a PR/tree link to a rendered preview or claim a screenshot
+    was inspected just because files were generated.
+    """
+    publication = publication if isinstance(publication, dict) else {}
+    published = publication.get('published') is True
+    repo = publication.get('target_repo')
+    repo = repo if isinstance(repo, str) and re.fullmatch(r'danielnep/[A-Za-z0-9_.-]+', repo) else None
+    branch = publication.get('branch')
+    branch = branch if isinstance(branch, str) and re.fullmatch(r'[A-Za-z0-9_./-]{1,150}', branch) and '..' not in branch and '//' not in branch else None
+    commit = publication.get('commit')
+    commit = commit if isinstance(commit, str) and re.fullmatch(r'[0-9a-f]{40}', commit) else None
+    preview = publication.get('pages_preview')
+    preview = preview if isinstance(preview, dict) else {}
+    url = preview.get('page_url')
+    confirmed = published and preview.get('status') in ('verified', 'already_current') and preview.get('branch') == branch
+    # Only a scheme/host safe URL whose provenance is a verified GitHub Pages
+    # response. Do not inject preview links from specialist or user task text.
+    if not (confirmed and isinstance(url, str) and 0 < len(url) <= 500
+            and re.fullmatch(r'https://[A-Za-z0-9.-]+(?::443)?(?:/[A-Za-z0-9_./%~-]*)?/?', url)):
+        url = None
+    ready = status == 'reported_complete' and quality_approved and bool(url)
+    review_state = ('ready_for_may_review' if ready else
+        'in_progress' if status == 'pending' else
+        'quality_blocked' if not quality_approved else 'preview_unavailable')
+    packet = {
+        'status': review_state,
+        'preview_url': url,
+        'repository': repo if published else None,
+        'branch': branch if published else None,
+        'commit': commit if published else None,
+        'result_url': 'https://github.com/' + REPOSITORY + '/blob/main/tasks/results/' + request_id + '.json',
+        'required_review': ['mobile_and_desktop_flows', 'motion_and_transitions',
+                            'gestures_and_dismissal', 'visual_hierarchy_icons_and_states'],
+        'handoff_mode': 'durable_github_result_not_chat_push',
+        'notes': ('Open the verified preview with a browser for May final review; '
+                  'Playwright evidence is not the same as visual sign-off.' if ready
+                  else 'No verified published preview and complete QA yet; do not claim an audit link was sent.'),
+    }
+    if published and repo and commit:
+        packet['commit_url'] = 'https://github.com/' + repo + '/commit/' + commit
+    return packet
+
+
 def summarize(request_id, tasks, publication=None):
     statuses = [task['status'] for task in tasks]
     status = 'pending' if any(value in ('queued', 'running') for value in statuses) else (
@@ -207,7 +254,9 @@ def summarize(request_id, tasks, publication=None):
     delivery = publication or {'published': False, 'reason': 'No publication attempted'}
     if status != 'pending' and delivery.get('awaiting_host_publication') is True:
         status = 'awaiting_host_publication'
+    may_review = build_may_review_handoff(request_id, status, quality_ok, delivery)
     return {'request_id': request_id, 'status': status, 'tasks': reports, 'publication': delivery,
+            'may_review': may_review,
             'quality': {'approved': quality_ok, 'failed_checks': bad_checks,
                         'qa_missing_evidence': missing_qa_checks},
             'source': 'https://github.com/' + REPOSITORY + '/blob/main/tasks/chat/' + request_id + '.json',
@@ -319,6 +368,9 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
             publication['pages_preview'] = preview
             if preview['status'] not in ('verified', 'already_current', 'pages_not_enabled'):
                 print(json.dumps({'request_id': validated['id'], 'pages_preview': preview}))
+        # The destination comes from the validated owner request, never from the model.
+        if publication.get('published') is True:
+            publication['target_repo'] = target_repo
         state.remember(task['project'], '__chat_controller__', 'publication', publication)
         return summarize(validated['id'], scoped.tasks(), publication)
 
@@ -381,6 +433,34 @@ def main(argv=None):
                           'error': {'kind': type(error).__name__},
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
             publish_result(api, path.stem, report)
+            # Dispatch a verified May review as a durable ticket via the SAME
+            # GitHub/ChatGPT channel used by specialist consultations. The
+            # existing hourly Horizon Central automation posts it to the chat.
+            # An issue is only queued, never proof that chat delivery occurred.
+            from .delivery_chat import queue_review
+            try:
+                review_delivery = queue_review(report, api)
+            except (GitHubStateError, ValueError, OSError) as error:
+                review_delivery = "delivery_queue_unavailable"
+                print(json.dumps({"review_delivery_error": type(error).__name__,
+                                  "request_id": path.stem}))
+            print(json.dumps({"request_id": path.stem, "review_delivery": review_delivery}))
+            # Queue events, not model-authored narratives, feed the ONE shared
+            # ChatGPT agent conversation through its existing hourly watchdog.
+            from .attendance import (attendance_snapshot, publish_attendance,
+                                     team_snapshot, publish_team_attendance)
+            try:
+                presence = attendance_snapshot(state, path.stem)
+                if presence is not None:
+                    published_presence = publish_attendance(api, presence)
+                    print(json.dumps({"attendance": published_presence,
+                                      "request_id": path.stem}))
+                publish_team_attendance(api, team_snapshot(state))
+            except (GitHubStateError, ValueError, OSError) as error:
+                # Never stop product delivery solely because chat presence is
+                # unavailable. A subsequent run reconstructs it from SQLite.
+                print(json.dumps({"attendance_error": type(error).__name__,
+                                  "request_id": path.stem}))
             # Event-driven owner alert follows durable result publication, not
             # the five-minute recovery schedule or the ChatGPT task cadence.
             from .notify import notify

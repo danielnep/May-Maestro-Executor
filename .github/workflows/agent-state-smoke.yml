@@ -1,58 +1,42 @@
-name: Horizon - prova de banco dos agentes
+name: Horizon - prova do SQLite ativo
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - '.github/workflows/agent-state-smoke.yml'
-      - 'horizon_core/embedded_state.py'
+      - 'horizon_core/github_sqlite_state.py'
 permissions:
   contents: read
-  id-token: write
 jobs:
   state-readonly:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verificar conexão OIDC e armazenamento Horizon, somente leitura
+      - name: Install authenticated state dependencies
+        run: python -m pip install 'cryptography>=43,<48' --quiet
+      - name: Verify active GitHub SQLite checkpoint without printing data
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
         run: |
           python - <<'PY'
-          from horizon_core.embedded_state import HorizonEmbeddedState
-          client=HorizonEmbeddedState.__new__(HorizonEmbeddedState)
-          client.requester=__import__('urllib.request',fromlist=['urlopen']).urlopen
-          client.token=client._oidc_token()
-          import base64, json
-          claims=json.loads(base64.urlsafe_b64decode(client.token.split('.')[1]+'==='))
-          print('OIDC claims:',{key:claims.get(key) for key in ('iss','repository','ref','workflow_ref','sub','aud','iat','nbf','exp')})
+          import json
+          from horizon_core.github_sqlite_state import GitHubSQLiteState
+          with_state=GitHubSQLiteState()
           try:
-              value=client._request('GET')
-          except Exception:
-              from urllib.request import Request
-              from urllib.error import HTTPError,URLError
-              request=Request('https://horizonsolucoes.com/api/internal/horizon-agent-state',
-                headers={'Authorization':'Bearer '+client.token,'User-Agent':'Horizon-State-Probe'})
-              try:
-                  with client.requester(request,timeout=15) as response: print('Probe status:',response.status)
-              except HTTPError as error: print('Probe HTTP:',error.code)
-              except URLError: print('Probe network error')
-              raise
-          assert type(value.get('revision')) is int
-          print('Horizon embedded PostgreSQL: authenticated read succeeded; snapshot_revision='+str(value['revision']))
-          # Only task IDs and statuses are emitted. Never log objectives, payloads or checkpoints.
-          if value.get('snapshot'):
-              import tempfile, os, sqlite3
-              with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                  name=tmp.name
-                  tmp.write(base64.b64decode(value['snapshot']))
-              try:
-                  with sqlite3.connect(name) as db:
-                      rows=db.execute('SELECT task_id,status,attempts,error FROM tasks ORDER BY seq LIMIT 50').fetchall()
-                      rows=[(id,status,attempts,{key:detail.get(key) for key in ('kind','reason','status','retryable','failed_dependencies','failures') if key in detail} if isinstance(detail,dict) else {'type':type(detail).__name__}) for id,status,attempts,raw in rows for detail in [json.loads(raw) if raw else {}]]
-                  print('Agent task states:',json.dumps(rows))
-              finally:
-                  os.unlink(name)
+              result=with_state.db.execute('PRAGMA quick_check').fetchone()[0]
+              if result!='ok':raise RuntimeError('SQLite integrity failed')
+              counts={table:with_state.db.execute('SELECT count(*) FROM '+table).fetchone()[0]
+                      for table in ('tasks','events','memory')}
+              print(json.dumps({'active_backend':'github-encrypted-sqlite',
+                  'branch':'agent-state/runtime','integrity':'ok','counts':counts,
+                  'legacy_restored_automatically':with_state.restored_legacy}))
+          finally:
+              with_state.close()
           PY

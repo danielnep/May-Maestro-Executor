@@ -32,6 +32,8 @@ def visual_review_status(history):
     screenshots = outcome.get("screenshots")
     names = {row.get("file") for row in screenshots if isinstance(row, dict)
              and isinstance(row.get("sha256"), str) and len(row["sha256"]) == 64} if isinstance(screenshots, list) else set()
+    # Flow-specific screenshots are optional evidence; two canonical final PNGs
+    # must always exist, but a meticulous journey can retain more frames.
     if not {"mobile-rendered.png", "desktop-rendered.png"}.issubset(names):
         return {"verified": False, "reason": "two_viewports_required"}
     report = outcome.get("report") or {}

@@ -7,6 +7,10 @@ on:
       - 'tasks/chat/*.json'
       - '.github/workflows/chat-requests.yml'
       - 'horizon_core/commit_bridge.py'
+      - 'horizon_core/delivery_chat.py'
+      - 'tests/test_delivery_chat.py'
+      - 'horizon_core/attendance.py'
+      - 'tests/test_attendance.py'
       - 'horizon_core/pages_preview.py'
       - 'tests/test_pages_preview.py'
       - 'horizon_core/state.py'
@@ -48,6 +52,8 @@ on:
       - 'tests/test_ui_imagination.py'
       - 'tests/test_visual_contract.py'
       - 'synthetic_visual/browser-proof.cjs'
+      - 'synthetic_visual/interactive-proof.cjs'
+      - 'tests/test_browser_flow_cli.py'
       - 'synthetic_visual/generic-demo/**'
       - 'agents/ui-ux-designer/tools.json'
       - 'agents/horizon-ui-guardian/tools.json'
@@ -96,6 +102,8 @@ jobs:
       - name: Validar contrato do controlador sem chamadas externas
         run: |
           python -m unittest discover -s tests -p test_commit_bridge.py -v
+          python -m unittest discover -s tests -p test_delivery_chat.py -v
+          python -m unittest discover -s tests -p test_attendance.py -v
           python -m unittest discover -s tests -p test_handoff.py -v
           python -m unittest discover -s tests -p test_handoff_workflow.py -v
           python -m unittest discover -s tests -p test_provider_recovery.py -v
@@ -127,9 +135,12 @@ jobs:
         run: |
           node --check synthetic_visual/node-proof.cjs
           node --check synthetic_visual/browser-proof.cjs
+          node --check synthetic_visual/interactive-proof.cjs
       - name: Preparar imagem isolada para testes Node e Playwright
         # A imagem e local a cada runner; sem esse build, Docker retorna exit 125.
         run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
+      - name: Testar navegação real mobile + desktop com Chromium
+        run: python -m unittest discover -s tests -p test_browser_flow_cli.py -v
       - name: Importar pedidos, retomar especialistas e registrar resultados
         env:
           GITHUB_TOKEN: ${{ github.token }}

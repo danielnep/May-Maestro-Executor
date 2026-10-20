@@ -1,0 +1,32 @@
+{
+  "chat": "Horizon | Central dos Agentes",
+  "events": [
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T15:01:54Z",
+      "id": 823,
+      "ref": "88299b1beaa0",
+      "status": "iniciou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T15:03:57Z",
+      "id": 834,
+      "ref": "88299b1beaa0",
+      "status": "concluiu"
+    }
+  ],
+  "request_id": "ronda-pro-css-recovery-20261019",
+  "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/ronda-pro-css-recovery-20261019.json",
+  "roster": [
+    {
+      "agent": "may-maestro",
+      "attempts": 1,
+      "ref": "88299b1beaa0",
+      "status": "concluido",
+      "step": 2
+    }
+  ],
+  "schema": "horizon.agent.attendance.v1",
+  "source": "durable_state_events"
+}

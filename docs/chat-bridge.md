@@ -104,3 +104,26 @@ Antes da primeira chamada do modelo, o trabalhador executa inventário do projet
 O proprietário autorizou que a página GitHub Pages de cada projeto web reflita a **última branch atualizada**, sem modificar `main`. Após o controlador publicar um commit em `agent/chat-...`, ele consulta o Pages do destino e atualiza a origem para essa branch. O resultado aparece em `publication.pages_preview` no recibo JSON. Status comprovados: `verified` (trocado e lido novamente), `already_current`, `pages_not_enabled` (projeto sem Pages), `needs_pages_admin_token`, `pages_update_failed`, `workflow_mode_requires_explicit_deployment`.
 
 Requer criar **`HORIZON_PAGES_TOKEN`** como secret do executor, com acesso aos repositórios de destino e permissões GitHub de `Pages:write` e `Administration:write`. O `GITHUB_TOKEN` padrão não concede Administração, e a automação jamais alega ter mudado o Pages se não obteve o GET confirmatório. Para commits feitos manualmente via conector, a assistente aplica a mesma sincronização em ferramenta com acesso a Pages. Em projetos que têm Pages em modo GitHub Actions, não substitui o workflow de deploy silenciosamente. Repositórios dinâmicos/backends não são convertidos em sites estáticos.
+
+
+## Ponto verificável dos especialistas (Horizon | Central dos Agentes)
+
+Somente **uma conversa** no ChatGPT: Horizon | Central dos Agentes, que já atende às consultas dos especialistas. Não criar chat para cada agente nem exigir que uma IA invente presenças. O controlador publica registros técnicos do SQLite durável, independentemente de Gemini/DeepSeek:
+
+- **Iniciou:** primeira aquisição real de tarefa pelo worker, evento claimed.
+- **Retomou:** aquisição posterior após pausa legítima.
+- **Aguardando:** deferimento de consulta, erro recuperável ou lease expirado; condição operacional, não sentimento humano.
+- **Concluiu:** somente depois de State.complete. Não significa publicação de código ou aprovação de QA.
+- **Bloqueado:** falha terminal ou dependência bloqueada.
+- **Ocioso:** o agente não possui tarefa executando nem aguardando na fila.
+
+Artefatos públicos, sem payloads de modelos ou clientes:
+- tasks/attendance/<request_id>.json: eventos idempotentes em ordem de ID, agente, pseudônimo do ticket, UTC e estado, além de estados atuais das tarefas.
+- tasks/attendance/equipe.json: panorama dos 17 especialistas, inclusive ociosos, com quantidade de tarefas concluídas/bloqueadas.
+- tasks/attendance/chat-cursor.json: comprovantes mínimos dos eventos já transmitidos ao chat pelo agendador; só atualizar após mensagem realmente entregue.
+
+O registro é publicado pelo próprio controlador. A conversa recebe esses eventos via **tarefa agendada já existente** Central Horizon dos Agentes. Não prometer tempo real: frequência máxima de agendamento atualmente é uma hora. Havendo novos eventos, enviar mensagem curta começando por [HORIZON PONTO V1], com AGENTE, TAREFA, ESTADO, HORA e fonte verificável. Agrupar sem transformar a conversa em enchente de mensagens. Retentativas usam IDs de evento e cursor, sem marcar ponto duas vezes.
+
+O ChatGPT não recebe push diretamente de um worker externo e o navegador KERNEL não transforma a interface web em API. O GitHub recebe atualizações na execução do controlador; a conversa as reproduz no próximo horário. Se a sessão estiver indisponível, manter eventos no GitHub sem alegar entrega ao chat.
+
+Dados proibidos: segredos, stacktraces, conteúdo de cliente, objetivos privados, caminhos locais, prompt de modelo, código e documentos internos. Registrar ponto não abre consulta à May nem consome IAs dos agentes.

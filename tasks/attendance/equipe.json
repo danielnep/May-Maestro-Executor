@@ -1,0 +1,160 @@
+{
+  "agents": [
+    {
+      "agent": "may-maestro",
+      "blocked": 1,
+      "finished": 5,
+      "queued": 2,
+      "running": 0,
+      "status": "aguardando",
+      "task_ref": "3acc93a22b09"
+    },
+    {
+      "agent": "horizon-project-studio",
+      "blocked": 0,
+      "finished": 1,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "3b5adc3eb7d0"
+    },
+    {
+      "agent": "software-architect",
+      "blocked": 0,
+      "finished": 8,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "559f439b4bcb"
+    },
+    {
+      "agent": "frontend-engineer",
+      "blocked": 0,
+      "finished": 3,
+      "queued": 1,
+      "running": 0,
+      "status": "na_fila",
+      "task_ref": "14cd4fbc3ad4"
+    },
+    {
+      "agent": "backend-engineer",
+      "blocked": 0,
+      "finished": 9,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "4f1814b8b90d"
+    },
+    {
+      "agent": "mobile-app-builder",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 1,
+      "running": 0,
+      "status": "na_fila",
+      "task_ref": "f51694b7e191"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "blocked": 0,
+      "finished": 1,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "ef66c59852fc"
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 1,
+      "running": 0,
+      "status": "na_fila",
+      "task_ref": "dca9862e0316"
+    },
+    {
+      "agent": "database-engineer",
+      "blocked": 0,
+      "finished": 1,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "fc7ab710806b"
+    },
+    {
+      "agent": "integration-engineer",
+      "blocked": 0,
+      "finished": 1,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "dea59a65bef3"
+    },
+    {
+      "agent": "qa-engineer",
+      "blocked": 0,
+      "finished": 10,
+      "queued": 1,
+      "running": 0,
+      "status": "na_fila",
+      "task_ref": "61f642a63f49"
+    },
+    {
+      "agent": "security-engineer",
+      "blocked": 0,
+      "finished": 1,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "122a75c262aa"
+    },
+    {
+      "agent": "devops-engineer",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": null
+    },
+    {
+      "agent": "horizon-evolution-agent",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": null
+    },
+    {
+      "agent": "horizon-skills",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": null
+    },
+    {
+      "agent": "corregedoria-may",
+      "blocked": 0,
+      "finished": 2,
+      "queued": 1,
+      "running": 0,
+      "status": "na_fila",
+      "task_ref": "da87d4d69785"
+    },
+    {
+      "agent": "may-persona",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": null
+    }
+  ],
+  "chat": "Horizon | Central dos Agentes",
+  "schema": "horizon.agent.roster.v1",
+  "source": "durable_state_tasks"
+}

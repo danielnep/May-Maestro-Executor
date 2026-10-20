@@ -20,6 +20,18 @@ class MeticulosidadeTests(unittest.TestCase):
             with self.subTest(rule=item):
                 self.assertIn(item, source)
 
+    def test_premium_motion_and_may_handoff_apply_to_every_specialist(self):
+        for ident in AGENT_IDS:
+            with self.subTest(agent=ident):
+                instructions = load_agent(ident)["instructions"]
+                self.assertIn("## Engenharia de acabamento premium", instructions)
+                self.assertIn('botão "X" isolado', instructions)
+                self.assertIn("prefers-reduced-motion", instructions)
+                self.assertIn("## Handoff de revisão May", instructions)
+                self.assertIn("ferramenta validada de comunicação", instructions)
+                self.assertIn("Horizon | Central dos Agentes", instructions)
+                self.assertIn("Rubrica de aceite de 0 a 4", instructions)
+
     def test_17_specialists_receive_exactly_one_canonical_skill(self):
         self.assertEqual(len(AGENT_IDS), 17)
         for specialist in AGENT_IDS:

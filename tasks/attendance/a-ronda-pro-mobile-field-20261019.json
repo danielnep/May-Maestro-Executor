@@ -1,0 +1,179 @@
+{
+  "chat": "Horizon | Central dos Agentes",
+  "events": [
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T21:49:17Z",
+      "id": 856,
+      "ref": "ab746bc96407",
+      "status": "iniciou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T21:49:32Z",
+      "id": 858,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T21:50:43Z",
+      "id": 859,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T21:50:54Z",
+      "id": 861,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T21:52:22Z",
+      "id": 862,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T21:52:34Z",
+      "id": 865,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T22:15:20Z",
+      "id": 866,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T22:16:10Z",
+      "id": 878,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T22:35:15Z",
+      "id": 886,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T22:35:42Z",
+      "id": 893,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T23:13:43Z",
+      "id": 896,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T23:13:45Z",
+      "id": 897,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T23:42:14Z",
+      "id": 900,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T23:42:16Z",
+      "id": 901,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T00:37:43Z",
+      "id": 904,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T00:37:47Z",
+      "id": 905,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T01:35:42Z",
+      "id": 908,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T01:35:44Z",
+      "id": 909,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
+    }
+  ],
+  "request_id": "a-ronda-pro-mobile-field-20261019",
+  "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/a-ronda-pro-mobile-field-20261019.json",
+  "roster": [
+    {
+      "agent": "may-maestro",
+      "attempts": 2,
+      "ref": "ab746bc96407",
+      "status": "aguardando",
+      "step": 2
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "attempts": 0,
+      "ref": "dca9862e0316",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "ref": "14cd4fbc3ad4",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "ref": "61f642a63f49",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "mobile-app-builder",
+      "attempts": 0,
+      "ref": "f51694b7e191",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 0,
+      "ref": "da87d4d69785",
+      "status": "na_fila",
+      "step": 0
+    }
+  ],
+  "schema": "horizon.agent.attendance.v1",
+  "source": "durable_state_events"
+}

@@ -1,0 +1,109 @@
+{
+  "chat": "Horizon | Central dos Agentes",
+  "events": [
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T15:36:24Z",
+      "id": 836,
+      "ref": "604d0335775c",
+      "status": "iniciou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T15:36:31Z",
+      "id": 838,
+      "ref": "604d0335775c",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T15:38:22Z",
+      "id": 839,
+      "ref": "604d0335775c",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T15:38:28Z",
+      "id": 841,
+      "ref": "604d0335775c",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:07:39Z",
+      "id": 842,
+      "ref": "604d0335775c",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:07:49Z",
+      "id": 844,
+      "ref": "604d0335775c",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:14:18Z",
+      "id": 845,
+      "ref": "604d0335775c",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:14:27Z",
+      "id": 847,
+      "ref": "604d0335775c",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:21:53Z",
+      "id": 848,
+      "ref": "604d0335775c",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:22:03Z",
+      "id": 850,
+      "ref": "604d0335775c",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:25:27Z",
+      "id": 851,
+      "ref": "604d0335775c",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:25:35Z",
+      "id": 853,
+      "ref": "604d0335775c",
+      "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T16:51:57Z",
+      "id": 854,
+      "ref": "604d0335775c",
+      "status": "bloqueado"
+    }
+  ],
+  "request_id": "ronda-pro-mobile-notifications-user-20261019",
+  "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/ronda-pro-mobile-notifications-user-20261019.json",
+  "roster": [
+    {
+      "agent": "may-maestro",
+      "attempts": 6,
+      "ref": "604d0335775c",
+      "status": "bloqueado",
+      "step": 0
+    }
+  ],
+  "schema": "horizon.agent.attendance.v1",
+  "source": "durable_state_events"
+}

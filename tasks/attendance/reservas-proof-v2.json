@@ -1,0 +1,487 @@
+{
+  "chat": "Horizon | Central dos Agentes",
+  "events": [
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T07:25:40Z",
+      "id": 282,
+      "ref": "5cfd60fb9a76",
+      "status": "iniciou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T07:28:11Z",
+      "id": 355,
+      "ref": "5cfd60fb9a76",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:28:13Z",
+      "id": 356,
+      "ref": "123836758ce2",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:30:48Z",
+      "id": 395,
+      "ref": "123836758ce2",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:30:50Z",
+      "id": 396,
+      "ref": "dfdb63aed17c",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:32:42Z",
+      "id": 433,
+      "ref": "dfdb63aed17c",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:32:44Z",
+      "id": 434,
+      "ref": "8ba38c201d33",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:33:00Z",
+      "id": 442,
+      "ref": "8ba38c201d33",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:33:01Z",
+      "id": 443,
+      "ref": "03d34a22d0d7",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:34:46Z",
+      "id": 473,
+      "ref": "03d34a22d0d7",
+      "status": "aguardando"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:34:48Z",
+      "id": 474,
+      "ref": "c39e7a4eaa8f",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:35:05Z",
+      "id": 482,
+      "ref": "c39e7a4eaa8f",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:35:07Z",
+      "id": 483,
+      "ref": "03d34a22d0d7",
+      "status": "retomou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:36:24Z",
+      "id": 503,
+      "ref": "03d34a22d0d7",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:36:25Z",
+      "id": 504,
+      "ref": "fc6f330e8ddf",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:36:53Z",
+      "id": 512,
+      "ref": "fc6f330e8ddf",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:36:54Z",
+      "id": 513,
+      "ref": "5890b34d5b02",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:37:11Z",
+      "id": 521,
+      "ref": "5890b34d5b02",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:37:13Z",
+      "id": 522,
+      "ref": "34a9186abc08",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:37:40Z",
+      "id": 530,
+      "ref": "34a9186abc08",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:37:42Z",
+      "id": 531,
+      "ref": "4997e5685bb2",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:38:08Z",
+      "id": 542,
+      "ref": "4997e5685bb2",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:38:11Z",
+      "id": 543,
+      "ref": "31572b65011a",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:38:50Z",
+      "id": 555,
+      "ref": "31572b65011a",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:38:52Z",
+      "id": 556,
+      "ref": "56ffaf9c12e8",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:39:21Z",
+      "id": 564,
+      "ref": "56ffaf9c12e8",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:39:23Z",
+      "id": 565,
+      "ref": "ea66593a3fb7",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:39:50Z",
+      "id": 577,
+      "ref": "ea66593a3fb7",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:39:52Z",
+      "id": 578,
+      "ref": "e4ae94a1d6b9",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:40:11Z",
+      "id": 586,
+      "ref": "e4ae94a1d6b9",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:40:13Z",
+      "id": 587,
+      "ref": "b3949c82cb4a",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:40:46Z",
+      "id": 595,
+      "ref": "b3949c82cb4a",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:40:47Z",
+      "id": 596,
+      "ref": "f268656f1067",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:43:19Z",
+      "id": 604,
+      "ref": "f268656f1067",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:43:21Z",
+      "id": 605,
+      "ref": "86d9c8ec2c9e",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:43:57Z",
+      "id": 617,
+      "ref": "86d9c8ec2c9e",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:43:59Z",
+      "id": 618,
+      "ref": "9aa3b88f1146",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:44:30Z",
+      "id": 626,
+      "ref": "9aa3b88f1146",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:44:31Z",
+      "id": 627,
+      "ref": "84e8d8c227a5",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:44:47Z",
+      "id": 635,
+      "ref": "84e8d8c227a5",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:44:49Z",
+      "id": 636,
+      "ref": "4f1814b8b90d",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:45:24Z",
+      "id": 648,
+      "ref": "4f1814b8b90d",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:46:11Z",
+      "id": 649,
+      "ref": "bb0cd650e804",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:46:40Z",
+      "id": 657,
+      "ref": "bb0cd650e804",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:46:42Z",
+      "id": 658,
+      "ref": "559f439b4bcb",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:47:01Z",
+      "id": 666,
+      "ref": "559f439b4bcb",
+      "status": "concluiu"
+    }
+  ],
+  "request_id": "reservas-proof-v2",
+  "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/reservas-proof-v2.json",
+  "roster": [
+    {
+      "agent": "may-maestro",
+      "attempts": 1,
+      "ref": "5cfd60fb9a76",
+      "status": "concluido",
+      "step": 12
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "123836758ce2",
+      "status": "concluido",
+      "step": 9
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "dfdb63aed17c",
+      "status": "concluido",
+      "step": 9
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "8ba38c201d33",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 2,
+      "ref": "03d34a22d0d7",
+      "status": "concluido",
+      "step": 11
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "fc6f330e8ddf",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "5890b34d5b02",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "c39e7a4eaa8f",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "34a9186abc08",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "4997e5685bb2",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "31572b65011a",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "56ffaf9c12e8",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "ea66593a3fb7",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "e4ae94a1d6b9",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "b3949c82cb4a",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "f268656f1067",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "86d9c8ec2c9e",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "9aa3b88f1146",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "84e8d8c227a5",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "4f1814b8b90d",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "bb0cd650e804",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "559f439b4bcb",
+      "status": "concluido",
+      "step": 1
+    }
+  ],
+  "schema": "horizon.agent.attendance.v1",
+  "source": "durable_state_events"
+}
