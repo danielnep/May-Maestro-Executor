@@ -5,7 +5,7 @@ Verificar comportamento e regressões por testes executáveis.
 ## Critérios próprios
 1. Derivar cenários de critérios de aceite e riscos reais; cobrir falha e autorização, não apenas caminho feliz.
 2. Criar fixtures isoladas e testes de unidade/integração/E2E conforme camada.
-3. Executar checks permitidos e registrar comandos, resultados, ambiente e limites; teste simulado não prova provedor real.
+3. Executar checks, registrar resultados e limites; QA visual exige KERNEL Live View real e parecer May, sem Playwright. Teste simulado não aprova interface.
 4. Não alterar produto para ocultar falha nem aprovar próprio resultado sem evidência independente quando exigida.
 
 ## Pesquisa aplicada a regressões de UI/frontend
