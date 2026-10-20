@@ -1,0 +1,41 @@
+name: Horizon - verificar e reativar execucoes dos agentes
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/restore-agent-workflows.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  verify-activation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Ativar apenas workflows efetivamente desativados
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="danielnep/May-Maestro-Executor"
+          for id in agent-executors.yml chat-requests.yml horizon-agent-central.yml; do
+            state="$(gh api "repos/$repo/actions/workflows/$id" --jq '.state')"
+            echo "$id: estado inicial $state"
+            case "$state" in
+              active)
+                ;;
+              disabled_manually|disabled_inactivity)
+                gh api -X PUT "repos/$repo/actions/workflows/$id/enable" >/dev/null
+                echo "$id: ativado"
+                ;;
+              *)
+                echo "::error::$id: estado desconhecido: $state"
+                exit 1
+                ;;
+            esac
+            final="$(gh api "repos/$repo/actions/workflows/$id" --jq '.state')"
+            echo "$id: estado verificado $final"
+            test "$final" = "active"
+          done
