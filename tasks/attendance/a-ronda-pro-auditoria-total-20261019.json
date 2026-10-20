@@ -210,6 +210,62 @@
       "id": 977,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "at": "2026-10-20T05:24:57Z",
+      "id": 982,
+      "ref": "175fcce0a3f4",
+      "status": "retomou"
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "at": "2026-10-20T05:25:57Z",
+      "id": 995,
+      "ref": "175fcce0a3f4",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "frontend-engineer",
+      "at": "2026-10-20T05:25:59Z",
+      "id": 996,
+      "ref": "cbf18d747dc6",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "mobile-app-builder",
+      "at": "2026-10-20T05:25:59Z",
+      "id": 997,
+      "ref": "58d40897c9a8",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-20T05:25:59Z",
+      "id": 998,
+      "ref": "a79a05c39981",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "corregedoria-may",
+      "at": "2026-10-20T05:25:59Z",
+      "id": 999,
+      "ref": "68616972be0c",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T05:25:59Z",
+      "id": 1000,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T05:26:12Z",
+      "id": 1003,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
     }
   ],
   "request_id": "a-ronda-pro-auditoria-total-20261019",
@@ -224,10 +280,10 @@
     },
     {
       "agent": "horizon-ui-guardian",
-      "attempts": 0,
+      "attempts": 1,
       "ref": "175fcce0a3f4",
-      "status": "aguardando",
-      "step": 4
+      "status": "bloqueado",
+      "step": 7
     },
     {
       "agent": "ui-ux-designer",
@@ -240,28 +296,28 @@
       "agent": "frontend-engineer",
       "attempts": 0,
       "ref": "cbf18d747dc6",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "mobile-app-builder",
       "attempts": 0,
       "ref": "58d40897c9a8",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "qa-engineer",
       "attempts": 0,
       "ref": "a79a05c39981",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "corregedoria-may",
       "attempts": 0,
       "ref": "68616972be0c",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     }
   ],
