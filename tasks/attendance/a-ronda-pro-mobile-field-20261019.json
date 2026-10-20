@@ -623,6 +623,48 @@
       "id": 1162,
       "ref": "ab746bc96407",
       "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T09:57:12Z",
+      "id": 1171,
+      "ref": "ab746bc96407",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "at": "2026-10-20T09:57:12Z",
+      "id": 1172,
+      "ref": "dca9862e0316",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "frontend-engineer",
+      "at": "2026-10-20T09:57:12Z",
+      "id": 1173,
+      "ref": "14cd4fbc3ad4",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-20T09:57:12Z",
+      "id": 1174,
+      "ref": "61f642a63f49",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "mobile-app-builder",
+      "at": "2026-10-20T09:57:12Z",
+      "id": 1175,
+      "ref": "f51694b7e191",
+      "status": "bloqueado"
+    },
+    {
+      "agent": "corregedoria-may",
+      "at": "2026-10-20T09:57:12Z",
+      "id": 1176,
+      "ref": "da87d4d69785",
+      "status": "bloqueado"
     }
   ],
   "request_id": "a-ronda-pro-mobile-field-20261019",
@@ -632,42 +674,42 @@
       "agent": "may-maestro",
       "attempts": 3,
       "ref": "ab746bc96407",
-      "status": "executando",
+      "status": "bloqueado",
       "step": 2
     },
     {
       "agent": "horizon-ui-guardian",
       "attempts": 0,
       "ref": "dca9862e0316",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "frontend-engineer",
       "attempts": 0,
       "ref": "14cd4fbc3ad4",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "qa-engineer",
       "attempts": 0,
       "ref": "61f642a63f49",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "mobile-app-builder",
       "attempts": 0,
       "ref": "f51694b7e191",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     },
     {
       "agent": "corregedoria-may",
       "attempts": 0,
       "ref": "da87d4d69785",
-      "status": "na_fila",
+      "status": "bloqueado",
       "step": 0
     }
   ],
