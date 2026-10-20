@@ -386,68 +386,79 @@ class ModelGateway:
             return report
 
     def complete(self, agent, messages):
+        """Preferred Gemini -> GPT-OSS 120B -> Qwen 3.8 27B.
+
+        The same Groq credential serves both free-tier models. One busy model
+        must not strand a specialist while another has available minute budget.
+        All failures remain sanitized and recoverable via the durable worker.
+        """
         self._load_circuit()
         now = time.time()
         failures = []
-        skipped = now < self._circuit.get("groq_retry_after", 0)
-        if skipped:
-            failures.append(self._circuit.get("failure", {
-                "provider": "groq", "reason": "cooldown", "status": None, "retryable": True}))
-        else:
+        next_wait = []
+        skipped_gemini = now < self._circuit.get("gemini_retry_after", 0)
+        if not skipped_gemini:
             try:
-                if "groq" in self._init_errors:
-                    raise self._init_errors["groq"]
-                action = self.groq.complete(agent, messages)
+                if "gemini" in self._init_errors:
+                    raise self._init_errors["gemini"]
+                action = self.gemini.complete(agent, messages)
                 self._save_circuit({})
                 return action
             except GatewayError as error:
-                if error.reason == "rate_limited_local":
-                    raise
                 failures.append(error.as_dict())
-                # Model retirement/preview unavailability: switch to the
-                # other allowed Groq model, preserving both minute quotas.
-                current_model = self.groq.model_for(agent) if self.groq is not None else None
-                alternative = (self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
-                               if current_model.startswith("qwen/") else
-                               self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
-                               ) if current_model else None
-                if (alternative and current_model != alternative
-                        and error.status in (400, 403, 404, 500, 502, 503)):
-                    try:
-                        action = self.groq.complete(dict(agent, groq_model=alternative), messages)
-                        action["metadata"].update(fallback_from="groq_model",
-                                                  fallback_reason=error.as_dict())
-                        return action
-                    except GatewayError as secondary:
-                        failures.append(secondary.as_dict())
-                if error.reason in ("quota", "transport", "server") or error.status == 402:
-                    self._save_circuit({"groq_retry_after": now + self.cooldown_seconds,
+                if error.reason in ("quota", "transport", "server"):
+                    self._save_circuit({"gemini_retry_after": now + self.cooldown_seconds,
                                         "failure": error.as_dict()})
                 else:
                     self._save_circuit({})
-
-        try:
-            if "gemini" in self._init_errors:
-                raise self._init_errors["gemini"]
-            action = self.gemini.complete(agent, messages)
-        except GatewayError as error:
-            failures.append(error.as_dict())
-            backup = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
-            if (error.reason == "quota" and error.status == 429
-                    and backup == "gemini-3.5-flash-lite"
-                    and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
-                    and self.gemini is not None
-                    and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
-                try:
-                    action = self.gemini.complete(dict(agent, model=backup, _reasoning_level="low"), messages)
-                    action["metadata"].update(fallback_from="groq_and_gemini",
-                                              fallback_reasons=failures, free_tier_model=True)
-                    return action
-                except GatewayError as backup_error:
-                    failures.append(backup_error.as_dict())
-            raise GatewayError("Model providers unavailable; checkpoint and retry safely",
-                               retryable=True, provider="all", reason="providers_unavailable",
-                               failures=failures) from None
-        action["metadata"].update(fallback_from="groq", fallback_reasons=failures,
-                                  groq_cooldown_skipped=skipped)
-        return action
+        else:
+            failures.append({"provider": "gemini", "reason": "cooldown",
+                             "status": None, "retryable": True})
+        models = [
+            self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL,
+            self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL,
+        ]
+        attempted = set()
+        for model in models:
+            if model in attempted:
+                continue
+            attempted.add(model)
+            try:
+                if "groq" in self._init_errors:
+                    raise self._init_errors["groq"]
+                action = self.groq.complete(dict(agent, groq_model=model), messages)
+                action["metadata"].update(
+                    fallback_from="gemini", fallback_reasons=failures,
+                    groq_cooldown_skipped=False)
+                return action
+            except GatewayError as error:
+                failures.append(error.as_dict())
+                if error.reason == "rate_limited_local":
+                    next_wait.append(max(60, getattr(error, "retry_after_seconds", 60)))
+                # A bad shared key cannot work for the alternate Groq model.
+                if error.reason in ("authentication",) and error.status in (401, 403):
+                    break
+        # Optional Gemini free Flash-Lite rescue, after both Groq models.
+        backup = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
+        gemini_failed_quota = any(row.get("provider") == "gemini"
+                                  and row.get("reason") in ("quota", "cooldown")
+                                  for row in failures)
+        if (backup == "gemini-3.5-flash-lite" and gemini_failed_quota
+                and self.gemini is not None
+                and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
+                and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
+            try:
+                action = self.gemini.complete(
+                    dict(agent, model=backup, _reasoning_level="low"), messages)
+                action["metadata"].update(
+                    fallback_from="gemini_groq", fallback_reasons=failures,
+                    free_tier_model=True)
+                return action
+            except GatewayError as error:
+                failures.append(error.as_dict())
+        failure = GatewayError(
+            "All configured models are unavailable; checkpoint and retry",
+            retryable=True, provider="all", reason="providers_unavailable",
+            failures=failures)
+        failure.retry_after_seconds = max(next_wait, default=60)
+        raise failure
