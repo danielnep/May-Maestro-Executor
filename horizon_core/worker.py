@@ -153,15 +153,15 @@ class Worker:
                 updated['pending_may'] = {'ticket': resumed['ticket'],
                                           'round': deferred_request['round']}
                 self.state.checkpoint(task_id, self.worker_id, updated)
-                self.state.defer(task_id, self.worker_id, seconds=900)
+                self.state.defer(task_id, self.worker_id, seconds=300)
                 self.persist()
                 return self.state.get(task_id)
-            # All specialists may consult May on demand, but only the owner
-            # may approve publishing technical context to a public issue.
-            # The owner response can supply one validated action when LLMs
-            # are down; no other agent gains extra tool permissions.
+            # The owner-authenticated issue reply can supply a bounded plan of
+            # individually authorized tool steps, checkpointed after each one.
+            # It never expands this specialist's tool or filesystem permissions.
             may_advice = None
             may_decision = None
+            may_decisions = list(previous.get('may_plan') or [])
             pending_may = previous.get('pending_may')
             if pending_may:
                 # Older checkpoints use a plain hash (round zero).
@@ -172,11 +172,27 @@ class Worker:
                 except Exception:
                     response = None
                 if response is None:
-                    self.state.defer(task_id, self.worker_id, seconds=900)
+                    self.state.defer(task_id, self.worker_id, seconds=300)
                     self.persist()
                     return self.state.get(task_id)
-                may_decision = response.get('decision_untrusted')
+                may_decisions = response.get('decisions_untrusted') or (
+                    [response['decision_untrusted']] if response.get('decision_untrusted') else [])
                 may_advice = response.get('advice_untrusted') or None
+                if not may_decisions and any(
+                    row.get('action') == 'may_provider_fallback'
+                    and row.get('round', 0) == pending_round for row in previous.get('history', [])):
+                    # A narrative diagnosis is not a replacement for an
+                    # unavailable model. Keep the SAME ticket pending rather
+                    # than issuing an endless series of generic consultations.
+                    self.state.checkpoint(task_id, self.worker_id,
+                        dict(previous, may_reply_status='awaiting_executable_action'))
+                    self.state.defer(task_id, self.worker_id, seconds=300)
+                    self.persist()
+                    return self.state.get(task_id)
+            for planned in may_decisions:
+                validate_action(planned, agent['tools'])
+            if any(item['action'] == 'finish' for item in may_decisions[:-1]):
+                raise ValueError('May plan must place finish last')
             step = previous.get('step', 0)
             start_step = step
             history = previous.get('history', [])
@@ -233,6 +249,10 @@ class Worker:
                     self.persist()
                     return self.state.get(task_id)
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
+                # Resume May's remaining approved steps before spending more
+                # provider calls or asking for another consultation round.
+                if may_decision is None and may_decisions:
+                    may_decision = may_decisions.pop(0)
                 # A real Maestro task must approve deeper thinking; old model
                 # failures and repeated identical tests never grant escalation.
                 if (may_decision is None and agent['id'] != 'may-maestro'
@@ -335,7 +355,7 @@ class Worker:
                              'delegated': delegated, 'failure_counts': failure_counts,
                              'pending_may': {'ticket': result['ticket'],
                                              'round': consultation_round}})
-                        self.state.defer(task_id, self.worker_id, seconds=900)
+                        self.state.defer(task_id, self.worker_id, seconds=300)
                         self.persist()
                         return self.state.get(task_id)
                     failure_counts['consultation_blocked'] = failure_counts.get('consultation_blocked',0)+1
@@ -485,10 +505,18 @@ class Worker:
                 step += 1
                 history.append({'action': name, 'summary': action['summary'], 'outcome': outcome,
                                 'model': action.get('metadata', {})})
+                # Remaining pre-planned actions are conditional on this action
+                # succeeding. A failed check/tool needs fresh reasoning.
+                if (isinstance(outcome, dict) and
+                        (outcome.get('tool_error') or
+                         (name == 'run_check' and outcome.get('passed') is False))):
+                    may_decisions.clear()
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
-                self.state.checkpoint(task_id, self.worker_id,
-                                      {'step': step, 'history': history, 'checks': checks,
-                                       'delegated': delegated, 'failure_counts': failure_counts})
+                checkpoint = {'step': step, 'history': history, 'checks': checks,
+                              'delegated': delegated, 'failure_counts': failure_counts}
+                if may_decisions:
+                    checkpoint['may_plan'] = may_decisions
+                self.state.checkpoint(task_id, self.worker_id, checkpoint)
                 violations = sorted(key for key, count in failure_counts.items() if count >= 3)
                 if violations:
                     # Durable terminal diagnostic; no fourth identical request. Normal
@@ -561,7 +589,7 @@ class Worker:
                          'delegated': delegated, 'failure_counts': failure_counts,
                          'pending_may': {'ticket': consultation['ticket'],
                                          'round': consultation_round}})
-                    self.state.defer(task_id, self.worker_id, seconds=900)
+                    self.state.defer(task_id, self.worker_id, seconds=300)
                     self.persist()
                     return self.state.get(task_id)
             self.state.fail(task_id, self.worker_id, details, retryable=retryable)
