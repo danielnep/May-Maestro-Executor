@@ -28,7 +28,8 @@ class MeticulosidadeTests(unittest.TestCase):
                 self.assertIn('botão "X" isolado', instructions)
                 self.assertIn("prefers-reduced-motion", instructions)
                 self.assertIn("## Handoff de revisão May", instructions)
-                self.assertIn("não transmite mensagens espontâneas", instructions)
+                self.assertIn("ferramenta validada de comunicação", instructions)
+                self.assertIn("Horizon | Central dos Agentes", instructions)
                 self.assertIn("Rubrica de aceite de 0 a 4", instructions)
 
     def test_17_specialists_receive_exactly_one_canonical_skill(self):
