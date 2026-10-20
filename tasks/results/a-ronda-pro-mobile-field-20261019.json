@@ -36,6 +36,11 @@
     {
       "agent": "may-maestro",
       "attempts": 2,
+      "blocker": {
+        "code": "awaiting_may_consultation",
+        "round": 1,
+        "ticket": "1a1fd3fbe70aefe64ec3"
+      },
       "model_used": null,
       "status": "queued",
       "summary": "",
@@ -45,6 +50,7 @@
     {
       "agent": "horizon-ui-guardian",
       "attempts": 0,
+      "blocker": null,
       "model_used": null,
       "status": "queued",
       "summary": "",
@@ -54,6 +60,7 @@
     {
       "agent": "frontend-engineer",
       "attempts": 0,
+      "blocker": null,
       "model_used": null,
       "status": "queued",
       "summary": "",
@@ -63,6 +70,7 @@
     {
       "agent": "qa-engineer",
       "attempts": 0,
+      "blocker": null,
       "model_used": null,
       "status": "queued",
       "summary": "",
@@ -72,6 +80,7 @@
     {
       "agent": "mobile-app-builder",
       "attempts": 0,
+      "blocker": null,
       "model_used": null,
       "status": "queued",
       "summary": "",
@@ -81,6 +90,7 @@
     {
       "agent": "corregedoria-may",
       "attempts": 0,
+      "blocker": null,
       "model_used": null,
       "status": "queued",
       "summary": "",
