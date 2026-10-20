@@ -1,0 +1,242 @@
+{
+  "chat": "Horizon | Central dos Agentes",
+  "events": [
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T07:04:37Z",
+      "id": 2,
+      "ref": "a8bebe29eb4f",
+      "status": "iniciou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-19T07:07:04Z",
+      "id": 24,
+      "ref": "a8bebe29eb4f",
+      "status": "concluiu"
+    },
+    {
+      "agent": "horizon-project-studio",
+      "at": "2026-10-19T07:07:06Z",
+      "id": 25,
+      "ref": "3b5adc3eb7d0",
+      "status": "iniciou"
+    },
+    {
+      "agent": "horizon-project-studio",
+      "at": "2026-10-19T07:08:09Z",
+      "id": 37,
+      "ref": "3b5adc3eb7d0",
+      "status": "concluiu"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:08:11Z",
+      "id": 38,
+      "ref": "a5c2e497f51d",
+      "status": "iniciou"
+    },
+    {
+      "agent": "software-architect",
+      "at": "2026-10-19T07:08:53Z",
+      "id": 53,
+      "ref": "a5c2e497f51d",
+      "status": "concluiu"
+    },
+    {
+      "agent": "integration-engineer",
+      "at": "2026-10-19T07:08:54Z",
+      "id": 54,
+      "ref": "dea59a65bef3",
+      "status": "iniciou"
+    },
+    {
+      "agent": "integration-engineer",
+      "at": "2026-10-19T07:10:14Z",
+      "id": 85,
+      "ref": "dea59a65bef3",
+      "status": "concluiu"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:10:16Z",
+      "id": 86,
+      "ref": "e61b34aed814",
+      "status": "iniciou"
+    },
+    {
+      "agent": "backend-engineer",
+      "at": "2026-10-19T07:11:26Z",
+      "id": 110,
+      "ref": "e61b34aed814",
+      "status": "concluiu"
+    },
+    {
+      "agent": "database-engineer",
+      "at": "2026-10-19T07:11:27Z",
+      "id": 111,
+      "ref": "fc7ab710806b",
+      "status": "iniciou"
+    },
+    {
+      "agent": "database-engineer",
+      "at": "2026-10-19T07:13:33Z",
+      "id": 135,
+      "ref": "fc7ab710806b",
+      "status": "concluiu"
+    },
+    {
+      "agent": "security-engineer",
+      "at": "2026-10-19T07:13:35Z",
+      "id": 136,
+      "ref": "122a75c262aa",
+      "status": "iniciou"
+    },
+    {
+      "agent": "security-engineer",
+      "at": "2026-10-19T07:14:02Z",
+      "id": 148,
+      "ref": "122a75c262aa",
+      "status": "concluiu"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-19T07:14:04Z",
+      "id": 149,
+      "ref": "ef66c59852fc",
+      "status": "iniciou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-19T07:14:26Z",
+      "id": 157,
+      "ref": "ef66c59852fc",
+      "status": "concluiu"
+    },
+    {
+      "agent": "frontend-engineer",
+      "at": "2026-10-19T07:14:28Z",
+      "id": 158,
+      "ref": "f6e17b799d8a",
+      "status": "iniciou"
+    },
+    {
+      "agent": "frontend-engineer",
+      "at": "2026-10-19T07:14:36Z",
+      "id": 162,
+      "ref": "f6e17b799d8a",
+      "status": "concluiu"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:14:38Z",
+      "id": 163,
+      "ref": "44a197955f09",
+      "status": "iniciou"
+    },
+    {
+      "agent": "qa-engineer",
+      "at": "2026-10-19T07:15:53Z",
+      "id": 190,
+      "ref": "44a197955f09",
+      "status": "concluiu"
+    },
+    {
+      "agent": "corregedoria-may",
+      "at": "2026-10-19T07:15:55Z",
+      "id": 191,
+      "ref": "0ae1b998ad0f",
+      "status": "iniciou"
+    },
+    {
+      "agent": "corregedoria-may",
+      "at": "2026-10-19T07:16:05Z",
+      "id": 195,
+      "ref": "0ae1b998ad0f",
+      "status": "concluiu"
+    }
+  ],
+  "request_id": "michelle-sigware-ai-coi-20261018",
+  "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/michelle-sigware-ai-coi-20261018.json",
+  "roster": [
+    {
+      "agent": "may-maestro",
+      "attempts": 1,
+      "ref": "a8bebe29eb4f",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "horizon-project-studio",
+      "attempts": 1,
+      "ref": "3b5adc3eb7d0",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "software-architect",
+      "attempts": 1,
+      "ref": "a5c2e497f51d",
+      "status": "concluido",
+      "step": 3
+    },
+    {
+      "agent": "integration-engineer",
+      "attempts": 1,
+      "ref": "dea59a65bef3",
+      "status": "concluido",
+      "step": 7
+    },
+    {
+      "agent": "backend-engineer",
+      "attempts": 1,
+      "ref": "e61b34aed814",
+      "status": "concluido",
+      "step": 5
+    },
+    {
+      "agent": "database-engineer",
+      "attempts": 1,
+      "ref": "fc7ab710806b",
+      "status": "concluido",
+      "step": 5
+    },
+    {
+      "agent": "security-engineer",
+      "attempts": 1,
+      "ref": "122a75c262aa",
+      "status": "concluido",
+      "step": 2
+    },
+    {
+      "agent": "ui-ux-designer",
+      "attempts": 1,
+      "ref": "ef66c59852fc",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 1,
+      "ref": "f6e17b799d8a",
+      "status": "concluido",
+      "step": 0
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 1,
+      "ref": "44a197955f09",
+      "status": "concluido",
+      "step": 6
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 1,
+      "ref": "0ae1b998ad0f",
+      "status": "concluido",
+      "step": 0
+    }
+  ],
+  "schema": "horizon.agent.attendance.v1",
+  "source": "durable_state_events"
+}
