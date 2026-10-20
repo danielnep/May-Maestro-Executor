@@ -31,6 +31,9 @@ jobs:
       - name: Verificar contrato sem navegador nem segredo
         run: node --test tests/test_agent_central_relay.cjs
       - name: Executar ponte autônoma dos especialistas
+        # Browser relay disabled by default; GitHub-native worker remains in chat-requests.yml.
+        # No browser is launched unless the owner explicitly enables this repository variable.
+        if: vars.HORIZON_BROWSER_RELAY_ENABLED == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
