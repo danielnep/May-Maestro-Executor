@@ -11,6 +11,7 @@ Actual usage refines the window; upstream headers/429 remain authoritative.
 """
 import json
 import math
+import sqlite3
 import time
 import uuid
 
@@ -38,7 +39,7 @@ class GroqMinuteBudget:
     def _read(self, model):
         if self.state is None:
             return list(self._local.get(model, []))
-        if getattr(self.state, "db", None) is not None:
+        if isinstance(getattr(self.state, "db", None), sqlite3.Connection):
             row = self.state.db.execute(
                 "SELECT value FROM memory WHERE project=? AND agent=? AND key=?",
                 (NAMESPACE, AGENT, model)).fetchone()
@@ -58,7 +59,7 @@ class GroqMinuteBudget:
             self.state.remember(NAMESPACE, AGENT, model, records)
 
     def _atomic(self, callback):
-        if self.state is not None and hasattr(self.state, "_tx") and hasattr(self.state, "db"):
+        if self.state is not None and isinstance(getattr(self.state, "db", None), sqlite3.Connection) and hasattr(self.state, "_tx"):
             with self.state._tx():
                 return callback()
         return callback()
