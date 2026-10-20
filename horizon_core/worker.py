@@ -175,8 +175,8 @@ class Worker:
                     self.state.defer(task_id, self.worker_id, seconds=300)
                     self.persist()
                     return self.state.get(task_id)
-                may_decisions = response.get('decisions_untrusted') or (
-                    [response['decision_untrusted']] if response.get('decision_untrusted') else [])
+                may_decisions = list(response.get('decisions_untrusted') or (
+                    [response['decision_untrusted']] if response.get('decision_untrusted') else []))
                 may_advice = response.get('advice_untrusted') or None
                 if not may_decisions and any(
                     row.get('action') == 'may_provider_fallback'
