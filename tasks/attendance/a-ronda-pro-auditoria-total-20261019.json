@@ -154,6 +154,20 @@
       "id": 927,
       "ref": "3acc93a22b09",
       "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T04:05:57Z",
+      "id": 930,
+      "ref": "3acc93a22b09",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T04:06:11Z",
+      "id": 933,
+      "ref": "3acc93a22b09",
+      "status": "aguardando"
     }
   ],
   "request_id": "a-ronda-pro-auditoria-total-20261019",
