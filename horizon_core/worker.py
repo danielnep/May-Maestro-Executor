@@ -27,6 +27,8 @@ class Worker:
     def __init__(self, state, gateway, root, persist=None, max_steps=None, slice_seconds=1500, sandbox_client=None):
         self.state, self.gateway, self.root = state, gateway, root
         self._persist = persist or (lambda: None)
+        if hasattr(self.gateway, "set_persist"):
+            self.gateway.set_persist(self.persist)
         if max_steps is not None and (not isinstance(max_steps, int) or max_steps <= 0):
             raise ValueError('max_steps must be None or a positive integer')
         if slice_seconds <= 0:
@@ -316,6 +318,17 @@ class Worker:
                              dict(agent, _reasoning_level=effort['level']),
                              [{'role': 'user', 'content': json.dumps(context, ensure_ascii=False)}])
                 except GatewayError as error:
+                    if error.reason == "rate_limited_local":
+                        # Do not burn retries, call Gemini as a side effect or
+                        # lose completed tool work because the minute window is busy.
+                        seconds = max(60, min(3600, int(
+                            getattr(error, "retry_after_seconds", 60) + 0.99)))
+                        self.state.checkpoint(task_id, self.worker_id,
+                            {"step": step, "history": history, "checks": checks,
+                             "delegated": delegated, "failure_counts": failure_counts})
+                        self.state.defer(task_id, self.worker_id, seconds=seconds)
+                        self.persist()
+                        return self.state.get(task_id)
                     failures = error.failures or [error.as_dict()]
                     if not failures or failures[-1].get('reason') != 'invalid_action' or 'shape' not in failures[-1]:
                         raise
