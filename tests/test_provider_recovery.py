@@ -64,6 +64,54 @@ class ProviderRecoveryTests(unittest.TestCase):
                          {'requeued_provider_failures':0,'unblocked_dependents':0})
         s._tx=original
 
+    def test_recovers_legacy_unedited_visual_failure_once(self):
+        s = self.state
+        s.enqueue('ui', 'horizon-ui-guardian', 'chat:proof', 'Audit current source')
+        s.enqueue('frontend', 'frontend-engineer', 'chat:proof', 'Implement fixes',
+                  depends_on=['ui'])
+        history = [
+            {'action': 'read_file', 'outcome': {}},
+            {'action': 'run_check', 'outcome': {'check': 'browser-playwright', 'passed': False}},
+            *[{'action': 'visual_evidence_required',
+               'outcome': {'reason': 'browser_check_not_verified'}} for _ in range(3)]
+        ]
+        self.assertEqual(s.claim('agent', now=100)['task_id'], 'ui')
+        s.checkpoint('ui', 'agent', {'step': 7, 'history': history,
+            'failure_counts': {'missing_visual_evidence': 3,
+                               'check:browser-playwright': 2}}, now=101)
+        s.fail('ui', 'agent', {'reason': 'visual_evidence_missing',
+               'detail': 'browser_check_not_verified'}, retryable=False, now=102)
+        self.assertIsNone(s.claim('idle', now=103))
+        self.assertEqual(s.get('frontend')['status'], 'blocked')
+        self.assertEqual(s.recover_legacy_visual_audits(now=200), ['ui'])
+        self.assertEqual(s.recover_legacy_visual_audits(now=201), [])
+        row = s.get('ui')
+        self.assertEqual(row['status'], 'queued')
+        self.assertEqual(row['checkpoint']['history'], history)
+        self.assertTrue(row['checkpoint']['visual_audit_recovery_used'])
+        self.assertFalse(row['checkpoint']['failure_counts'])
+        self.assertEqual(s.recover_provider_outages(now=202)['unblocked_dependents'], 1)
+        self.assertEqual(s.get('frontend')['status'], 'queued')
+        self.assertEqual(s.claim('agent', now=203)['task_id'], 'ui')
+        s.fail('ui', 'agent', {'reason': 'visual_evidence_missing',
+               'detail': 'browser_check_not_verified'}, retryable=False, now=204)
+        self.assertEqual(s.recover_legacy_visual_audits(now=205), [])
+
+    def test_edited_visual_failure_never_automatically_recovers(self):
+        s = self.state
+        s.enqueue('ui', 'horizon-ui-guardian', 'chat:proof', 'Fix source')
+        self.assertEqual(s.claim('agent', now=100)['task_id'], 'ui')
+        history = [{'action': 'write_file', 'outcome': {
+            'before_sha256': 'old', 'sha256': 'new'}},
+            {'action': 'run_check', 'outcome': {
+                'check': 'browser-playwright', 'passed': False}},
+            *[{'action': 'visual_evidence_required'} for _ in range(3)]]
+        s.checkpoint('ui', 'agent', {'history': history}, now=101)
+        s.fail('ui', 'agent', {'reason': 'visual_evidence_missing',
+               'detail': 'browser_check_not_verified'}, retryable=False, now=102)
+        self.assertEqual(s.recover_legacy_visual_audits(now=200), [])
+        self.assertEqual(s.get('ui')['status'], 'failed')
+
     def test_unrelated_terminal_dependency_remains_blocked(self):
         s=self.state
         s.enqueue('bad','software-architect','other','Permanently invalid')
