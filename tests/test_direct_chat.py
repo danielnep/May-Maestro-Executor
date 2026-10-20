@@ -172,7 +172,7 @@ class DirectBrowserContractTests(unittest.TestCase):
                                      "What is the safest check to run?",
                                      environ={"KERNEL_API_KEY":"synthetic"},
                                      opener=opener)
-        self.assertEqual(result["status"], "delivery_unknown")
+        self.assertEqual(result["status"], "transport_unavailable")
         self.assertEqual(len(calls), 1)
 
     def test_existing_tabs_only_and_foreign_drafts_block_every_send(self):
