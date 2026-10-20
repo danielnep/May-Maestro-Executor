@@ -126,11 +126,11 @@ def send_live_review(review, task_id, *, environ=None, opener=None):
     key = (os.environ if environ is None else environ).get("KERNEL_API_KEY")
     if not key:
         return "not_configured"
-    message = ("[HORIZON REVISAO KERNEL V1]\\n"
-               "AGENTE: horizon-ui-guardian\\n"
-               "TICKET: " + review["ticket"] + "\\n"
-               "TAREFA: " + task_id + "\\n"
-               "NAVEGADOR AO VIVO: " + review["browser_live_view_url"] + "\\n"
+    message = ("[HORIZON REVISAO KERNEL V1]\n"
+               "AGENTE: horizon-ui-guardian\n"
+               "TICKET: " + review["ticket"] + "\n"
+               "TAREFA: " + task_id + "\n"
+               "NAVEGADOR AO VIVO: " + review["browser_live_view_url"] + "\n"
                "May: abra este navegador, percorra o Ronda Pro em mobile e "
                "desktop; verifique gestos, ícones, estados e navegação. "
                "Não aprove apenas pelo link. Retorne os defeitos e o parecer.")
