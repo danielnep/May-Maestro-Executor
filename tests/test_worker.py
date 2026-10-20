@@ -752,6 +752,24 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertNotIn('do-not-store', persisted)
         self.assertNotIn('upstream_body', persisted)
 
+    def test_read_only_ui_audit_reports_without_false_visual_qa(self):
+        # Bypass only the fixture-level visual override for this integration.
+        self._fixture_visual.stop()
+        self.state.enqueue('audit', 'horizon-ui-guardian', 'fixture',
+                           'Read source without editing and report browser failure')
+        def decide(agent, context):
+            return (action('run_check', {'name': 'browser-playwright'})
+                    if not context['history'] else
+                    action('finish', summary='Read-only audit; browser evidence unavailable'))
+        proof = {'check': 'browser-playwright', 'passed': False, 'source': 'runtime',
+                 'simulated': False, 'workspace_unchanged': True, 'screenshots': []}
+        with patch('horizon_core.tools.Tools.run_check', return_value=proof):
+            row = Worker(self.state, FakeGateway(decide), self.root).run_one()
+        self.assertEqual(row['status'], 'succeeded')
+        self.assertEqual(row['result']['stage'], 'audit_only_unverified')
+        self.assertFalse(row['result']['verification'][0]['passed'])
+        self.assertNotIn('write_file', [x['action'] for x in row['checkpoint']['history']])
+
     def test_failed_tool_stays_in_verification_even_when_model_finishes(self):
         gateway = FakeGateway(lambda agent, context: action('run_check', {'name': 'python-unittest'})
                               if not context['history'] else action('finish', summary='Could not run Docker check'))
