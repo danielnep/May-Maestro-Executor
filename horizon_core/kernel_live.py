@@ -81,3 +81,79 @@ def prepare_live_review(task, *, environ=None, opener=None):
             "review_status": "awaiting_may_visual_review",
             "browser_live_view_url": link, "session_id": session_id,
             "target_url": target, "tests_run": 0, "reviewed_by_may": False}
+
+CENTRAL = "https://chatgpt.com/c/6ad68dab-1178-83e9-a409-7c7014281b68"
+CHAT_BROWSER = "may-chatgpt-72h"
+_CHAT_CODE = r"""
+const request = JSON.parse(REQUEST_JSON);
+const tabId = await newTab(request.url);
+await waitForLoad();
+const already = await js((ticket) => document.body.innerText.includes(ticket), {arg: request.ticket});
+if (already) {
+  repl.write(JSON.stringify({status:"already_sent"}));
+} else {
+  const nodes = (await accessibilitySnapshot()).nodes;
+  const input = nodes.find(n => n.role === "textbox" && /Ask ChatGPT|Mensagem/i.test(n.name));
+  if (!input) {
+    repl.write(JSON.stringify({status:"not_authenticated"}));
+  } else {
+    await fillInput(input, request.message);
+    const sendNodes = (await accessibilitySnapshot()).nodes;
+    const send = sendNodes.find(n => n.role === "button" && /^(Send|Enviar)$/i.test(n.name));
+    if (!send) {
+      repl.write(JSON.stringify({status:"composer_unavailable"}));
+    } else {
+      await click(send);
+      const posted = await js((ticket) => document.body.innerText.includes(ticket), {arg: request.ticket});
+      repl.write(JSON.stringify({status: posted ? "sent" : "send_unconfirmed"}));
+    }
+  }
+}
+"""
+
+
+def send_live_review(review, task_id, *, environ=None, opener=None):
+    """Send the exact live URL to the dedicated ChatGPT thread via KERNEL native REPL.
+
+    A timed-out send is ambiguous: never send the same ticket again blindly.
+    Does not use Playwright or the app browser as a chat transport.
+    """
+    if (not isinstance(review, dict) or
+            review.get("review_status") != "awaiting_may_visual_review" or
+            not isinstance(review.get("ticket"), str) or
+            not LIVE.fullmatch(review.get("browser_live_view_url", ""))):
+        return "not_ready"
+    key = (os.environ if environ is None else environ).get("KERNEL_API_KEY")
+    if not key:
+        return "not_configured"
+    message = ("[HORIZON REVISAO KERNEL V1]\\n"
+               "AGENTE: horizon-ui-guardian\\n"
+               "TICKET: " + review["ticket"] + "\\n"
+               "TAREFA: " + task_id + "\\n"
+               "NAVEGADOR AO VIVO: " + review["browser_live_view_url"] + "\\n"
+               "May: abra este navegador, percorra o Ronda Pro em mobile e "
+               "desktop; verifique gestos, ícones, estados e navegação. "
+               "Não aprove apenas pelo link. Retorne os defeitos e o parecer.")
+    packet = {"url": CENTRAL, "ticket": "TICKET: " + review["ticket"],
+              "message": message}
+    code = _CHAT_CODE.replace("REQUEST_JSON", json.dumps(
+        json.dumps(packet, ensure_ascii=False), ensure_ascii=False))
+    try:
+        output = _request("POST",
+            "/browsers/" + urllib.parse.quote(CHAT_BROWSER, safe="") + "/repl",
+            key, {"code": code, "timeout_sec": 45}, opener=opener)
+    except KernelReviewError:
+        return "delivery_unknown"
+    if not isinstance(output, dict) or output.get("success") is not True:
+        return "delivery_unknown"
+    for item in output.get("content") or []:
+        if not isinstance(item, dict) or item.get("type") != "text":
+            continue
+        try:
+            status = json.loads(item.get("text", "")).get("status")
+        except (ValueError, AttributeError):
+            continue
+        if status in ("sent", "already_sent", "send_unconfirmed",
+                      "not_authenticated", "composer_unavailable"):
+            return status
+    return "delivery_unknown"
