@@ -1,0 +1,49 @@
+name: Horizon - ativar Railway como executor unico
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/railway-primary-cutover.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cutover:
+    if: github.repository == 'danielnep/May-Maestro-Executor' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Desligar SOMENTE executores legados no Actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for wf in chat-requests.yml agent-executors.yml; do
+            current="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq '.state')"
+            echo "before $wf=$current"
+            case "$current" in
+              active)
+                gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$wf/disable" >/dev/null
+                ;;
+              disabled_manually|disabled_inactivity) ;;
+              *) echo "::error::Unexpected workflow status for $wf: $current"; exit 1 ;;
+            esac
+            final="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$wf" --jq '.state')"
+            echo "after $wf=$final"
+            test "$final" != active
+          done
+      - name: Manter integração contínua no GitHub (sem execução dos agentes)
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]
+          url="https://api.github.com/repos/"+repo+"/actions/workflows/groq-migration-validation.yml"
+          req=urllib.request.Request(url,headers={
+            "Authorization":"Bearer "+os.environ["GH_TOKEN"],
+            "Accept":"application/vnd.github+json"})
+          with urllib.request.urlopen(req,timeout=20) as res:
+            current=json.load(res)["state"]
+          print("offline CI state:",current)
+          if current!="active": raise SystemExit(1)
+          PY
