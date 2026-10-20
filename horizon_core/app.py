@@ -45,11 +45,13 @@ def main(argv=None):
         ready['free_tier_attested'] = os.getenv('GEMINI_FREE_TIER_CONFIRMED', '').lower() == 'true'
         deepseek = {'api_key_present': bool(os.getenv('DEEPSEEK_API_KEY')),
                     'model': os.getenv('DEEPSEEK_MODEL') or DEFAULT_DEEPSEEK_MODEL}
+        groq = {'api_key_present': bool(os.getenv('GROQ_API_KEY') or os.getenv('API_IA_GROQ')),
+                'model': os.getenv('GROQ_MODEL') or 'openai/gpt-oss-120b'}
         railway = {'api_token_present': bool(os.getenv('RAILWAY_API_TOKEN')),
                    'environment_present': bool(os.getenv('RAILWAY_ENVIRONMENT_ID'))}
-        print(json.dumps({'configuration': ready, 'deepseek': deepseek, 'railway': railway,
+        print(json.dumps({'configuration': ready, 'groq': groq, 'deepseek_legacy': deepseek, 'railway': railway,
                           'billing_verified': False, 'requests_sent': 0}))
-        return 0 if all(ready.values()) or deepseek['api_key_present'] else 2
+        return 0 if all(ready.values()) or groq['api_key_present'] or deepseek['api_key_present'] else 2
     if args.max_tasks is not None and args.max_tasks < 1:
         parser.error('max-tasks must be positive when explicitly set')
     if args.session_seconds < 1:
