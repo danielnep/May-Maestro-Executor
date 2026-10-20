@@ -167,12 +167,18 @@ class Worker:
             may_decision = None
             may_decisions = list(previous.get('may_plan') or [])
             pending_may = previous.get('pending_may')
+            recovery_pending = None
             if pending_may:
                 # Older checkpoints use a plain hash (round zero).
                 pending_round = pending_may.get('round', 0) if isinstance(pending_may, dict) else 0
+                is_direct = (isinstance(pending_may, dict)
+                             and pending_may.get('transport') == 'kernel')
+                provider_fallback = any(
+                    row.get('action') == 'may_provider_fallback'
+                    and row.get('round', 0) == pending_round
+                    for row in previous.get('history', []))
                 try:
-                    if (isinstance(pending_may, dict)
-                            and pending_may.get('transport') == 'kernel'):
+                    if is_direct:
                         response = read_direct_consultation(
                             task_id, agent=agent['id'], round_index=pending_round)
                     else:
@@ -180,25 +186,31 @@ class Worker:
                             task_id, agent=agent['id'], round_index=pending_round)
                 except Exception:
                     response = None
-                if response is None:
-                    is_direct = (isinstance(pending_may, dict)
-                                 and pending_may.get('transport') == 'kernel')
+                if response is not None:
+                    may_decisions = list(response.get('decisions_untrusted') or (
+                        [response['decision_untrusted']] if response.get('decision_untrusted') else []))
+                    may_advice = response.get('advice_untrusted') or None
+                if provider_fallback and not may_decisions:
+                    # A missing or diagnosis-only May reply cannot indefinitely
+                    # suppress healthy models. Recheck every 15 minutes, keeping
+                    # the EXACT original ticket to avoid duplicate public issues.
+                    retry_after = (pending_may.get('provider_retry_after', 0)
+                                   if isinstance(pending_may, dict) else 0)
+                    if time.time() >= retry_after:
+                        recovery_pending = dict(pending_may)
+                        previous = dict(previous)
+                        previous.pop('pending_may', None)
+                        previous.pop('may_reply_status', None)
+                        pending_may = None
+                    else:
+                        self.state.defer(task_id, self.worker_id,
+                                         seconds=75 if is_direct else 300)
+                        self.persist()
+                        return self.state.get(task_id)
+                elif response is None:
+                    # An explicit specialist question still requires May's reply.
                     self.state.defer(task_id, self.worker_id,
                                      seconds=75 if is_direct else 300)
-                    self.persist()
-                    return self.state.get(task_id)
-                may_decisions = list(response.get('decisions_untrusted') or (
-                    [response['decision_untrusted']] if response.get('decision_untrusted') else []))
-                may_advice = response.get('advice_untrusted') or None
-                if not may_decisions and any(
-                    row.get('action') == 'may_provider_fallback'
-                    and row.get('round', 0) == pending_round for row in previous.get('history', [])):
-                    # A narrative diagnosis is not a replacement for an
-                    # unavailable model. Keep the SAME ticket pending rather
-                    # than issuing an endless series of generic consultations.
-                    self.state.checkpoint(task_id, self.worker_id,
-                        dict(previous, may_reply_status='awaiting_executable_action'))
-                    self.state.defer(task_id, self.worker_id, seconds=300)
                     self.persist()
                     return self.state.get(task_id)
             for planned in may_decisions:
@@ -420,7 +432,7 @@ class Worker:
                             continue
                     # A completed May plan must not leave stale pending work in
                     # the durable checkpoint after its last validated action.
-                    if pending_may or previous.get('may_plan'):
+                    if pending_may or recovery_pending or previous.get('may_plan'):
                         self.state.checkpoint(task_id, self.worker_id,
                             {'step': step, 'history': history, 'checks': checks,
                              'delegated': delegated, 'failure_counts': failure_counts})
@@ -538,6 +550,9 @@ class Worker:
                 if may_decisions:
                     checkpoint['may_plan'] = may_decisions
                 self.state.checkpoint(task_id, self.worker_id, checkpoint)
+                # A verified model/tool progress step retires the previous
+                # outage wait. A later failure may request new help if needed.
+                recovery_pending = None
                 violations = sorted(key for key, count in failure_counts.items() if count >= 3)
                 if violations:
                     # Durable terminal diagnostic; no fourth identical request. Normal
@@ -572,6 +587,18 @@ class Worker:
             if isinstance(error, GatewayError) and error.reason == 'providers_unavailable':
                 record_failure(self.state, task['project'], task['agent'], task_id,
                                'provider_unavailable', action='model_gateway')
+                if recovery_pending is not None:
+                    # This same consultation was already issued. Keep its ticket
+                    # and task progress; retry providers later without reopening
+                    # issues, exhausting failure attempts or fabricating success.
+                    self.state.checkpoint(task_id, self.worker_id,
+                        {'step': step, 'history': history, 'checks': checks,
+                         'delegated': delegated, 'failure_counts': failure_counts,
+                         'pending_may': dict(recovery_pending,
+                            provider_retry_after=time.time() + 900)})
+                    self.state.defer(task_id, self.worker_id, seconds=900)
+                    self.persist()
+                    return self.state.get(task_id)
                 consultation_round = sum(
                     row.get('action') in ('consult_may', 'may_provider_fallback')
                     and isinstance(row.get('outcome'), dict)
