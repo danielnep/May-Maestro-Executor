@@ -3,11 +3,11 @@
     {
       "agent": "may-maestro",
       "blocked": 1,
-      "finished": 5,
-      "queued": 2,
+      "finished": 6,
+      "queued": 1,
       "running": 0,
       "status": "aguardando",
-      "task_ref": "3acc93a22b09"
+      "task_ref": "ab746bc96407"
     },
     {
       "agent": "horizon-project-studio",
@@ -31,10 +31,10 @@
       "agent": "frontend-engineer",
       "blocked": 0,
       "finished": 3,
-      "queued": 1,
+      "queued": 2,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "14cd4fbc3ad4"
+      "task_ref": "cbf18d747dc6"
     },
     {
       "agent": "backend-engineer",
@@ -49,28 +49,28 @@
       "agent": "mobile-app-builder",
       "blocked": 0,
       "finished": 0,
-      "queued": 1,
+      "queued": 2,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "f51694b7e191"
+      "task_ref": "58d40897c9a8"
     },
     {
       "agent": "ui-ux-designer",
       "blocked": 0,
       "finished": 1,
-      "queued": 0,
+      "queued": 1,
       "running": 0,
-      "status": "ocioso",
-      "task_ref": "ef66c59852fc"
+      "status": "aguardando",
+      "task_ref": "08f40c5b70a8"
     },
     {
       "agent": "horizon-ui-guardian",
       "blocked": 0,
       "finished": 0,
-      "queued": 1,
+      "queued": 2,
       "running": 0,
-      "status": "na_fila",
-      "task_ref": "dca9862e0316"
+      "status": "aguardando",
+      "task_ref": "175fcce0a3f4"
     },
     {
       "agent": "database-engineer",
@@ -94,10 +94,10 @@
       "agent": "qa-engineer",
       "blocked": 0,
       "finished": 10,
-      "queued": 1,
+      "queued": 2,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "61f642a63f49"
+      "task_ref": "a79a05c39981"
     },
     {
       "agent": "security-engineer",
@@ -139,10 +139,10 @@
       "agent": "corregedoria-may",
       "blocked": 0,
       "finished": 2,
-      "queued": 1,
+      "queued": 2,
       "running": 0,
       "status": "na_fila",
-      "task_ref": "da87d4d69785"
+      "task_ref": "68616972be0c"
     },
     {
       "agent": "may-persona",
