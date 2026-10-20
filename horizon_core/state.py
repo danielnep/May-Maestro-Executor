@@ -253,6 +253,31 @@ class State:
         except (ValueError, TypeError):
             return None
 
+    def wake_may_reply(self, task_id, ticket, round_index, now=None):
+        """Wake only the queued task belonging to this durable May ticket."""
+        if (not isinstance(task_id, str) or not isinstance(ticket, str)
+                or type(round_index) is not int or round_index < 0):
+            raise ValueError("Invalid May consultation wakeup")
+        now = time.time() if now is None else now
+        with self._tx():
+            row = self.db.execute(
+                "SELECT status,not_before,checkpoint,project FROM tasks WHERE task_id=?",
+                (task_id,)).fetchone()
+            if not row or row["status"] != "queued" or not row["project"].startswith("chat:"):
+                return False
+            checkpoint = self._safe_failure_json(row["checkpoint"])
+            pending = checkpoint.get("pending_may") if isinstance(checkpoint, dict) else None
+            if (not isinstance(pending, dict) or pending.get("transport") == "kernel"
+                    or pending.get("ticket") != ticket
+                    or pending.get("round", 0) != round_index
+                    or row["not_before"] <= now):
+                return False
+            self.db.execute(
+                "UPDATE tasks SET not_before=? WHERE task_id=? AND status='queued'",
+                (now, task_id))
+            self._event(task_id, "may_reply_ready", {"round": round_index}, now)
+            return True
+
     def recover_provider_outages(self, now=None):
         """Unstick only failed retryable provider tasks and their dependents.
 
