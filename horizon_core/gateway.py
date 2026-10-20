@@ -115,16 +115,42 @@ class _HTTPGateway:
         if self.max_calls is not None and self.calls >= self.max_calls:
             raise self._error("Gateway call budget exhausted by explicit operator override", "operator_limit", True)
         self.calls += 1
+        self._last_rate_headers = {}
         try:
             with self.opener(request, timeout=self.timeout) as response:
-                return json.loads(response.read())
+                result = json.loads(response.read())
+                if self.provider == "groq":
+                    headers = getattr(response, "headers", None)
+                    if headers is not None:
+                        for header in ("x-ratelimit-limit-tokens",
+                                       "x-ratelimit-remaining-tokens",
+                                       "x-ratelimit-reset-tokens"):
+                            value = headers.get(header)
+                            if value is not None:
+                                self._last_rate_headers[header] = value
+                return result
         except urllib.error.HTTPError as exc:
             status = exc.code
             reason = ("insufficient_balance" if status == 402
                       else "quota" if status == 429
                       else "authentication" if status in (401, 403)
                       else "server" if status >= 500 else "http")
-            raise self._error(self.provider + " request failed (HTTP " + str(status) + ")", reason, status == 429 or status >= 500, status) from None
+            error = self._error(self.provider + " request failed (HTTP " + str(status) + ")",
+                                reason, status == 429 or status >= 500, status)
+            if self.provider == "groq" and exc.headers:
+                for header in ("x-ratelimit-limit-tokens",
+                               "x-ratelimit-remaining-tokens",
+                               "x-ratelimit-reset-tokens"):
+                    value = exc.headers.get(header)
+                    if value is not None:
+                        self._last_rate_headers[header] = value
+                retry_after = exc.headers.get("retry-after")
+                if retry_after is not None:
+                    try:
+                        error.retry_after_seconds = max(1, min(86400, int(float(retry_after) + 0.99)))
+                    except (ValueError, TypeError):
+                        pass
+            raise error from None
         except (urllib.error.URLError, TimeoutError, OSError):
             raise self._error(self.provider + " transport failed; checkpoint before retrying", "transport", True) from None
         except (ValueError, UnicodeError):
@@ -280,7 +306,12 @@ class GroqGateway(_HTTPGateway):
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
             method="POST")
-        result = self._request(request)
+        try:
+            result = self._request(request)
+        except GatewayError:
+            self.minute_budget.ingest_headers(model, getattr(self, "_last_rate_headers", {}))
+            raise
+        self.minute_budget.ingest_headers(model, getattr(self, "_last_rate_headers", {}))
         used = result.get("usage", {}).get("total_tokens") if isinstance(result, dict) else None
         self.minute_budget.actual_usage(model, receipt, used)
         try:
