@@ -53,6 +53,22 @@ jobs:
                         'checkpoint_step':cp.get('step') if type(cp.get('step')) is int else None,
                         'failure_counts':{k:v for k,v in counts.items()
                           if code(k) and type(v) is int and 0<=v<=100} }
+                      if row['task_id'].endswith(':audit-ui'):
+                          events=cp.get('history') or []
+                          if isinstance(events,list):
+                              report['action_history']=[{
+                                  'action':code(z.get('action')),
+                                  'reason':code((z.get('outcome') or {}).get('reason'))
+                                      if isinstance(z.get('outcome'),dict) else None,
+                                  'check':code((z.get('outcome') or {}).get('check'))
+                                      if isinstance(z.get('outcome'),dict) else None,
+                                  'passed':(z.get('outcome') or {}).get('passed')
+                                      if isinstance(z.get('outcome'),dict) and
+                                      type(z.get('outcome',{}).get('passed')) is bool else None,
+                                  'tool_error':code((z.get('outcome') or {}).get('tool_error'))
+                                      if isinstance(z.get('outcome'),dict) else None
+                              } for z in events[-12:] if isinstance(z,dict)]
+                          report['failure_detail']=code(reason.get('detail'))
                       print('P0_DIAG='+json.dumps(report,sort_keys=True))
           finally:
               state.close()
