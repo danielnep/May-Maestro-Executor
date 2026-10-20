@@ -103,3 +103,43 @@ def queue_review(report, api):
     if not isinstance(created, dict) or not isinstance(created.get("number"), int):
         raise ValueError("Delivery ticket not confirmed")
     return "queued"
+
+
+def queue_kernel_live_review(report, api):
+    """Idempotent public-safe notification; LIVE URL goes only to private chat."""
+    tickets = report.get("kernel_review_tickets") or []
+    if not isinstance(tickets, list) or not tickets:
+        return "not_ready"
+    existing = api._request("GET", "/issues?state=all&per_page=100")
+    if not isinstance(existing, list):
+        raise ValueError("Invalid issue listing")
+    created = 0
+    for item in tickets:
+        if not isinstance(item, dict):
+            continue
+        ticket, task_id = item.get("ticket"), item.get("task_id")
+        if (not isinstance(ticket, str) or not re.fullmatch("[0-9a-f]{20}", ticket)
+                or not isinstance(task_id, str)
+                or not re.fullmatch("[a-z0-9:-]{5,160}", task_id)):
+            continue
+        title = "[May live review] " + ticket
+        if any(isinstance(issue, dict) and issue.get("title") == title
+               and (issue.get("body") or "").startswith("MAY_KERNEL_REVIEW_REQUEST_V1")
+               for issue in existing):
+            continue
+        body = ("MAY_KERNEL_REVIEW_REQUEST_V1\n"
+                "TICKET: " + ticket + "\n"
+                "TASK: " + task_id + "\n"
+                "VIEWER: delivered through the private Horizon agent chat, never this issue.\n"
+                "STATUS: awaiting live KERNEL mobile/desktop and functional review.\n"
+                "After actual inspection, owner may reply strictly:\n"
+                "MAY_KERNEL_REVIEW_V1\nTICKET: " + ticket +
+                "\nSCENARIOS: <number-of-real-verified-flows>\nRESULT: approved\n"
+                "No passing test is inferred from opening the browser.\n")
+        result = api._request("POST", "/issues", {
+            "title": title, "body": body, "assignees": [OWNER]})
+        if not isinstance(result, dict) or type(result.get("number")) is not int:
+            raise ValueError("Kernel review ticket not persisted")
+        created += 1
+        existing.append({"title": title, "body": body})
+    return "queued" if created else "already_queued"
