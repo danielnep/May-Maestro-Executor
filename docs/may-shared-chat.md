@@ -4,9 +4,10 @@
 ## Acesso direto Python, sem GitHub como intermediário de mensagens
 
 A preferência operacional é horizon_core/direct_chat.py, usando o mesmo chat
-autenticado. Dentro da VM KERNEL, o processo Python chama o Chrome local por
-Node/Playwright-CDP. De um executor externo, exige KERNEL_API_KEY guardada como
-secret do projeto KERNEL. O agente pode enviar e ler a resposta por ticket
+autenticado. Dentro da VM KERNEL, o processo Python lê a interface por
+Node/Playwright-CDP e usa mouse/teclado gráfico do sistema para enviar,
+sem escrita de DOM via Playwright. De um executor externo, usa Computer Action
+do KERNEL e exige KERNEL_API_KEY guardada como secret do projeto KERNEL. O agente pode enviar e ler a resposta por ticket
 sem abrir Issue, sem esperar uma hora e sem usar plugin do ChatGPT.
 
 **Conexão documentada não significa conexão provisionada.** Se o secret não
