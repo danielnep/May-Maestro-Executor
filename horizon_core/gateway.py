@@ -244,8 +244,9 @@ class GroqGateway(_HTTPGateway):
         level = agent.get("_reasoning_level", "low")
         if level not in ("low", "high"):
             raise self._error("Invalid model reasoning escalation", "configuration")
+        groq_agent = dict(agent, instructions=agent.get("_groq_instructions") or agent["instructions"])
         payload = {"model": model,
-                   "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
+                   "messages": [{"role": "system", "content": _prompt(groq_agent)}] + _messages(messages),
                    "response_format": {"type": "json_object"}}
         if model.startswith("qwen/") or model.startswith("openai/gpt-oss-"):
             payload["reasoning_effort"] = "high" if level == "high" else (
