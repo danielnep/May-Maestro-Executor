@@ -1,9 +1,8 @@
-"""KERNEL live browser handoff. Screenshots are NOT functional QA or May approval.
+"""Native KERNEL live-view handoff, not an automated visual approval.
 
-Dedicated project sessions only. No Playwright, CDP, personal ChatGPT session,
-private app URLs, cookies or raw screenshot data in public task reports.
+Only public GitHub Pages of owner-authorized source repositories. Session IDs
+and links come from the current KERNEL API. No Playwright or Chrome CDP.
 """
-import hashlib
 import json
 import os
 import re
@@ -12,31 +11,24 @@ import urllib.parse
 import urllib.request
 
 API = "https://api.onkernel.com"
-NAME = "horizon-ronda-pro-live-audit"
-URL = "https://danielnep.github.io/app-hondas-maxvel/"
-LIVE_URL = re.compile(r"^https://[A-Za-z0-9.-]+\\.kernel\\.sh(?::8443)?/browser/live/[A-Za-z0-9_-]{4,90}$")
+LIVE = re.compile(r"^https://[A-Za-z0-9.-]+\.kernel\.sh(?::8443)?/browser/live/[A-Za-z0-9_-]{4,90}$")
+REPOSITORY = re.compile(r"^danielnep/([A-Za-z0-9_.-]{2,100})$")
 
 
 class KernelReviewError(RuntimeError):
-    pass
+    """Only a sanitized reason, never credentials or remote body."""
 
 
 def _request(method, path, token, data=None, opener=None):
-    url = API + path
-    body = json.dumps(data).encode("utf-8") if data is not None else None
-    req = urllib.request.Request(url, data=body, method=method, headers={
-        "Authorization": "Bearer " + token,
-        "Accept": "application/json" if method != "POST" or not path.endswith("/screenshot")
-                  else "image/png",
-        "Content-Type": "application/json",
-        "User-Agent": "Horizon-Kernel-Visual-Review/1",
-    })
-    call = opener or urllib.request.urlopen
+    request = urllib.request.Request(API + path,
+        data=json.dumps(data).encode("utf-8") if data is not None else None,
+        method=method, headers={"Authorization": "Bearer " + token,
+                                "Accept": "application/json",
+                                "Content-Type": "application/json",
+                                "User-Agent": "Horizon-Live-Kernel/1"})
     try:
-        with call(req, timeout=25) as response:
-            payload = response.read(5000000)
-            kind = response.headers.get("Content-Type", "")
-            return payload if "image/png" in kind else json.loads(payload)
+        with (opener or urllib.request.urlopen)(request, timeout=30) as response:
+            return json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return None
@@ -45,39 +37,42 @@ def _request(method, path, token, data=None, opener=None):
         raise KernelReviewError("kernel_transport_unavailable") from None
 
 
-def _session(token, opener=None):
-    name = urllib.parse.quote(NAME, safe="")
-    existing = _request("GET", "/browsers/" + name, token, opener=opener)
-    if existing is None:
-        existing = _request("POST", "/browsers", token, {
-            "name": NAME, "start_url": URL, "headless": False,
-            "viewport": {"width": 390, "height": 844},
-            "timeout_seconds": 21600}, opener=opener)
-    if not isinstance(existing, dict):
-        raise KernelReviewError("kernel_session_unavailable")
-    live = existing.get("browser_live_view_url")
-    session_id = existing.get("session_id")
-    if (not isinstance(live, str) or not LIVE_URL.fullmatch(live)
-            or not isinstance(session_id, str)
-            or not re.fullmatch(r"[a-z0-9]{10,40}", session_id)):
-        raise KernelReviewError("kernel_session_invalid")
-    return session_id, live
-
-
-def initiate_review(task, environ=None, opener=None):
-    """Produce a LIVE viewer link, not a synthetic passing browser check."""
-    if (not isinstance(task, dict)
-            or task.get("project") != "chat:a-ronda-pro-auditoria-total-20261019"
-            or task.get("repository") not in (None, "danielnep/app-hondas-maxvel")):
-        raise KernelReviewError("project_not_approved")
-    token = (os.environ if environ is None else environ).get("KERNEL_API_KEY")
-    if not token:
+def prepare_live_review(task, *, environ=None, opener=None):
+    """Return a current live viewer URL; NEVER fabricate success from its existence."""
+    if not isinstance(task, dict) or not task.get("project", "").startswith("chat:"):
+        raise KernelReviewError("task_scope_invalid")
+    payload = task.get("payload") or {}
+    if not isinstance(payload, dict):
+        raise KernelReviewError("task_payload_invalid")
+    repo = payload.get("repository")
+    match = REPOSITORY.fullmatch(repo) if isinstance(repo, str) else None
+    if not match:
         return {"check": "kernel-live", "passed": False,
-                "review_status": "kernel_key_unavailable", "tests_run": 0}
-    sid, url = _session(token, opener=opener)
-    # The current live view is available to the owner for physical interaction.
-    # A screenshot alone NEVER grants QA approval or unblocks specialists.
+                "review_status": "preview_not_authorized"}
+    name = "horizon-visual-" + match.group(1).lower().replace(".", "-")
+    # Legacy dedicated Ronda session is discoverable without any hardcoded ID.
+    if match.group(1) == "app-hondas-maxvel":
+        name = "horizon-ronda-pro-live-audit"
+    target = "https://danielnep.github.io/" + match.group(1) + "/"
+    key = (os.environ if environ is None else environ).get("KERNEL_API_KEY")
+    if not key:
+        return {"check": "kernel-live", "passed": False,
+                "review_status": "kernel_key_unavailable"}
+    route = "/browsers/" + urllib.parse.quote(name, safe="")
+    browser = _request("GET", route, key, opener=opener)
+    if browser is None:
+        browser = _request("POST", "/browsers", key,
+            {"name": name, "start_url": target,
+             "headless": False, "timeout_seconds": 21600,
+             "viewport": {"width": 390, "height": 844}}, opener=opener)
+    if not isinstance(browser, dict):
+        raise KernelReviewError("kernel_session_unavailable")
+    link, session_id = browser.get("browser_live_view_url"), browser.get("session_id")
+    if (not isinstance(link, str) or not LIVE.fullmatch(link)
+            or not isinstance(session_id, str)
+            or not re.fullmatch("[a-z0-9]{10,40}", session_id)):
+        raise KernelReviewError("kernel_live_view_invalid")
     return {"check": "kernel-live", "passed": False,
             "review_status": "awaiting_may_visual_review",
-            "browser_live_view_url": url, "session_id": sid,
-            "tests_run": 0, "reviewed_by_may": False}
+            "browser_live_view_url": link, "session_id": session_id,
+            "target_url": target, "tests_run": 0, "reviewed_by_may": False}
