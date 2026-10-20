@@ -4,9 +4,9 @@
       "agent": "may-maestro",
       "blocked": 1,
       "finished": 6,
-      "queued": 1,
-      "running": 0,
-      "status": "aguardando",
+      "queued": 0,
+      "running": 1,
+      "status": "executando",
       "task_ref": "ab746bc96407"
     },
     {
