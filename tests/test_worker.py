@@ -637,7 +637,8 @@ class WorkerIntegrationTests(unittest.TestCase):
             {'action': 'may_provider_fallback', 'round': 1, 'outcome': {'ticket': 'new'}}]
         self.state.checkpoint(parent_id, 'legacy-worker', {
             'step': 1, 'history': history, 'delegated': [child_id],
-            'pending_may': {'ticket': 'new', 'round': 1}})
+            'pending_may': {'ticket': 'new', 'round': 1,
+                            'provider_retry_after': 9999999999}})
         self.state.defer(parent_id, 'legacy-worker', seconds=60)
         future = self.state.get(parent_id)['not_before'] + 1
         with patch('horizon_core.state.time.time', return_value=future), \
