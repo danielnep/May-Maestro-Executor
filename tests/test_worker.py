@@ -550,20 +550,102 @@ class WorkerIntegrationTests(unittest.TestCase):
                      'objective': 'Execute genuine checks after implementation',
                      'depends_on': ['backend']}
                 ]})
-            self.assertEqual(len(history), 2)
-            self.assertEqual(len(history[-1]['outcome']['delegated']), 2)
-            return action('finish', summary='Plan corrected and specialist tasks enqueued')
+            self.fail('Maestro must not request a second finish after delegation')
         self.state.enqueue('fix-plan', 'may-maestro', 'recoverable',
                            'Delegate validated backend and QA responsibilities')
         gateway = FakeGateway(decide)
         result = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(result['status'], 'succeeded')
         self.assertEqual(result['attempts'], 1)
-        self.assertEqual(len(gateway.calls), 3)
+        self.assertEqual(len(gateway.calls), 2)
         self.assertEqual(result['checkpoint']['step'], 2)
+        self.assertEqual(result['result']['stage'], 'delegated_implementation_pending')
         self.assertEqual(result['result']['delegated'], ['fix-plan:backend', 'fix-plan:qa'])
         self.assertEqual(self.state.get('fix-plan:backend')['status'], 'queued')
         self.assertEqual(self.state.get('fix-plan:qa')['status'], 'queued')
+
+    def test_owner_single_delegate_releases_children_without_second_provider_call(self):
+        self.state.enqueue('owner-handoff', 'may-maestro', 'fixture',
+                           'Delegate mobile audit and QA after provider outage')
+        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
+            GatewayError('Both model providers unavailable', provider='all',
+                         reason='providers_unavailable', retryable=True)))
+        with patch('horizon_core.worker.request_consultation',
+                   return_value={'status': 'requested', 'ticket': 'round-zero', 'issue': 41}):
+            waiting = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(waiting['status'], 'queued')
+        reply = {'source': 'public_owner_comment', 'decision_untrusted': {
+            'action': 'delegate', 'args': {'tasks': [
+                {'id': 'audit', 'agent': 'horizon-skills',
+                 'objective': 'Audit the authorized source', 'depends_on': []},
+                {'id': 'qa', 'agent': 'qa-engineer',
+                 'objective': 'Review evidence after audit', 'depends_on': ['audit']}]},
+            'summary': 'Delegate auditable specialist work'}}
+        with patch('horizon_core.state.time.time', return_value=waiting['not_before'] + 1), \
+             patch('horizon_core.worker.read_consultation', return_value=reply), \
+             patch('horizon_core.worker.request_consultation',
+                   side_effect=AssertionError('No second issue should be created')):
+            completed = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(completed['status'], 'succeeded')
+        self.assertEqual(len(gateway.calls), 1)
+        self.assertEqual(completed['result']['stage'], 'delegated_implementation_pending')
+        self.assertEqual(completed['result']['verification'], [])
+        self.assertNotIn('pending_may', completed['checkpoint'])
+        ready = self.state.claim('child-worker', now=waiting['not_before'] + 2)
+        self.assertEqual(ready['task_id'], 'owner-handoff:audit')
+
+    def test_legacy_second_round_releases_verified_handoff_without_reply(self):
+        parent_id = 'legacy-owner-handoff'
+        self.state.enqueue(parent_id, 'may-maestro', 'fixture',
+                           'Resume verified specialist delegation')
+        self.state.claim('legacy-worker')
+        child_id = parent_id + ':audit'
+        self.state.enqueue(child_id, 'horizon-skills', 'fixture',
+                           'Audit the authorized source', depends_on=[parent_id])
+        history = [
+            {'action': 'may_provider_fallback', 'round': 0,
+             'outcome': {'status': 'requested', 'ticket': 'old'}},
+            {'action': 'delegate', 'outcome': {'delegated': [child_id]},
+             'summary': 'Accepted owner reply'},
+            {'action': 'may_provider_fallback', 'round': 1,
+             'outcome': {'status': 'requested', 'ticket': 'new'}}]
+        self.state.checkpoint(parent_id, 'legacy-worker', {
+            'step': 1, 'history': history, 'delegated': [child_id],
+            'pending_may': {'ticket': 'new', 'round': 1}})
+        self.state.defer(parent_id, 'legacy-worker', seconds=60)
+        future = self.state.get(parent_id)['not_before'] + 1
+        gateway = FakeGateway(lambda a, c: self.fail('No model call expected'))
+        with patch('horizon_core.state.time.time', return_value=future), \
+             patch('horizon_core.worker.read_consultation',
+                   side_effect=AssertionError('Unanswered issue must not be read')):
+            result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['result']['delegated'], [child_id])
+        self.assertEqual(result['result']['stage'], 'delegated_implementation_pending')
+        self.assertNotIn('pending_may', result['checkpoint'])
+        self.assertEqual(self.state.claim('child-worker', now=future + 2)['task_id'], child_id)
+        self.assertEqual(gateway.calls, [])
+
+    def test_legacy_missing_child_does_not_bypass_consultation(self):
+        parent_id = 'invalid-legacy'
+        self.state.enqueue(parent_id, 'may-maestro', 'fixture', 'Keep unverified ticket')
+        self.state.claim('legacy-worker')
+        child_id = parent_id + ':missing'
+        history = [
+            {'action': 'may_provider_fallback', 'round': 0, 'outcome': {'ticket': 'old'}},
+            {'action': 'delegate', 'outcome': {'delegated': [child_id]}},
+            {'action': 'may_provider_fallback', 'round': 1, 'outcome': {'ticket': 'new'}}]
+        self.state.checkpoint(parent_id, 'legacy-worker', {
+            'step': 1, 'history': history, 'delegated': [child_id],
+            'pending_may': {'ticket': 'new', 'round': 1}})
+        self.state.defer(parent_id, 'legacy-worker', seconds=60)
+        future = self.state.get(parent_id)['not_before'] + 1
+        with patch('horizon_core.state.time.time', return_value=future), \
+             patch('horizon_core.worker.read_consultation', return_value=None):
+            result = Worker(self.state, FakeGateway(
+                lambda a, c: self.fail('No model call expected')), self.root).run_one()
+        self.assertEqual(result['status'], 'queued')
+        self.assertIn('pending_may', result['checkpoint'])
 
     def test_maestro_recovers_bad_plan_shape_from_model(self):
         def decide(agent, context):
