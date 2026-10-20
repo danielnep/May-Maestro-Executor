@@ -70,7 +70,7 @@ def railway(state, persist):
             ' def test_private_context_not_mounted(self):\n'
             '  self.assertFalse(Path(".env").exists())\n'
             '  self.assertFalse(Path(".git").exists())\n'
-            '  for name in ("RAILWAY_API_TOKEN","GITHUB_TOKEN","GEMINI_API_KEY","DEEPSEEK_API_KEY"):\n'
+            '  for name in ("RAILWAY_API_TOKEN","GITHUB_TOKEN","GEMINI_API_KEY","GROQ_API_KEY"):\n'
             '   self.assertFalse(os.getenv(name))\n'
             '  self.assertTrue(Path("README.md").exists())\n')
         check = Tools(root, {'tools': ['run_check']}, sandbox_client=broker).execute('run_check', {'name': 'python-unittest'})
