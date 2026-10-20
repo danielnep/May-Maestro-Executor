@@ -21,6 +21,12 @@ May responde com conselho verificável ou UM único JSON:
 A decisão só é aceita pelo worker se estiver dentro das ferramentas reais
 autorizadas para aquele agente, e a verificação da ferramenta ocorrer.
 
+## Padrão de entrega pós-projeto ou correção (canal existente)
+
+O fluxo de mensagens do chat dedicado **já foi testado com sucesso**. Não criar outra conversa ou afirmar que os agentes não conseguem falar com a May. Quando o trabalho tiver código e testes concluídos, reutilizar a mesma ferramenta de envio para comunicar `AGENTE`, `TICKET`, `TIPO: delivery_review`, link público *verificado* de prévia, SHA e 3–5 achados. May abre o link, testa fluxos e motion e responde brevemente; agente corrige e repete o teste.
+
+`tasks/results/<id>.json` com `may_review` fornece os dados para o envio. **O arquivo sozinho não envia mensagem**. A automação de envio pós-entrega precisa invocar explicitamente o canal já validado e guardar a confirmação; enquanto não estiver ligada ao gatilho de conclusão, registrar `pending_chat_delivery` sem inventar recebimento. Consultas técnicas já em funcionamento não são prova de que esse novo gatilho foi automatizado. Capturas privadas não vão para canal público.
+
 ## Algoritmos, confidencialidade e limites
 - GitHub Issues são o transporte durável: cada rodada tem ticket único por
   task-id, agent-id e índice, preservando idempotência.
