@@ -29,14 +29,39 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          from horizon_core.gateway import GroqGateway
+          from horizon_core.gateway import GroqGateway, GatewayError
+          from urllib.request import urlopen
+          from urllib.error import HTTPError
           from horizon_core.registry import load_agent
           from horizon_core.state import State
           if not os.getenv("GROQ_API_KEY"):
               raise SystemExit("Missing GROQ_API_KEY")
           state = State(":memory:")
           try:
-              gateway = GroqGateway(state=state)
+              failures = []
+              def diagnostic_opener(request, timeout):
+                  try:
+                      return urlopen(request, timeout=timeout)
+                  except HTTPError as error:
+                      body = error.read(8192).decode("utf-8", "replace")
+                      try:
+                          envelope = json.loads(body)
+                          provider_error = envelope.get("error", {})
+                      except (ValueError, TypeError, AttributeError):
+                          provider_error = {}
+                      detail = {
+                          "http_status": error.code,
+                          "server": error.headers.get("server", "")[:80],
+                          "content_type": error.headers.get("content-type", "")[:80],
+                          "provider_type": str(provider_error.get("type", ""))[:70],
+                          "provider_code": str(provider_error.get("code", ""))[:70],
+                          "cloudflare_marker": "cloudflare" in body.lower(),
+                          "html_body": body.lstrip().startswith("<"),
+                          "rate_limit_headers": bool(error.headers.get("x-ratelimit-limit-tokens")),
+                      }
+                      print(json.dumps({"safe_error": detail}), flush=True)
+                      raise
+              gateway = GroqGateway(state=state, opener=diagnostic_opener)
               cases = [("ui-ux-designer", "qwen/qwen3.8-27b"),
                        ("backend-engineer", "openai/gpt-oss-120b")]
               for agent_id, expected_model in cases:
@@ -44,16 +69,23 @@ jobs:
                   prompt = ("Contrato de teste sintético. Não acesse arquivos, não execute "
                             "ferramentas e não inclua raciocínio. Retorne SOMENTE um objeto "
                             "JSON com action=finish, args={}, summary=SMOKE_OK.")
-                  action = gateway.complete(agent, [{"role": "user", "content": prompt}])
-                  metadata = action["metadata"]
-                  if metadata["provider"] != "groq" or metadata["model"] != expected_model:
-                      raise AssertionError("Wrong authorized model")
-                  if action["action"] != "finish":
-                      raise AssertionError("Model did not follow isolated finish contract")
-                  print(json.dumps({"agent":agent_id, "provider":"groq",
-                                    "model":expected_model, "contract":"passed",
-                                    "used_tokens":metadata["usage"].get("total_tokens")},
-                                   ensure_ascii=False), flush=True)
+                  try:
+                      action = gateway.complete(agent, [{"role": "user", "content": prompt}])
+                      metadata = action["metadata"]
+                      if metadata["provider"] != "groq" or metadata["model"] != expected_model:
+                          raise AssertionError("Wrong authorized model")
+                      if action["action"] != "finish":
+                          raise AssertionError("Model did not follow isolated finish contract")
+                      print(json.dumps({"agent":agent_id, "provider":"groq",
+                                        "model":expected_model, "contract":"passed",
+                                        "used_tokens":metadata["usage"].get("total_tokens")},
+                                       ensure_ascii=False), flush=True)
+                  except GatewayError as error:
+                      failures.append({"model": expected_model, "reason": error.reason,
+                                       "status": error.status})
+              if failures:
+                  print(json.dumps({"model_failures": failures}), flush=True)
+                  raise SystemExit("Actual Groq inference has not been verified")
               print("TWO_GROQ_MODELS_LIVE_OK")
           finally:
               state.close()
