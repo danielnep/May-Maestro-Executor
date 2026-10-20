@@ -205,7 +205,9 @@ class WorkerIntegrationTests(unittest.TestCase):
             finished = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(finished['status'], 'succeeded')
         self.assertEqual([row['action'] for row in finished['checkpoint']['history']],
-                         ['may_provider_fallback', 'read_file', 'remember', 'finish'])
+                         ['may_provider_fallback', 'read_file', 'remember'])
+        self.assertNotIn('may_plan', finished['checkpoint'])
+        self.assertEqual(finished['result']['summary'], actions[-1]['summary'])
         self.assertEqual(len(gateway.calls), 1)
         self.assertTrue(self.state.recall('fixture', 'qa-engineer')['read'])
 
