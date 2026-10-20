@@ -50,7 +50,7 @@ class GroqMinuteBudget:
     def _write(self, model, records):
         if self.state is None:
             self._local[model] = records
-        elif getattr(self.state, "db", None) is not None:
+        elif isinstance(getattr(self.state, "db", None), sqlite3.Connection):
             self.state.db.execute(
                 "INSERT INTO memory(project,agent,key,value) VALUES(?,?,?,?) "
                 "ON CONFLICT(project,agent,key) DO UPDATE SET value=excluded.value",
@@ -70,7 +70,7 @@ class GroqMinuteBudget:
         if not isinstance(value, str):
             return 0
         total = 0.0
-        for n, unit in re.findall(r"(\\d+(?:\\.\\d+)?)(ms|h|m|s)", value):
+        for n, unit in re.findall(r"(\d+(?:\.\d+)?)(ms|h|m|s)", value):
             total += float(n) * {"ms": 0.001, "s": 1, "m": 60, "h": 3600}[unit]
         return max(0.0, min(total, 7200.0))
 
