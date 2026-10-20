@@ -74,7 +74,8 @@
         "tests_run": 4
       }
     ],
-    "qa_missing_evidence": []
+    "qa_missing_evidence": [],
+    "qa_missing_for_publication": false
   },
   "request_id": "reservas-proof-v2",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/reservas-proof-v2.json",
