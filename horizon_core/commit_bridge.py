@@ -444,6 +444,39 @@ def wake_owner_may_reply(state, event, reader=None):
     return woke
 
 
+def wake_owner_kernel_review(state, event):
+    """Consume an exact owner's live review receipt, not a model-generated claim."""
+    if not isinstance(event, dict) or event.get("action") != "created":
+        return []
+    repo, issue, comment = [event.get(key) or {} for key in ("repository","issue","comment")]
+    if not all(isinstance(x, dict) for x in (repo,issue,comment)):
+        return []
+    user = comment.get("user") or {}
+    if (not isinstance(user, dict) or user.get("login") != OWNER
+            or repo.get("full_name") != REPOSITORY
+            or issue.get("pull_request") is not None
+            or not isinstance(issue.get("title"), str)
+            or not (issue.get("body") or "").startswith("MAY_KERNEL_REVIEW_REQUEST_V1")
+            or not isinstance(comment.get("body"), str)):
+        return []
+    m = re.fullmatch(
+        r"MAY_KERNEL_REVIEW_V1\\nTICKET: ([0-9a-f]{20})\\nSCENARIOS: ([0-9]{1,2})\\nRESULT: approved\\s*",
+        comment["body"])
+    if not m or issue["title"] != "[May live review] " + m.group(1):
+        return []
+    count = int(m.group(2))
+    if not 2 <= count <= 20:
+        return []
+    awakened = []
+    for task in state.tasks():
+        cp = task.get("checkpoint") or {}
+        kernel = cp.get("kernel_review") if isinstance(cp, dict) else None
+        if (isinstance(kernel, dict) and kernel.get("ticket") == m.group(1)
+                and state.approve_kernel_review(task["task_id"], m.group(1), count)):
+            awakened.append(task["task_id"])
+    return awakened
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Versioned ChatGPT requests -> private specialist queue')
     parser.add_argument('--root', default='.')
@@ -474,7 +507,17 @@ def main(argv=None):
             raise RuntimeError("Missing signed GitHub event path")
         event = json.loads(Path(path).read_text(encoding="utf-8"))
         woke = wake_owner_may_reply(state, event)
-        print(json.dumps({"may_reply_awakened": len(woke)}))
+        reviewed = wake_owner_kernel_review(state, event)
+        print(json.dumps({"may_reply_awakened": len(woke),
+                          "kernel_reviews_awakened": len(reviewed)}))
+    # Only the known Ronda P0 legacy visual deadlock is eligible.
+    # This is a bounded one-time requeue, not a QA pass or child release.
+    if (backend == 'github-sqlite' and os.getenv('KERNEL_API_KEY')
+            and os.getenv('HORIZON_P0_KERNEL_RECOVERY_ENABLED') == 'true'):
+        resumed = state.recover_p0_visual_audit(
+            'chat-a-ronda-pro-auditoria-total-20261019:audit-ui')
+        if resumed:
+            print(json.dumps({'p0_visual_requeued': True}))
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
@@ -513,7 +556,7 @@ def main(argv=None):
             # GitHub/ChatGPT channel used by specialist consultations. The
             # existing hourly Horizon Central automation posts it to the chat.
             # An issue is only queued, never proof that chat delivery occurred.
-            from .delivery_chat import queue_review
+            from .delivery_chat import queue_review, queue_kernel_live_review
             try:
                 review_delivery = queue_review(report, api)
             except (GitHubStateError, ValueError, OSError) as error:
@@ -521,6 +564,15 @@ def main(argv=None):
                 print(json.dumps({"review_delivery_error": type(error).__name__,
                                   "request_id": path.stem}))
             print(json.dumps({"request_id": path.stem, "review_delivery": review_delivery}))
+            try:
+                kernel_delivery = queue_kernel_live_review(report, api)
+            except (GitHubStateError, ValueError, OSError) as error:
+                kernel_delivery = 'kernel_review_queue_unavailable'
+                print(json.dumps({'kernel_review_queue_error': type(error).__name__,
+                                  'request_id': path.stem}))
+            if kernel_delivery != 'not_ready':
+                print(json.dumps({'request_id': path.stem,
+                                  'kernel_review_delivery': kernel_delivery}))
             # Queue events, not model-authored narratives, feed the ONE shared
             # ChatGPT agent conversation through its existing hourly watchdog.
             from .attendance import (attendance_snapshot, publish_attendance,
