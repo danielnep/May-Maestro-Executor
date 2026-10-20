@@ -14,7 +14,7 @@
       "visual_hierarchy_icons_and_states"
     ],
     "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/a-ronda-pro-mobile-field-20261019.json",
-    "status": "quality_blocked"
+    "status": "in_progress"
   },
   "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
   "publication": {
@@ -25,37 +25,31 @@
     "approved": false,
     "failed_checks": [],
     "qa_missing_evidence": [
-      "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa"
+      "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa",
+      "chat-a-ronda-pro-mobile-field-20261019:etapa-3-qa-regressao"
     ],
     "qa_missing_for_publication": false
   },
   "request_id": "a-ronda-pro-mobile-field-20261019",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/a-ronda-pro-mobile-field-20261019.json",
-  "status": "needs_attention",
+  "status": "pending",
   "tasks": [
     {
       "agent": "may-maestro",
       "attempts": 3,
-      "blocker": {
-        "code": "task_failed"
-      },
+      "blocker": null,
       "model_used": null,
-      "status": "failed",
-      "summary": "",
+      "status": "succeeded",
+      "summary": "Specialist tasks delegated; implementation, tests and publication remain pending.",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019",
       "verification": []
     },
     {
       "agent": "horizon-ui-guardian",
       "attempts": 0,
-      "blocker": {
-        "code": "task_blocked",
-        "failed_dependencies": [
-          "chat-a-ronda-pro-mobile-field-20261019"
-        ]
-      },
+      "blocker": null,
       "model_used": null,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-ui-audit",
       "verification": []
@@ -63,15 +57,9 @@
     {
       "agent": "frontend-engineer",
       "attempts": 0,
-      "blocker": {
-        "code": "task_blocked",
-        "failed_dependencies": [
-          "chat-a-ronda-pro-mobile-field-20261019",
-          "chat-a-ronda-pro-mobile-field-20261019:mobile-ui-audit"
-        ]
-      },
+      "blocker": null,
       "model_used": null,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-ui-fix",
       "verification": []
@@ -79,15 +67,9 @@
     {
       "agent": "qa-engineer",
       "attempts": 0,
-      "blocker": {
-        "code": "task_blocked",
-        "failed_dependencies": [
-          "chat-a-ronda-pro-mobile-field-20261019",
-          "chat-a-ronda-pro-mobile-field-20261019:mobile-ui-fix"
-        ]
-      },
+      "blocker": null,
       "model_used": null,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa",
       "verification": []
@@ -95,15 +77,9 @@
     {
       "agent": "mobile-app-builder",
       "attempts": 0,
-      "blocker": {
-        "code": "task_blocked",
-        "failed_dependencies": [
-          "chat-a-ronda-pro-mobile-field-20261019",
-          "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa"
-        ]
-      },
+      "blocker": null,
       "model_used": null,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-apk-check",
       "verification": []
@@ -111,17 +87,61 @@
     {
       "agent": "corregedoria-may",
       "attempts": 0,
-      "blocker": {
-        "code": "task_blocked",
-        "failed_dependencies": [
-          "chat-a-ronda-pro-mobile-field-20261019",
-          "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa"
-        ]
-      },
+      "blocker": null,
       "model_used": null,
-      "status": "blocked",
+      "status": "queued",
       "summary": "",
       "task_id": "chat-a-ronda-pro-mobile-field-20261019:mobile-final-guard",
+      "verification": []
+    },
+    {
+      "agent": "ui-ux-designer",
+      "attempts": 0,
+      "blocker": null,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:etapa-1-auditoria-ui",
+      "verification": []
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "blocker": null,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:etapa-2-correcao-frontend",
+      "verification": []
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "blocker": null,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:etapa-3-qa-regressao",
+      "verification": []
+    },
+    {
+      "agent": "mobile-app-builder",
+      "attempts": 0,
+      "blocker": null,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:etapa-4-apk-check",
+      "verification": []
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 0,
+      "blocker": null,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-mobile-field-20261019:etapa-5-corregedoria-revisao",
       "verification": []
     }
   ]
