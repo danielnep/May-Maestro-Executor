@@ -626,6 +626,85 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state.claim('child-worker', now=future + 2)['task_id'], child_id)
         self.assertEqual(gateway.calls, [])
 
+    def test_round_one_recovers_nonadjacent_owner_delegate_without_issue_50(self):
+        parent = 'may-recovery-v2'
+        payload = {'branch': 'agent/test-real-ronda', 'allowed_paths': []}
+        self.state.enqueue(parent, 'may-maestro', 'fixture', 'Restore durable P0 plan',
+                           payload=payload)
+        self.state.claim('original-worker')
+        children = [parent + ':audit', parent + ':qa']
+        self.state.enqueue(children[0], 'horizon-ui-guardian', 'fixture',
+                           'Inspect actual UI', depends_on=[parent], payload=payload)
+        self.state.enqueue(children[1], 'qa-engineer', 'fixture',
+                           'Validate actual implementation',
+                           depends_on=[parent, children[0]], payload=payload)
+        self.state.checkpoint(parent, 'original-worker', {
+            'step': 3,
+            'history': [
+                {'action': 'may_provider_fallback', 'round': 0,
+                 'outcome': {'status': 'requested', 'ticket': 'issue-41'}},
+                {'action': 'delegate', 'summary': 'Delegated after owner reply',
+                 'outcome': {'delegated': children}},
+                {'action': 'remember', 'outcome': {'remembered': 'verified-original-plan'}},
+                {'action': 'may_provider_fallback', 'round': 1,
+                 'outcome': {'status': 'requested', 'ticket': 'issue-50'}}],
+            'delegated': children,
+            'may_plan': [{'action': 'finish', 'args': {},
+                          'summary': 'Delegation complete'}],
+            'pending_may': {'ticket': 'issue-50', 'round': 1}})
+        # The legacy workspace has an unrelated branch. Delegation recovery
+        # must not replay it or attempt edits before releasing the DAG.
+        self.state.remember('fixture', '__workspace__', 'README.md',
+                            {'branch': 'other-branch', 'content': 'untouched'})
+        self.state.defer(parent, 'original-worker', seconds=60)
+        resumed_at = self.state.get(parent)['not_before'] + 1
+        gateway = FakeGateway(lambda *a: self.fail('Recovery must not call models'))
+        with patch('horizon_core.state.time.time', return_value=resumed_at), \
+             patch('horizon_core.worker.read_consultation',
+                   side_effect=AssertionError('Do not poll superseded issue')):
+            result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result['status'], 'succeeded')
+        self.assertEqual(result['result']['stage'], 'delegated_implementation_pending')
+        self.assertEqual(result['result']['verification'], [])
+        self.assertEqual(result['result']['delegated'], children)
+        self.assertEqual(result['checkpoint']['step'], 3)
+        self.assertNotIn('pending_may', result['checkpoint'])
+        self.assertNotIn('may_plan', result['checkpoint'])
+        self.assertEqual(gateway.calls, [])
+        self.assertEqual(self.state.claim('next-agent', now=resumed_at + 1)['task_id'],
+                         children[0])
+
+    def test_recorded_plan_with_future_nonfinish_action_keeps_consultation(self):
+        parent = 'may-unfinished-actions'
+        self.state.enqueue(parent, 'may-maestro', 'fixture',
+                           'Do not bypass unfinished owner instructions')
+        self.state.claim('original-worker')
+        child = parent + ':audit'
+        self.state.enqueue(child, 'horizon-skills', 'fixture', 'Review documentation',
+                           depends_on=[parent])
+        self.state.checkpoint(parent, 'original-worker', {
+            'step': 1,
+            'history': [{'action': 'delegate',
+                         'outcome': {'delegated': [child]}},
+                        {'action': 'may_provider_fallback', 'round': 1,
+                         'outcome': {'ticket': 'unanswered'}}],
+            'delegated': [child],
+            'may_plan': [{'action': 'read_file',
+                          'args': {'path': 'README.md'}, 'summary': 'Read original'}],
+            'pending_may': {'ticket': 'unanswered', 'round': 1,
+                            'provider_retry_after': 9999999999}})
+        self.state.defer(parent, 'original-worker', seconds=60)
+        resumed_at = self.state.get(parent)['not_before'] + 1
+        with patch('horizon_core.state.time.time', return_value=resumed_at), \
+             patch('horizon_core.worker.read_consultation', return_value=None):
+            result = Worker(self.state, FakeGateway(
+                lambda *a: self.fail('No model call expected')), self.root).run_one()
+        # A runnable stored action needs its own normal execution path; an
+        # external pending consultation is not a proof of completion.
+        self.assertEqual(result['status'], 'queued')
+        self.assertEqual(self.state.get(child)['status'], 'queued')
+        self.assertIn('pending_may', result['checkpoint'])
+
     def test_legacy_missing_child_does_not_bypass_consultation(self):
         parent_id = 'invalid-legacy'
         self.state.enqueue(parent_id, 'may-maestro', 'fixture', 'Keep unverified ticket')

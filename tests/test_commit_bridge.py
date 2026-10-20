@@ -299,6 +299,40 @@ class CommitBridgeTests(unittest.TestCase):
             worker_factory=NoWork, gateway_factory=lambda **kwargs: None, publisher=publisher)
         self.assertEqual(len(calls), 1)
 
+    def test_public_results_expose_only_sanitized_may_and_qa_blockers(self):
+        # The owner can see precisely why an Issue #50 is waiting without
+        # leaking model prompts, tokens, tool output or private exception text.
+        tasks = [
+            {'task_id': 'chat-p0', 'agent': 'may-maestro',
+             'status': 'queued', 'attempts': 2, 'result': None,
+             'checkpoint': {'pending_may': {'ticket': 'a' * 20, 'round': 1}}},
+            {'task_id': 'chat-p0:audit-ui', 'agent': 'horizon-ui-guardian',
+             'status': 'failed', 'attempts': 1, 'result': None,
+             'error': {'kind': 'RepeatedUncorrectedFailure',
+                       'reason': 'retry_limit_exceeded',
+                       'signatures': ['check:browser-playwright'],
+                       'secret': 'sk-private-do-not-publish',
+                       'message': 'Bearer do-not-publish'}},
+            {'task_id': 'chat-p0:frontend', 'agent': 'frontend-engineer',
+             'status': 'blocked', 'attempts': 0, 'result': None,
+             'error': {'failed_dependencies': ['chat-p0:audit-ui']}},
+        ]
+        summary = summarize('proof-request', tasks)
+        by_agent = {r['agent']: r for r in summary['tasks']}
+        self.assertEqual(by_agent['may-maestro']['blocker'],
+                         {'code': 'awaiting_may_consultation',
+                          'round': 1, 'ticket': 'a' * 20})
+        self.assertEqual(by_agent['horizon-ui-guardian']['blocker'],
+                         {'code': 'task_failed', 'kind': 'RepeatedUncorrectedFailure',
+                          'reason': 'retry_limit_exceeded',
+                          'signatures': ['check:browser-playwright']})
+        self.assertEqual(by_agent['frontend-engineer']['blocker'],
+                         {'code': 'task_blocked',
+                          'failed_dependencies': ['chat-p0:audit-ui']})
+        self.assertNotIn('sk-private', json.dumps(summary))
+        self.assertNotIn('Bearer', json.dumps(summary))
+        self.assertFalse(summary['quality']['approved'])
+
     def test_existing_product_requires_explicit_scope_and_accepts_portfolio_paths(self):
         document = {**request(), 'delivery_type': 'existing_product', 'repository': 'danielnep/ronda-pro'}
         document.pop('payload')
