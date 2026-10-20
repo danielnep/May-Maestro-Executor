@@ -1,0 +1,80 @@
+name: Horizon - checkpoint encrypted handoff
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/horizon-checkpoint-handoff.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sealed-snapshot:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cryptography==46.0.3
+      - name: Encrypt snapshot under recipient public key, without revealing old key
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import base64,json,os
+          from pathlib import Path
+          from cryptography.hazmat.primitives import hashes,serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          from horizon_core.github_sqlite_state import GitHubSQLiteState
+          key=serialization.load_pem_public_key("""-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAtH7poZZCfc33hjKsovCD
+0RfuHn+dh2QAxcW6KactZ6OoqvKag92Dmf6hXpWdmT2oY2wvA5AJL6FTucB+KHI1
+qfOJh3lcSdL1F81oEdnJzPzm9mJAKlnLM2t9m5FXMJ0bHl0Oa5wI00Y5W/yy9vHb
+TpTJadREJKTWpTJ1ecjS872+RjRcGbbNhQXO8SeOEG/qf2PnSP6dd0d7x57Mv45j
+V3rDAqyhuqIUYUCc5Ub0slx7Kuj8HBIz1UXwUsHGoIU3KPgVltVkvxcKPfuN3MPf
+PQT5i+jNk5p885HBHBLc0dHoAzBqkFh3HEFvnRCM4DEtgZUnpZH1pYsfZsC23JRK
+Sox6KCz/rYO/4xbJOAuF319SQNA9e4v+2vX5gfigefPRRiWzdsb0ma2B/uCNNEi2
+PROPy51nFf5A9GkfFs/w7wp46l/09bktGXZZuBsQW+P7hI0BT0ZAJ41Cd5NZMcVM
+7ue5gHdOrKglFcokdLEX5GrLnlmv3BSeE2yDNHmOQK91AgMBAAE=
+-----END PUBLIC KEY-----""".encode())
+          state=GitHubSQLiteState()
+          try:
+              if state.db.execute('PRAGMA quick_check').fetchone()[0]!='ok':
+                  raise RuntimeError('Unhealthy checkpoint')
+              count=state.db.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
+              contents=Path(state.path).read_bytes()
+          finally:
+              state.close()
+          if not contents.startswith(b'SQLite format 3\x00') or len(contents)>20_000_000:
+              raise RuntimeError('Invalid snapshot payload')
+          nonce=os.urandom(12)
+          secret=os.urandom(32)
+          aad=b'horizon-checkpoint-handoff-v1'
+          envelope={
+              'schema':'horizon.checkpoint.envelope.v1',
+              'aad':base64.b64encode(aad).decode(),
+              'nonce':base64.b64encode(nonce).decode(),
+              'wrapped_key':base64.b64encode(key.encrypt(secret,padding.OAEP(
+                  mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))).decode(),
+              'ciphertext':base64.b64encode(AESGCM(secret).encrypt(nonce,contents,aad)).decode(),
+              'records':count
+          }
+          target=Path('sealed-handoff')
+          target.mkdir(exist_ok=True)
+          (target/'state.envelope.json').write_text(json.dumps(envelope))
+          print('CHECKPOINT_SEALED=true')
+          print('CHECKPOINT_RECORDS='+str(count))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horizon-checkpoint-sealed-handoff
+          path: sealed-handoff/state.envelope.json
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
