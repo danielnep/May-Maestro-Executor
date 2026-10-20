@@ -82,6 +82,26 @@ class GroqMinuteBudgetTests(unittest.TestCase):
         self.assertIsNone(wait)
         self.assertEqual(output, 0)
 
+    def test_official_headers_override_stricter_project_token_cap(self):
+        model = "openai/gpt-oss-120b"
+        self.budget.ingest_headers(model, {
+            "x-ratelimit-limit-tokens": "3000",
+            "x-ratelimit-remaining-tokens": "100",
+            "x-ratelimit-reset-tokens": "25s",
+            "x-ratelimit-remaining-requests": "1"})
+        receipt, wait, _ = self.budget.reserve(model, self.messages, 600)
+        self.assertIsNone(receipt)
+        self.assertGreaterEqual(wait, 25)
+        self.now += 26
+        receipt, wait, _ = self.budget.reserve(model, self.messages, 600)
+        self.assertTrue(receipt)
+        self.assertEqual(wait, 0)
+
+    def test_header_reset_duration_parsing(self):
+        self.assertEqual(GroqMinuteBudget._seconds("2m7.5s"), 127.5)
+        self.assertEqual(GroqMinuteBudget._seconds("7.66s"), 7.66)
+        self.assertEqual(GroqMinuteBudget._seconds("not-a-duration"), 0)
+
     def test_window_expiration_allows_new_calls(self):
         self.assertTrue(self.budget.reserve("qwen/qwen3.8-27b", self.messages)[0])
         self.now += 66
