@@ -147,7 +147,8 @@ jobs:
     if: >-
       (github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && contains(github.event.head_commit.message, '[providers]'))) &&
-      github.actor == 'danielnep' && github.repository == 'danielnep/May-Maestro-Executor'
+      github.actor == 'danielnep' && github.ref == 'refs/heads/main' &&
+      github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
@@ -172,7 +173,7 @@ jobs:
     needs: verification
     if: >-
       github.event_name == 'workflow_dispatch' && github.actor == 'danielnep' &&
-      github.repository == 'danielnep/May-Maestro-Executor'
+      github.ref == 'refs/heads/main' && github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -206,7 +207,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main')) &&
       vars.HORIZON_LEGACY_WORKER_ENABLED == 'true' &&
-      github.repository == 'danielnep/May-Maestro-Executor'
+      github.ref == 'refs/heads/main' && github.repository == 'danielnep/May-Maestro-Executor'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
