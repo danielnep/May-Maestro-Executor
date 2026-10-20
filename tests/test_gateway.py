@@ -142,19 +142,24 @@ class GroqRoutingTests(unittest.TestCase):
 
     def test_role_specific_models_cover_all_17_specialists(self):
         gateway = ModelGateway(environ=self.env, opener=self.opener)
-        for agent_id in AGENT_IDS:
-            result = gateway.complete(load_agent(agent_id), self.messages)
-            expected = ("qwen/qwen3.8-27b" if agent_id in
-                ("frontend-engineer", "mobile-app-builder", "ui-ux-designer", "horizon-ui-guardian")
-                else "openai/gpt-oss-120b")
-            self.assertEqual(result["metadata"]["model"], expected)
-            self.assertEqual(result["metadata"]["provider"], "groq")
-            body = json.loads(self.requests[-1].data)
-            self.assertEqual(body["model"], expected)
-            self.assertEqual(body["response_format"], {"type": "json_object"})
-            self.assertEqual(self.requests[-1].get_header("Authorization"), "Bearer synthetic-groq")
-            self.assertNotIn("synthetic-groq", self.requests[-1].full_url)
-            self.assertNotIn("private", json.dumps(result))
+        # Identity fixture verifies routing; minute accounting is exercised in
+        # dedicated tests, without sleeping through 17 simulated requests.
+        with patch("horizon_core.groq_minute_budget.GroqMinuteBudget.reserve",
+                   return_value=("synthetic", 0, 1536)), patch(
+                   "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
+            for agent_id in AGENT_IDS:
+                result = gateway.complete(load_agent(agent_id), self.messages)
+                expected = ("qwen/qwen3.8-27b" if agent_id in
+                    ("frontend-engineer", "mobile-app-builder", "ui-ux-designer", "horizon-ui-guardian")
+                    else "openai/gpt-oss-120b")
+                self.assertEqual(result["metadata"]["model"], expected)
+                self.assertEqual(result["metadata"]["provider"], "groq")
+                body = json.loads(self.requests[-1].data)
+                self.assertEqual(body["model"], expected)
+                self.assertEqual(body["response_format"], {"type": "json_object"})
+                self.assertEqual(self.requests[-1].get_header("Authorization"), "Bearer synthetic-groq")
+                self.assertNotIn("synthetic-groq", self.requests[-1].full_url)
+                self.assertNotIn("private", json.dumps(result))
         self.assertEqual(gateway.calls, 17)
 
     def test_existing_railway_key_alias_is_accepted_if_in_same_process(self):
@@ -172,7 +177,7 @@ class GroqRoutingTests(unittest.TestCase):
             return self.groq_response()
         result = ModelGateway(environ=self.env, opener=opener).complete(load_agent("mobile-app-builder"), self.messages)
         self.assertEqual(result["metadata"]["model"], "openai/gpt-oss-120b")
-        self.assertEqual(result["metadata"]["fallback_from"], "groq_ui")
+        self.assertEqual(result["metadata"]["fallback_from"], "groq_model")
         self.assertEqual(len(self.requests), 2)
         self.assertNotIn("secret body", json.dumps(result))
 
