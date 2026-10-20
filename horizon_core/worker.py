@@ -596,7 +596,10 @@ class Worker:
                          'delegated': delegated, 'failure_counts': failure_counts,
                          'pending_may': dict(recovery_pending,
                             provider_retry_after=time.time() + 900)})
-                    self.state.defer(task_id, self.worker_id, seconds=900)
+                    # A May response can be executable before a model recovers.
+                    # Check its ticket promptly without hammering Gemini/DeepSeek.
+                    self.state.defer(task_id, self.worker_id,
+                        seconds=75 if recovery_pending.get('transport') == 'kernel' else 300)
                     self.persist()
                     return self.state.get(task_id)
                 consultation_round = sum(
