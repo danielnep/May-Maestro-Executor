@@ -34,6 +34,10 @@
     {
       "agent": "may-maestro",
       "attempts": 6,
+      "blocker": {
+        "code": "task_failed",
+        "reason": "retry_limit_exceeded"
+      },
       "model_used": null,
       "status": "failed",
       "summary": "",
