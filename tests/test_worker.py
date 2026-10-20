@@ -229,13 +229,16 @@ class WorkerIntegrationTests(unittest.TestCase):
         with patch('horizon_core.tools.shutil.which', return_value='/usr/bin/docker'), patch(
             'horizon_core.tools.Tools._docker_check', return_value={
                 'check': 'python-unittest', 'exit_code': 1, 'passed': False, 'output': 'FAIL: fixture assertion'}):
-            for expected in ['job', 'job:frontend', 'job:qa', 'job:review']:
+            for expected in ['job', 'job:frontend']:
                 result = worker.run_one()
                 self.assertEqual(result['task_id'], expected)
                 self.assertEqual(result['status'], 'succeeded')
+            qa = worker.run_one()
+            self.assertEqual(qa['task_id'], 'job:qa')
+            self.assertEqual(qa['status'], 'queued')
         self.assertEqual((self.root / 'app/ui.py').read_text(), 'TITLE = "Ronda Pro"\n')
-        self.assertFalse(self.state.get('job:qa')['result']['verification'][0]['passed'])
-        self.assertEqual(self.state.get('job:qa')['result']['status'], 'reported')
+        self.assertFalse(self.state.get('job:qa')['checkpoint']['checks'][0]['passed'])
+        self.assertEqual(self.state.get('job:review')['status'], 'queued')
         self.assertIsNone(worker.run_one())
 
     def test_retryable_gateway_failure_resumes_history_without_repeating_tool(self):
@@ -255,17 +258,17 @@ class WorkerIntegrationTests(unittest.TestCase):
             result = worker.run_one()
             self.assertEqual(result['status'], 'queued')
             self.assertEqual(result['checkpoint']['step'], 1)
-            self.assertEqual(result['not_before'], 1005)
+            self.assertEqual(result['not_before'], 1060)
             self.assertIsNone(worker.run_one())
         # New worker + fresh connection simulates process loss between invocations.
         reopened = State(self.path)
         try:
-            with patch('horizon_core.state.time.time', return_value=1006):
+            with patch('horizon_core.state.time.time', return_value=1061):
                 result = Worker(reopened, gateway, self.root).run_one()
             self.assertEqual(result['status'], 'succeeded')
-            self.assertEqual(result['attempts'], 2)
-            self.assertEqual(attempts, [0, 1, 1])
-            self.assertEqual(sum(event['kind'] == 'checkpoint' for event in reopened.events('retry')), 1)
+            self.assertEqual(result['attempts'], 1)
+            self.assertEqual(attempts, [0, 1, 2])
+            self.assertGreaterEqual(sum(event['kind'] == 'checkpoint' for event in reopened.events('retry')), 2)
         finally:
             reopened.close()
 
@@ -288,8 +291,12 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(task['checkpoint']['step'], 1)
         self.assertEqual(task['checkpoint']['history'][0]['outcome'], {'remembered': 'saved'})
         self.assertEqual(self.state.recall('fixture', 'frontend-engineer'), {'saved': True})
-        self.assertEqual(task['error'], {'kind': 'GatewayError', 'provider': 'all',
-            'reason': 'providers_unavailable', 'status': None, 'retryable': True, 'failures': safe_failures})
+        self.assertIsNone(task['error'])
+        self.assertEqual(task['attempts'], 0)
+        self.assertEqual(task['checkpoint']['history'][-1]['action'], 'provider_retry')
+        self.assertEqual(task['checkpoint']['history'][-1]['outcome'], {
+            'kind': 'GatewayError', 'provider': 'all', 'reason': 'providers_unavailable',
+            'status': None, 'retryable': True, 'failures': safe_failures})
         persisted = json.dumps(self.state.events('providers'))
         self.assertNotIn('do-not-store', persisted)
         self.assertNotIn('upstream_body', persisted)
@@ -300,10 +307,9 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('check', 'qa-engineer', 'fixture', 'Record unavailable verification tool')
         with patch('horizon_core.tools.shutil.which', return_value=None):
             result = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(result['status'], 'succeeded')
-        self.assertEqual(result['result']['status'], 'reported')
-        self.assertEqual(result['result']['verification'][0]['tool_error'], 'RuntimeError')
-        self.assertNotIn('passed', result['result']['verification'][0])
+        self.assertEqual(result['status'], 'queued')
+        self.assertEqual(result['checkpoint']['checks'][0]['tool_error'], 'RuntimeError')
+        self.assertEqual(result['checkpoint']['history'][-1]['action'], 'repair_cycle')
 
     def test_lost_worktree_recovers_checkpoint_and_publishes_succeeded_workspace(self):
         subprocess.run(['git', '-C', str(self.root), 'add', 'README.md'], check=True, capture_output=True)
@@ -339,7 +345,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         lose_disk_and_clone()
         reopened = State(self.path)
         try:
-            with patch('horizon_core.state.time.time', return_value=1006):
+            with patch('horizon_core.state.time.time', return_value=1061):
                 finished = Worker(reopened, gateway, self.root).run_one()
             self.assertEqual(finished['status'], 'succeeded')
             self.assertEqual(calls, [0, 1, 2, 2])
@@ -491,8 +497,9 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('budget', 'frontend-engineer', 'fixture', 'Exercise bounded fixture reasoning')
         gateway = FakeGateway(lambda agent, context: action('read_file', {'path': 'README.md'}))
         result = Worker(self.state, gateway, self.root, max_steps=2).run_one()
-        self.assertEqual(result['status'], 'failed')
-        self.assertEqual(result['error']['reason'], 'step_limit_exceeded')
+        self.assertEqual(result['status'], 'queued')
+        self.assertEqual(result['checkpoint']['history'][-1]['action'], 'repair_cycle')
+        self.assertIsNone(result['error'])
 
 
 if __name__ == '__main__':
