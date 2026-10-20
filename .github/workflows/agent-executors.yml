@@ -99,7 +99,7 @@ jobs:
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'false' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_UI_MODEL: qwen/qwen3.8-27b
-          GROQ_CODE_MODEL: llama-3.3-70b-versatile
+          GROQ_CODE_MODEL: openai/gpt-oss-120b
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
         run: |
@@ -164,7 +164,7 @@ jobs:
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'false' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_UI_MODEL: qwen/qwen3.8-27b
-          GROQ_CODE_MODEL: llama-3.3-70b-versatile
+          GROQ_CODE_MODEL: openai/gpt-oss-120b
           RUN_ID: ${{ github.run_id }}
         run: python3 -m horizon_core.prove providers --repo danielnep/May-Maestro-Executor --run-id "$RUN_ID"
 
@@ -233,7 +233,7 @@ jobs:
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'false' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_UI_MODEL: qwen/qwen3.8-27b
-          GROQ_CODE_MODEL: llama-3.3-70b-versatile
+          GROQ_CODE_MODEL: openai/gpt-oss-120b
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           HORIZON_STATE_BACKEND: ${{ vars.HORIZON_STATE_BACKEND || 'sqlite' }}
@@ -279,7 +279,7 @@ jobs:
           GEMINI_FREE_TIER_CONFIRMED: ${{ vars.GEMINI_FREE_TIER_CONFIRMED || 'false' }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GROQ_UI_MODEL: qwen/qwen3.8-27b
-          GROQ_CODE_MODEL: llama-3.3-70b-versatile
+          GROQ_CODE_MODEL: openai/gpt-oss-120b
         run: python benchmarks/run_live.py --session-seconds 2400
       - name: Evidências sintéticas sem credenciais
         if: always()
