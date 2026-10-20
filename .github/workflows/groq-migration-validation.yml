@@ -1,0 +1,55 @@
+name: Horizon - Groq Migration Validation
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/groq-migration-validation.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'horizon_core/**'
+      - 'agents/**'
+      - 'tests/**'
+      - '.github/workflows/**'
+      - 'requirements-postgres.txt'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: groq-migration-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  dry-run:
+    name: Testar contrato Groq sem usar APIs ou chaves
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Sintaxe e importações
+        run: python -m compileall -q horizon_core tests
+      - name: Testes offline da migração
+        run: |
+          python -m unittest discover -s tests -p test_groq_minute_budget.py -v
+          python -m unittest discover -s tests -p test_gateway.py -v
+          python -m unittest discover -s tests -p test_app.py -v
+          python -m unittest discover -s tests -p test_worker.py -v
+          python -m unittest discover -s tests -p test_provider_access_probe.py -v
+          python -m unittest discover -s tests -p test_gemini_model_pin.py -v
+      - name: Gate contra API paga ou comunicação externa nos testes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          core = (Path('horizon_core')/'gateway.py').read_text()
+          worker = (Path('horizon_core')/'worker.py').read_text()
+          registry = (Path('horizon_core')/'registry.py').read_text()
+          assert 'api.deepseek.com' not in core
+          assert 'request_consultation(' not in worker
+          assert 'direct_chat.execute(' not in worker
+          assert 'config["tools"] = [tool for tool in config["tools"] if tool != "consult_may"]' in registry
+          print('Gate de isolamento e fallback verificado.')
+          PY
