@@ -1,0 +1,59 @@
+name: Horizon P0 diagnostic (read-only temporary)
+on:
+  push:
+    branches: [fix/horizon-p0-recovery-20261020]
+    paths: ['.github/workflows/horizon-p0-safe-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  inspect-sanitized-p0:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install cryptography==46.0.3
+      - name: Read only status and allowlisted error codes from active SQLite
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json,re
+          from horizon_core.github_sqlite_state import GitHubSQLiteState
+          def code(x):
+              return x if isinstance(x,str) and re.fullmatch('[a-zA-Z0-9_:.-]{1,80}',x) else None
+          state=GitHubSQLiteState()
+          try:
+              for group in ('a-ronda-pro-auditoria-total-20261019','a-ronda-pro-mobile-field-20261019'):
+                  data=state.tasks(project='chat:'+group)
+                  for row in data:
+                      reason=row.get('error') or {}
+                      if not isinstance(reason,dict): reason={}
+                      cp=row.get('checkpoint') or {}
+                      if not isinstance(cp,dict): cp={}
+                      counts=cp.get('failure_counts') or {}
+                      if not isinstance(counts,dict): counts={}
+                      report={'task':row['task_id'],'agent':row['agent'],
+                        'status':row['status'],'attempts':row['attempts'],
+                        'max_attempts':row['max_attempts'],
+                        'error_kind':code(reason.get('kind')),
+                        'error_reason':code(reason.get('reason')),
+                        'error_action':code(reason.get('action')),
+                        'error_signatures':[code(v) for v in reason.get('signatures',[]) if code(v)][:8]
+                          if isinstance(reason.get('signatures'),list) else [],
+                        'pending_may':bool(cp.get('pending_may')),
+                        'deferred_may_request':bool(cp.get('deferred_may_request')),
+                        'checkpoint_step':cp.get('step') if type(cp.get('step')) is int else None,
+                        'failure_counts':{k:v for k,v in counts.items()
+                          if code(k) and type(v) is int and 0<=v<=100} }
+                      print('P0_DIAG='+json.dumps(report,sort_keys=True))
+          finally:
+              state.close()
+          PY
