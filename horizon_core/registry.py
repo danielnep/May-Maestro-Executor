@@ -106,6 +106,11 @@ def load_agent(agent_id, root=None):
                   "Preserve the approved project and its operational UI.")
     config["_groq_instructions"] = "\n\n".join(piece for piece in pieces if piece)
 
+    from .academic_knowledge import study_context
+    academic = study_context(agent_id)
+    config['instructions'] += '\n\n' + academic
+    config['_groq_instructions'] += '\n\n' + academic
+
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     # No external ChatGPT/May tool is authorized in the specialist runtime.
     config["tools"] = [tool for tool in config["tools"] if tool != "consult_may"]

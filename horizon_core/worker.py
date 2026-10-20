@@ -383,22 +383,34 @@ class Worker:
                     # Read the latest actual result of each check after the last
                     # source edit. A model's finish request cannot override it.
                     latest_checks = {}
-                    for item in history:
+                    last_change = -1
+                    for index, item in enumerate(history):
+                        outcome = item.get('outcome') or {}
+                        if not isinstance(outcome, dict):
+                            continue
+                        if (item.get('action') == 'write_file'
+                                and not outcome.get('tool_error')
+                                and outcome.get('sha256')
+                                and outcome.get('sha256') != outcome.get('before_sha256')):
+                            last_change = index
                         if item.get('action') == 'run_check':
-                            outcome = item.get('outcome') or {}
-                            if isinstance(outcome, dict):
-                                latest_checks[outcome.get('check') or 'unknown'] = outcome
-                    unresolved = sorted(key for key, check in latest_checks.items()
-                                        if check.get('passed') is not True
-                                        or check.get('tool_error'))
+                            key = (outcome.get('check') or 'unknown',
+                                   outcome.get('project_dir') or '.')
+                            latest_checks[key] = (index, outcome)
+                    unresolved = sorted(
+                        name + (':' + directory if directory != '.' else '')
+                        for (name, directory), (index, check) in latest_checks.items()
+                        if index < last_change or check.get('passed') is not True
+                        or check.get('tool_error'))
                     if unresolved:
                         step += 1
                         failure_counts['unverified_checks'] = failure_counts.get('unverified_checks', 0) + 1
                         history.append({'action': 'verification_required',
                             'outcome': {'checks': unresolved[:5],
                             'instruction': 'Do not finish. Investigate the failing test, '
-                                           'change the underlying source or environment, '
-                                           'then rerun the same test until it passes.'}})
+                                           'change the underlying source or environment if needed, '
+                                           'then rerun each listed test on the current source. '
+                                           'A pass from before an edit is stale.'}})
                         self.state.checkpoint(task_id, self.worker_id, {
                             'step': step, 'history': history, 'checks': checks,
                             'delegated': delegated, 'failure_counts': failure_counts})
@@ -534,6 +546,12 @@ class Worker:
                         record_failure(self.state, task['project'], task['agent'], task_id,
                                        'tool_error', action=name)
                     if name == 'run_check':
+                        # Preserve check identity even when adapter execution throws.
+                        # Otherwise an 'unknown' failure can never be superseded.
+                        outcome.setdefault('check', args.get('name', 'unknown'))
+                        outcome.setdefault('project_dir', args.get('project_dir', '.'))
+                        if not outcome.get('tool_error'):
+                            failure_counts.pop('tool:run_check', None)
                         checks.append(outcome)
                         check_name = args.get('name', '')
                         if isinstance(outcome, dict) and outcome.get('passed') is False:

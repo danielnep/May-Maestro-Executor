@@ -1,0 +1,2 @@
+# Bounded reference text extraction; version exercised in the regression suite.
+pypdf==6.10.0

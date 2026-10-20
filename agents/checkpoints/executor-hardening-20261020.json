@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "objective": "Harden executor evidence, recovery and specialist reference access",
+  "base_commit": "c9502d3",
+  "branch": "fix/executor-evidence-and-specialist-corpus-20261020",
+  "stage": "local_verified",
+  "checks": {
+    "command": "python -m unittest discover -s tests -q",
+    "tests_run": 360,
+    "skipped": 17,
+    "failures": 0,
+    "errors": 0,
+    "diff_check": "passed",
+    "agent_inventory": 17
+  },
+  "reproduced_before_fix": [
+    "serialized_history_313819_over_14000",
+    "stale_pre_edit_test_accepted",
+    "adapter_exception_cannot_be_superseded"
+  ],
+  "changes": [
+    "bounded_serialized_context",
+    "fresh_check_per_project_directory",
+    "check_identity_on_adapter_exception",
+    "atomic_source_replace",
+    "12_integrity_checked_source_cards_for_17_agents",
+    "bounded_local_document_extraction"
+  ],
+  "not_verified": [
+    "live_provider_delivery_by_all_17_agents",
+    "PostgreSQL_and_Docker_integrations_skipped_locally",
+    "production_deployment"
+  ],
+  "next_action": "Publish branch and verify GitHub CI before integration",
+  "architecture": {
+    "host": "danielnep/horizon-site:maestro/railway-team.py",
+    "execution": "single continuous Railway process",
+    "state": "encrypted GitHub SQLite on configured HORIZON_STATE_BRANCH",
+    "release": "HORIZON_EXECUTOR_SHA pins runtime source",
+    "github_actions": "offline CI only; do not reenable retired workers"
+  }
+}

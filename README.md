@@ -182,3 +182,13 @@ A capacidade efetiva é a do volume provisionado no plano, não um número fict�
 Isso é avaliação e aprimoramento de executor/instruções/memória, não treinamento dos pesos do Gemini/DeepSeek. Só promover métodos ao conhecimento compartilhado após resultado confirmado e regressão contra uma nova tarefa ou semente.
 
 Prova viva após a confirmação Free Tier: [Actions39168207624](https://github.com/danielnep/May-Maestro-Executor/actions/runs/39168207624) registrou duas decisões Gemini3.8Flash, seguida de HTTP429 real; os 15 especialistas seguintes continuaram com DeepSeek automaticamente. Os 17 executaram ferramenta, recuperaram memória e salvaram checkpoint. A prova segue limitada a uma ação por perfil.
+
+## Endurecimento do executor e estudo por especialidade (20/10/2026)
+
+- O orçamento de histórico mede JSON serializado, incluindo escapes e múltiplos campos; preserva a evidência integral no checkpoint.
+- Um teste aprovado antes de uma edição real fica desatualizado. Checks com o mesmo nome em subdiretórios diferentes não se substituem.
+- Uma exceção do adaptador de teste conserva a identidade do check, permitindo recuperação por uma execução posterior bem-sucedida.
+- Escrita de fonte usa arquivo temporário, flush/fsync e rename atômico; uma falha antes do rename preserva o original.
+- Os 17 agentes recebem uma ficha técnica selecionada e podem consultar [12 referências acadêmicas e técnicas](agents/knowledge/academic/README.md) por ID em qualquer checkout, inclusive pelo caminho Groq. Extração local de documentos usa `read_document`, com `requirements-knowledge.txt` na CI offline e instalação correspondente no host Railway. O host contínuo é `horizon-site/maestro/railway-team.py`; ele carrega o executor por SHA fixado. Não reativar os executores aposentados do Actions.
+
+Validação local: `python -m unittest discover -s tests -q` executou 360 testes, sem falhas, com 17 skips por dependências/integrações indisponíveis. A suíte inclui fixtures e modelos simulados; não constitui prova de uma entrega conjunta real. As regressões reproduziram o histórico de 313.819 caracteres contra limite de 14.000, o aceite de teste anterior à edição e a recuperação bloqueada por check sem identidade. A documentação histórica acima descreve etapas anteriores; não tratar esses parágrafos como inventário atual dos adaptadores.

@@ -8,6 +8,7 @@ on:
       - 'tests/**'
       - '.github/workflows/**'
       - 'requirements-postgres.txt'
+      - 'requirements-knowledge.txt'
   workflow_dispatch:
 permissions:
   contents: read
@@ -77,7 +78,7 @@ jobs:
         with:
           node-version: '22'
       - name: Instalar dependências de teste
-        run: pip install -r requirements-postgres.txt cryptography==46.0.3
+        run: pip install -r requirements-postgres.txt -r requirements-knowledge.txt cryptography==46.0.3
       - name: SDK de sandbox sem inferência
         working-directory: sandbox
         run: npm ci --ignore-scripts --no-audit --no-fund

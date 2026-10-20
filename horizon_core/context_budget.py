@@ -34,35 +34,52 @@ def compact_memory(memory):
 
 
 def compact_history(history):
+    """Bound the serialized request, including escaping, field count and keys.
+
+    Allocate a separate share to every recent action so old output cannot
+    evict the most recent tool result. Originals remain untouched on disk.
+    """
     if not isinstance(history, list):
         return []
-    recent = history[-MAX_RECENT_ACTIONS:]
+    recent = [row for row in history[-MAX_RECENT_ACTIONS:] if isinstance(row, dict)]
+    if not recent:
+        return []
+    budget = MAX_HISTORY_TOTAL_CHARS // len(recent) - 4
     answer = []
-    remaining = MAX_HISTORY_TOTAL_CHARS
+    priority = ('check', 'passed', 'tool_error', 'reason', 'path', 'source',
+                'simulated', 'workspace_unchanged', 'content', 'output', 'stdout',
+                'stderr', 'body', 'html', 'screenshot')
     for record in recent:
-        if not isinstance(record, dict):
-            continue
-        outcome = record.get("outcome", {})
+        outcome = record.get('outcome', {})
         if not isinstance(outcome, dict):
-            outcome = {"result": str(type(outcome).__name__)}
-        # Tools return structured metadata. No full copied page, test log or file
-        # is needed in old steps. Latest tool gets a larger useful excerpt.
-        formatted = {}
-        limit = min(MAX_HISTORY_TEXT_CHARS if record is recent[-1] else 2000, remaining)
-        for key, value in outcome.items():
-            if key in ("content", "output", "stdout", "stderr", "body", "html", "screenshot"):
-                formatted[key] = _slice(value, max(250, limit))
-            else:
-                encoded = json.dumps(value, ensure_ascii=False, default=str)
-                formatted[key] = value if len(encoded) <= 1400 else _slice(encoded, 1400)
-        element = {"action": str(record.get("action", ""))[:70],
-                   "summary": str(record.get("summary", ""))[:180],
-                   "outcome": formatted}
-        serial = json.dumps(element, ensure_ascii=False, default=str)
-        # Still preserve action/status if a previous entry exhausted the budget.
-        if len(serial) > remaining and remaining < 350:
-            element = {"action": element["action"], "outcome": {"truncated": True}}
-            serial = json.dumps(element)
-        remaining = max(0, remaining - len(serial))
+            outcome = {'result': type(outcome).__name__}
+        element = {'action': str(record.get('action', ''))[:70],
+                   'summary': str(record.get('summary', ''))[:180], 'outcome': {}}
+        keys = [key for key in priority if key in outcome]
+        keys.extend(key for key in outcome if key not in priority)
+        for original_key in keys:
+            key = str(original_key)[:100]
+            value = outcome[original_key]
+            encoded = json.dumps(value, ensure_ascii=False, default=str)
+            if len(encoded) > MAX_HISTORY_TEXT_CHARS:
+                value = _slice(encoded, MAX_HISTORY_TEXT_CHARS)
+            element['outcome'][key] = value
+            if len(json.dumps(element, ensure_ascii=False, default=str)) <= budget:
+                continue
+            # Measure the final JSON representation: quotes, backslashes and
+            # control characters can expand far beyond the raw string length.
+            text = value if isinstance(value, str) else encoded
+            lo, hi = 0, min(len(text), MAX_HISTORY_TEXT_CHARS)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                element['outcome'][key] = _slice(text, mid)
+                if len(json.dumps(element, ensure_ascii=False, default=str)) <= budget:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            element['outcome'][key] = _slice(text, lo)
+            if len(json.dumps(element, ensure_ascii=False, default=str)) > budget:
+                del element['outcome'][key]
+            break
         answer.append(element)
     return answer

@@ -6,5 +6,7 @@
   "remember",
   "finish",
   "search_web",
-  "fetch_public"
+  "fetch_public",
+  "read_knowledge",
+  "read_document"
 ]
