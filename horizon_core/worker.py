@@ -403,6 +403,12 @@ class Worker:
                             if failure_counts['missing_visual_evidence'] >= 3:
                                 return self.state.get(task_id)
                             continue
+                    # A completed May plan must not leave stale pending work in
+                    # the durable checkpoint after its last validated action.
+                    if pending_may or previous.get('may_plan'):
+                        self.state.checkpoint(task_id, self.worker_id,
+                            {'step': step, 'history': history, 'checks': checks,
+                             'delegated': delegated, 'failure_counts': failure_counts})
                     # This system-owned memory cannot be marked verified by the
                     # model. Only post-edit non-simulated test evidence qualifies.
                     learn_from_verified_check(self.state, task, history)
