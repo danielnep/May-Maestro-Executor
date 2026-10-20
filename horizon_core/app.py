@@ -4,7 +4,7 @@ import json
 import os
 import time
 from pathlib import Path
-from .gateway import ModelGateway, DEFAULT_DEEPSEEK_MODEL
+from .gateway import ModelGateway, DEFAULT_GROQ_UI_MODEL, DEFAULT_GROQ_CODE_MODEL
 from .github_state import GitHubState
 from .registry import AGENT_IDS, load_agent
 from .state import State
@@ -43,13 +43,14 @@ def main(argv=None):
     if args.preflight:
         ready = {name: bool(os.getenv(name)) for name in ('GEMINI_API_KEY', 'GEMINI_MODEL')}
         ready['free_tier_attested'] = os.getenv('GEMINI_FREE_TIER_CONFIRMED', '').lower() == 'true'
-        deepseek = {'api_key_present': bool(os.getenv('DEEPSEEK_API_KEY')),
-                    'model': os.getenv('DEEPSEEK_MODEL') or DEFAULT_DEEPSEEK_MODEL}
+        groq = {'api_key_present': bool(os.getenv('GROQ_API_KEY') or os.getenv('API_IA_GROQ')),
+                'ui_model': os.getenv('GROQ_UI_MODEL') or DEFAULT_GROQ_UI_MODEL,
+                'code_model': os.getenv('GROQ_CODE_MODEL') or DEFAULT_GROQ_CODE_MODEL}
         railway = {'api_token_present': bool(os.getenv('RAILWAY_API_TOKEN')),
                    'environment_present': bool(os.getenv('RAILWAY_ENVIRONMENT_ID'))}
-        print(json.dumps({'configuration': ready, 'deepseek': deepseek, 'railway': railway,
+        print(json.dumps({'configuration': ready, 'groq': groq, 'railway': railway,
                           'billing_verified': False, 'requests_sent': 0}))
-        return 0 if all(ready.values()) or deepseek['api_key_present'] else 2
+        return 0 if all(ready.values()) or groq['api_key_present'] else 2
     if args.max_tasks is not None and args.max_tasks < 1:
         parser.error('max-tasks must be positive when explicitly set')
     if args.session_seconds < 1:
