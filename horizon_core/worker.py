@@ -186,6 +186,19 @@ class Worker:
                             {'reason': 'kernel_review_workspace_changed',
                              'retryable': False}, retryable=False)
                     else:
+                        from .visual_contract import visual_review_status
+                        approved_history = list(previous.get('history') or [])
+                        approved_history.append({'action': 'kernel_review_verified',
+                            'outcome': {'source': 'authenticated_owner_review',
+                                        'passed': True,
+                                        'verified_scenarios': waiting_review['verified_scenarios']}})
+                        if not visual_review_status(approved_history)['verified']:
+                            self.state.fail(task_id, self.worker_id,
+                                {'reason': 'kernel_review_proof_invalid'}, retryable=False)
+                            self.persist()
+                            return self.state.get(task_id)
+                        self.state.checkpoint(task_id, self.worker_id,
+                            {**previous, 'history': approved_history})
                         checks = list(previous.get('checks') or [])
                         checks.append({'check': 'kernel-live-owner-review',
                             'passed': True, 'tests_run': waiting_review['verified_scenarios'],
