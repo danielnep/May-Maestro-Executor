@@ -56,8 +56,7 @@ def main(argv=None, *, transport=execute):
     print(json.dumps({"agent": agent["id"], "ticket": key,
                       "status": result.get("status"), "chat": "Horizon | Central dos Agentes"},
                      ensure_ascii=False))
-    return 0 if result.get("status") in ("sent", "answered", "pending_interleaved",
-                                       "send_unconfirmed") else 2
+    return 0 if result.get("status") in ("sent", "answered") else 2
 
 
 if __name__ == "__main__":
