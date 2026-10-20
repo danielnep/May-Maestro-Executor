@@ -16,10 +16,12 @@ TICKET: identificador-hash
 TIPO: specialist_question ou providers_unavailable
 PERGUNTA: texto técnico explicitamente público
 
-May responde com conselho verificável ou UM único JSON:
-{"action":"read_file","args":{"path":"README.md"},"summary":"..."}
-A decisão só é aceita pelo worker se estiver dentro das ferramentas reais
-autorizadas para aquele agente, e a verificação da ferramenta ocorrer.
+May responde com uma ação JSON ou um plano curto com até cinco ações:
+{"actions":[{"action":"read_file","args":{"path":"README.md"},"summary":"Ler fonte"},{"action":"finish","args":{},"summary":"Resultado condicionado à leitura"}]}
+O contrato antigo de uma ação JSON isolada continua aceito. O worker valida
+**todas** as ações contra as ferramentas reais do especialista antes da primeira,
+executa uma por vez e grava checkpoint com as etapas restantes. Erro de
+ferramenta ou teste interrompe o plano; não é aprovação de QA nem publicação.
 
 ## Padrão de entrega pós-projeto ou correção (canal existente)
 
@@ -34,16 +36,18 @@ O fluxo de mensagens do chat dedicado **já foi testado com sucesso**. Não cria
 - Somente perguntas textuais com payload.may_public_context_allowed=true
   aprovado pelo proprietário podem ser incluídas no GitHub público.
 - Queda de ambos provedores só envia classe genérica, sem código, dados ou logs.
-- Aguardando May: fila suspensa por 15 minutos (not_before), sem consumir
-  tentativas ou bater repetidamente nos provedores.
+- Aguardando May: rechecagem após 5 minutos (not_before), sem consumir
+  tentativas ou repetir chamadas a provedores. A chegada da resposta ainda
+  depende da tarefa horária externa do ChatGPT; não é entrega instantânea.
 - Quatro consultas por agente numa janela móvel de 60 minutos, contando
   Issues V2 criadas no GitHub, inclusive de tarefas distintas. A quinta espera
   até haver vaga; pergunta, rodada e checkpoint permanecem intactos.
   Após o intervalo, a tentativa seguinte envia o mesmo ticket sem usar
   outra chamada Gemini/DeepSeek. Não existe limite vitalício por tarefa.
-- Resposta: uma única ação JSON executável ou um diagnóstico curto;
-  selecionar primeiro a leitura/teste que falta quando houver incerteza,
-  sem escrever prosa genérica nem inventar resultados. O executor valida ACL.
+- Resposta: uma ação JSON ou um plano de até cinco ações, sempre dentro do
+  escopo e ferramentas do especialista. Para indisponibilidade de ambos os
+  modelos, um diagnóstico textual **não** libera o worker: o mesmo ticket
+  fica pendente de decisão executável, sem criar consultas repetidas.
 - O agendador verifica até três tickets por execução, sequencialmente.
   Não criar um chat por agente. Criar sucessor somente após prova de
   limite/tamanho da conversa e atualizar a URL no agendador privado.
