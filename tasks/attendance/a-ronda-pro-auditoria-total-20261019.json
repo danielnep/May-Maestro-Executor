@@ -3,13 +3,6 @@
   "events": [
     {
       "agent": "may-maestro",
-      "at": "2026-10-20T03:28:46Z",
-      "id": 918,
-      "ref": "3acc93a22b09",
-      "status": "retomou"
-    },
-    {
-      "agent": "may-maestro",
       "at": "2026-10-20T03:28:50Z",
       "id": 919,
       "ref": "3acc93a22b09",
@@ -1120,6 +1113,13 @@
       "id": 1250,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T14:24:35Z",
+      "id": 1251,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
     }
   ],
   "request_id": "a-ronda-pro-auditoria-total-20261019",
@@ -1141,9 +1141,9 @@
     },
     {
       "agent": "ui-ux-designer",
-      "attempts": 0,
+      "attempts": 1,
       "ref": "08f40c5b70a8",
-      "status": "aguardando",
+      "status": "executando",
       "step": 1
     },
     {
