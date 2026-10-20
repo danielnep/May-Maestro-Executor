@@ -34,7 +34,7 @@ class AppTests(unittest.TestCase):
 
     def test_preflight_accepts_groq_only_without_starting_any_provider(self):
         output = io.StringIO()
-        with patch.dict('os.environ', {'Groq_API_KEY': 'Groq-PRIVATE-FIXTURE'}, clear=True), \
+        with patch.dict('os.environ', {'GROQ_API_KEY': 'GROQ-PRIVATE-FIXTURE'}, clear=True), \
                 patch('horizon_core.app.ModelGateway') as gateway, redirect_stdout(output):
             self.assertEqual(main(['--preflight']), 0)
         document = json.loads(output.getvalue())
@@ -43,7 +43,7 @@ class AppTests(unittest.TestCase):
         self.assertTrue(document['groq']['model'])
         self.assertEqual(document['requests_sent'], 0)
         self.assertFalse(document['billing_verified'])
-        self.assertNotIn('Groq-PRIVATE-FIXTURE', output.getvalue())
+        self.assertNotIn('GROQ-PRIVATE-FIXTURE', output.getvalue())
         gateway.assert_not_called()
 
     def test_preflight_missing_configuration_is_not_ready(self):
