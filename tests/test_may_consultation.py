@@ -153,6 +153,21 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
         self.assertEqual(got["agent"], "may-maestro")
         self.assertIsNone(read_consultation(self.task["task_id"], agent="qa-engineer", api=api))
 
+    def test_scoped_github_actions_bot_reply_is_accepted_but_unrelated_actors_are_not(self):
+        api = FakeIssues()
+        request_consultation(self.task, "providers_unavailable", api=api)
+        decision = {"action": "read_file", "args": {"path": "README.md"},
+                    "summary": "Inspect documented tests"}
+        bot_reply = REPLY_MARKER + "\n" + json.dumps(decision)
+        api.comments[1] = [
+            {"user": {"login": "some-other-bot[bot]"}, "body": bot_reply},
+            {"user": {"login": "github-actions[bot]"}, "body": bot_reply}]
+        found = read_consultation(self.task["task_id"], api=api, agent="may-maestro")
+        self.assertEqual(found["source"], "scoped_actions_relay")
+        self.assertEqual(found["decision_untrusted"], decision)
+        api.comments[1] = api.comments[1][:1]
+        self.assertIsNone(read_consultation(self.task["task_id"], api=api, agent="may-maestro"))
+
     def test_read_authentic_reply_after_one_hundred_comments(self):
         class PaginatedIssues(FakeIssues):
             def __init__(self):

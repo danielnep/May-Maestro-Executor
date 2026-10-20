@@ -1,0 +1,44 @@
+name: Horizon - Central operada pelos agentes
+
+on:
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
+  workflow_dispatch:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: horizon-agent-owned-central
+  cancel-in-progress: false
+
+jobs:
+  central:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verificar contrato sem navegador nem segredo
+        run: node --test tests/test_agent_central_relay.cjs
+      - name: Executar ponte autônoma dos especialistas
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          KERNEL_API_KEY: ${{ secrets.KERNEL_API_KEY }}
+        run: |
+          if [ -z "$KERNEL_API_KEY" ]; then
+            echo "Ponte direta sem KERNEL_API_KEY. A contingência existente segue ativa."
+            exit 0
+          fi
+          npm install --no-save --ignore-scripts --no-audit --no-fund @onkernel/sdk@0.128.0
+          node integrations/agent_central_relay.cjs
+

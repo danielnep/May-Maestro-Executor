@@ -29,8 +29,27 @@ O fluxo de mensagens do chat dedicado **já foi testado com sucesso**. Não cria
 
 `tasks/results/<id>.json` com `may_review` fornece os dados para o envio. **O arquivo sozinho não envia mensagem**. Após `publish_result`, `commit_bridge` invoca `delivery_chat.queue_review` **somente** se o QA estiver aprovado e `may_review.status=ready_for_may_review`, com URL pública de Pages e SHA confirmados. Cria uma única GitHub Issue `[May delivery]` / `MAY_DELIVERY_REVIEW_V1` por tarefa+commit, com metadados públicos. A tarefa horária EXISTENTE `Central Horizon dos Agentes` verifica a fila, posta `[HORIZON ENTREGA V1]` neste MESMO chat autenticado pelo KERNEL e só grava `MAY_DELIVERY_SENT_V1` na Issue após confirmar a mensagem e a resposta real. Enquanto não existir esse comprovante, o ticket permanece aberto e o envio não é considerado concluído. A cadência horária não assegura entrega instantânea. Consultas técnicas já em funcionamento não são prova de que esse novo gatilho foi automatizado. Capturas privadas não vão para canal público.
 
+## Responsabilidade da Central: executor externo dos agentes
+O responsável principal pelo transporte é o workflow
+\`.github/workflows/horizon-agent-central.yml\`, com lógica em
+\`integrations/agent_central_relay.cjs\`. Ele executa no GitHub Actions, não
+no ChatGPT, com \`GITHUB_TOKEN\` de permissões mínimas e \`KERNEL_API_KEY\`
+configurada como **secret do próprio repositório** (mesmo projeto/perfil do
+navegador). A ausência dessa credencial deixa a ponte direta inativa; não
+alegar autonomia comprovada ou desativar a contingência da May antes de
+uma consulta efetivamente entregue, respondida e lida de volta pelo worker.
+
+O job é limitado, detecta entradas V2/V1, usa comentário autenticado
+\`github-actions[bot]\` do próprio repositório, reconhecido pelo consumidor
+somente com o marcador de resposta V2 e sem ampliar as permissões de nenhuma
+ferramenta dos especialistas. Usa cursor por SHA/CAS para o ponto e marcador
+de operação em andamento para não repetir perguntas quando há perda de
+resposta no navegador. **A May responde**, não gerencia o transporte.
+A tarefa horária de ChatGPT é apenas contingência enquanto a prova externa
+não estiver completa, sem disputas de escrita simultâneas.
+
 ## Navegação na interface da Central (sem API)
-A automação horária deve descobrir a sessão autenticada pelo nome
+O executor externo deve descobrir a sessão autenticada pelo nome
 `may-chatgpt-72h` e verificar a URL exata da conversa. Tentar ações nativas
 WebMCP, quando o site as oferecer; na ausência delas, usar o **KERNEL Computer
 Action** para clicar, digitar, rolar e enviar pelo navegador gráfico real.
