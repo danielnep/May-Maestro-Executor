@@ -14,7 +14,8 @@ from .tools import Tools
 from .deterministic import inspect_project, execute_read_only_with_retry
 from .learning import record_failure, verify_check_recovery, useful_lessons
 from .verified_repairs import learn_from_verified_check, replay_if_exact
-from .visual_contract import requires_visual_review, visual_review_status
+from .visual_contract import (VISUAL_AGENTS, has_source_edits,
+                              requires_visual_review, visual_review_status)
 from .reasoning_policy import (select_model_effort, escalation_justified,
                                approval_receipt, create_reasoning_review,
                                save_maestro_decision)
@@ -458,7 +459,7 @@ class Worker:
                     continue
                 if name == 'finish':
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
-                    if requires_visual_review(task):
+                    if requires_visual_review(task, history):
                         visual = visual_review_status(history)
                         if visual['reason'] == 'browser_check_missing_after_edit':
                             # Mandatory runtime verification, never an optional LLM suggestion.
@@ -502,6 +503,12 @@ class Worker:
                               'verification': checks, 'delegated': delegated,
                               'model': action.get('metadata', {}),
                               'status': 'reported', 'steps': step + 1}
+                    if agent['id'] in VISUAL_AGENTS and not has_source_edits(history):
+                        # The audit may release implementation dependencies, but
+                        # no missing/failed visual proof becomes a QA approval.
+                        result['stage'] = ('audit_only_verified' if
+                            visual_review_status(history)['verified']
+                            else 'audit_only_unverified')
                     self.state.complete(task_id, self.worker_id, result)
                     self.persist()
                     return self.state.get(task_id)
