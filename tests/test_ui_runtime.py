@@ -1,4 +1,4 @@
-"""Worker-level proof that UI tools are executed by algorithm, not model choice."""
+"""Live KERNEL review is mandatory for visual specialists (no Playwright)."""
 import json
 import subprocess
 import tempfile
@@ -10,54 +10,77 @@ from horizon_core.state import State
 from horizon_core.tools import Tools
 from horizon_core.worker import Worker
 
-def proof(passed=True):
-    return {"check":"browser-playwright","passed":passed,"source":"runtime",
-            "simulated":False,"workspace_unchanged":True,"tests_run":7,
-            "screenshots":[{"file":name+"-rendered.png","sha256":"a"*64}
-                           for name in ("desktop","mobile")],
-            "report":{"layout":[{"name":"desktop","blocking_issues":[]},
-                                {"name":"mobile","blocking_issues":[]}],
-                      "functional_scenarios":4}}
 
 class Model:
-    def __init__(self): self.contexts=[]
+    def __init__(self):
+        self.contexts = []
     def complete(self, agent, messages):
         self.contexts.append(json.loads(messages[0]["content"]))
-        return {"action":"finish","args":{},"summary":"Validated interface"}
+        return {"action": "finish", "args": {}, "summary": "Audit requires live May review"}
+
 
 class RuntimeVisualTest(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root=Path(self.tmp.name)
-        subprocess.run(["git","init",str(self.root)],check=True,capture_output=True)
-        subprocess.run(["git","-C",str(self.root),"switch","-c","feat/ui-test"],check=True,capture_output=True)
-        (self.root/"index.html").write_text("<html><body><button>Mensagens</button></body></html>")
-        (self.root/"styles.css").write_text("@media (max-width:600px){button{width:100%}}")
-        self.state=State(":memory:")
+        self.root = Path(self.tmp.name)
+        subprocess.run(["git", "init", str(self.root)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(self.root), "switch", "-c", "feat/ui-test"],
+                       check=True, capture_output=True)
+        (self.root / "index.html").write_text("<html><button>Mensagens</button></html>")
+        self.state = State(":memory:")
         self.addCleanup(self.state.close)
 
-    def test_two_views_checked_automatically_without_vision_call(self):
-        self.state.enqueue("ui1","ui-ux-designer","ronda-pro","Corrigir botão de mensagens")
-        llm=Model()
-        with patch.object(Tools,"run_check",return_value=proof()) as checker:
-            result=Worker(self.state,llm,self.root).run_one()
-        self.assertEqual(result["status"],"succeeded")
-        checker.assert_called_once_with({"name":"browser-playwright"})
-        self.assertEqual(len(llm.contexts),1)
-        imagination=llm.contexts[0]["ui_imagination"]
-        self.assertEqual([v["name"] for v in imagination["viewports"]],["mobile","desktop"])
-        self.assertEqual(imagination["vision_api_calls"],0)
-        self.assertEqual(len(result["result"]["verification"][0]["screenshots"]),2)
+    def test_unedited_real_ui_audit_still_waits_for_live_review(self):
+        self.state.enqueue("ui1", "horizon-ui-guardian", "chat:ronda",
+                           "Review navigation", payload={"repository": "danielnep/app-hondas-maxvel"})
+        browser = {"review_status": "awaiting_may_visual_review", "check": "kernel-live",
+                   "passed": False, "ticket": "a"*20,
+                   "browser_live_view_url": "https://prod-kernel.kernel.sh/browser/live/session1"}
+        llm = Model()
+        with patch("horizon_core.kernel_live.prepare_live_review", return_value=browser), \
+             patch("horizon_core.kernel_live.send_live_review", return_value="sent"), \
+             patch.object(Tools, "run_check", side_effect=AssertionError("No Playwright")):
+            row = Worker(self.state, llm, self.root).run_one()
+        self.assertEqual(row["status"], "queued")
+        self.assertEqual(len(llm.contexts), 1)
+        self.assertEqual(row["checkpoint"]["kernel_review"]["chat_delivery"], "sent")
+        self.assertFalse(row["checkpoint"]["kernel_review"]["passed"])
 
-    def test_real_browser_failure_is_never_marked_passed(self):
-        self.state.enqueue("ui2","horizon-ui-guardian","ronda-pro","Revisar navegação")
-        llm=Model()
-        with patch.object(Tools,"run_check",return_value=proof(False)):
-            result=Worker(self.state,llm,self.root).run_one()
-        self.assertEqual(result["status"],"failed")
-        self.assertEqual(result["error"]["reason"],"visual_evidence_missing")
-        self.assertGreaterEqual(len(llm.contexts),3)
+    def test_missing_kernel_does_not_trigger_browser_fallback_or_fake_success(self):
+        self.state.enqueue("ui2", "ui-ux-designer", "chat:ronda", "Visual review")
+        llm = Model()
+        with patch("horizon_core.kernel_live.prepare_live_review",
+                   return_value={"check":"kernel-live","passed":False,
+                                 "review_status":"kernel_key_unavailable"}), \
+             patch.object(Tools, "run_check", side_effect=AssertionError("No Playwright")):
+            first = Worker(self.state, llm, self.root).run_one()
+            self.assertEqual(first["status"], "queued")
+            second = Worker(self.state, llm, self.root).run_one()
+        self.assertIsNone(second)
+        self.assertEqual(len(llm.contexts), 1)
 
-if __name__=="__main__":
+    def test_authenticated_review_resumes_without_model_or_new_browser(self):
+        self.state.enqueue("ui3","horizon-ui-guardian","chat:ronda","Inspect UI",
+                           payload={"repository": "danielnep/app-hondas-maxvel"})
+        llm = Model()
+        browser = {"review_status": "awaiting_may_visual_review", "check": "kernel-live",
+                   "passed": False, "ticket":"b"*20,
+                   "browser_live_view_url":"https://prod-kernel.kernel.sh/browser/live/session2"}
+        with patch("horizon_core.kernel_live.prepare_live_review", return_value=browser), \
+             patch("horizon_core.kernel_live.send_live_review", return_value="sent"):
+            pending = Worker(self.state, llm, self.root).run_one()
+        self.assertEqual(pending["status"], "queued")
+        self.assertTrue(self.state.approve_kernel_review("ui3", "b"*20, 3))
+        with patch("horizon_core.kernel_live.prepare_live_review",
+                   side_effect=AssertionError("Must reuse review")), \
+             patch.object(llm, "complete", side_effect=AssertionError("No new Gemini")):
+            resumed = Worker(self.state, llm, self.root).run_one()
+        self.assertEqual(resumed["status"], "succeeded")
+        self.assertEqual(resumed["result"]["verification"][0]["check"],
+                         "kernel-live-owner-review")
+        self.assertEqual(resumed["result"]["verification"][0]["tests_run"], 3)
+
+
+if __name__ == "__main__":
     unittest.main()
