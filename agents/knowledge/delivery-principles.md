@@ -149,3 +149,9 @@ leitura ou teste concreto, nunca simular correção. O histórico do GitHub é a
 fonte durável de contagem entre tarefas e reinícios.
 A tarefa ChatGPT é horária e não promete tempo real. Ver
 docs/may-shared-chat.md e tests/test_may_consultation.py.
+
+## Registro de ponto por eventos reais dos especialistas (19/10/2026)
+
+A Central Horizon dos Agentes acompanha trabalho e consultas em UMA conversa reutilizável. O registro de presença é automático e determinístico: o runtime converte os eventos auditáveis de aquisição, conclusão, espera, retomada e bloqueio da fila em registros sanitizados na pasta pública tasks/attendance. Especialista algum deve chamar LLM, criar mensagens artificiais nem declarar "comecei", "terminei" ou "testei" sem evento real. O panorama inclui os 17 agentes e o estado ocioso quando não houver atividade atual.
+
+Cada registro identifica agente, referência opaca da tarefa, hora UTC, estado e relatório original; nunca inclui objetivo privado, código ou segredos. Concluído significa apenas que o worker completou a tarefa, não QA aprovado, merge, APK pronto ou deploy. A tarefa agendada Central Horizon dos Agentes encaminha ao mesmo chat os novos registros; pode haver atraso de até o intervalo horário e não existe push direto do SQLite para o ChatGPT. Para verificar o estado imediatamente, usar os arquivos do GitHub e o controlador. Fonte técnica: horizon_core/attendance.py e docs/chat-bridge.md.

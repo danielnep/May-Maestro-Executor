@@ -433,6 +433,22 @@ def main(argv=None):
                           'error': {'kind': type(error).__name__},
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
             publish_result(api, path.stem, report)
+            # Queue events, not model-authored narratives, feed the ONE shared
+            # ChatGPT agent conversation through its existing hourly watchdog.
+            from .attendance import (attendance_snapshot, publish_attendance,
+                                     team_snapshot, publish_team_attendance)
+            try:
+                presence = attendance_snapshot(state, path.stem)
+                if presence is not None:
+                    published_presence = publish_attendance(api, presence)
+                    print(json.dumps({"attendance": published_presence,
+                                      "request_id": path.stem}))
+                publish_team_attendance(api, team_snapshot(state))
+            except (GitHubStateError, ValueError, OSError) as error:
+                # Never stop product delivery solely because chat presence is
+                # unavailable. A subsequent run reconstructs it from SQLite.
+                print(json.dumps({"attendance_error": type(error).__name__,
+                                  "request_id": path.stem}))
             # Event-driven owner alert follows durable result publication, not
             # the five-minute recovery schedule or the ChatGPT task cadence.
             from .notify import notify
