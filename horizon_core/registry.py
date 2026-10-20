@@ -81,19 +81,24 @@ def load_agent(agent_id, root=None):
     # model action prevents useful free-tier inference. Preserve the unabridged
     # instructions for Gemini; give Groq a bounded, role-specific working set.
     # Runtime permissions/checkpoints/tests remain fully enforced in Python.
-    pieces = [base_instructions,
+    if len(base_instructions) > 3600:
+        base_excerpt = (base_instructions[:2950] + "\n[Detailed middle guidance in agents/<id>/instructions.md]\n"
+                        + base_instructions[-650:])
+    else:
+        base_excerpt = base_instructions
+    pieces = [base_excerpt,
         ("Shared mandatory engineering rules (full sources remain in repository "
-         "for targeted read_file use):\n" + meticulous.read_text(encoding="utf-8")[:2350]),
-        ("Delivery and recovery policy:\n" + policy.read_text(encoding="utf-8")[:1750]
+         "for targeted read_file use):\n" + meticulous.read_text(encoding="utf-8")[:1700]),
+        ("Delivery and recovery policy:\n" + policy.read_text(encoding="utf-8")[:1250]
          if policy.is_file() else "")]
     if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
         pieces.append("Transactional/data safeguards:\n" +
-                      knowledge.read_text(encoding="utf-8")[:1350])
+                      knowledge.read_text(encoding="utf-8")[:850])
     if agent_id in {"frontend-engineer", "ui-ux-designer", "horizon-ui-guardian", "mobile-app-builder"}:
         references = Path(root or AGENTS_ROOT) / "knowledge" / "premium-product-references.md"
         if references.is_file():
             pieces.append("Premium UI reference guidelines:\n" +
-                          references.read_text(encoding="utf-8")[:1250])
+                          references.read_text(encoding="utf-8")[:700])
     pieces.append("Never ask the external ChatGPT/May chat for answers, as that "
                   "transport is disabled. On provider quota exhaustion keep a "
                   "durable checkpoint and let the worker retry. Do not claim "
