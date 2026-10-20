@@ -53,26 +53,114 @@ class DirectBrowserContractTests(unittest.TestCase):
         self.assertNotIn('"; process.exit(1); //";', payload)
         self.assertIn("JSON.parse(", payload)
 
-    def test_authenticated_transport_is_one_fixed_kernel_endpoint(self):
+    def test_authenticated_transport_is_native_computer_controls_only(self):
         seen = []
+        stages = [
+            {"success": True, "result": {"status": "ready", "box": {"x": 115, "y": 152}}},
+            {"success": True, "result": {"status": "draft_ready"}},
+            {"success": True, "result": {"status": "answered",
+                "answer": '{"action":"read_file","args":{"path":"README.md"},'
+                          '"summary":"Inspect first"}'}}]
         def opener(request, timeout=None):
             seen.append((request, timeout))
-            return _Response({"success": True, "result": {
-                "status": "answered", "answer": '{"action":"read_file",'
-                '"args":{"path":"README.md"},"summary":"Inspect first"}'}})
-        outcome = direct_chat.execute("qa-engineer", "a"*20,
-                     "Which public file should QA inspect first?",
-                     environ={"KERNEL_API_KEY": "synthetic-unit-key"}, opener=opener)
+            if request.full_url.endswith("/playwright/execute"):
+                return _Response(stages.pop(0))
+            return _Response({})
+        outcome = direct_chat.execute(
+            "qa-engineer", "a"*20, "Which public file should QA inspect first?",
+            environ={"KERNEL_API_KEY": "synthetic-unit-key"}, opener=opener)
         self.assertEqual(outcome["status"], "answered")
-        self.assertEqual(len(seen), 1)
-        req, timeout = seen[0]
-        self.assertEqual(req.full_url, direct_chat.ENDPOINT)
-        self.assertEqual(req.get_method(), "POST")
-        self.assertIn("horizon-central", req.data.decode())
-        self.assertIn("a"*20, req.data.decode())
-        self.assertIn("Bearer synthetic-unit-key", req.get_header("Authorization"))
-        self.assertLessEqual(timeout, 65)
-        self.assertNotIn("synthetic-unit-key", req.data.decode())
+        self.assertEqual([req.full_url.rsplit("/", 1)[-1] for req, _ in seen],
+                         ["execute", "click_mouse", "type_text", "execute",
+                          "press_key", "execute"])
+        self.assertEqual(len(stages), 0)
+        self.assertIn("horizon-central", seen[0][0].data.decode())
+        self.assertIn("a"*20, seen[0][0].data.decode())
+        for req, timeout in seen:
+            self.assertEqual(req.get_method(), "POST")
+            self.assertIn("Bearer synthetic-unit-key", req.get_header("Authorization"))
+            self.assertLessEqual(timeout, 65)
+            self.assertNotIn("synthetic-unit-key", req.data.decode())
+        click = json.loads(seen[1][0].data)
+        self.assertEqual(click, {"x": 115, "y": 152})
+        typed = json.loads(seen[2][0].data)["text"]
+        self.assertIn("TICKET: " + "a"*20, typed)
+        self.assertEqual(json.loads(seen[4][0].data), {"keys": ["Return"]})
+        for request, _ in (seen[0], seen[3], seen[5]):
+            script = json.loads(request.data)["code"]
+            self.assertNotIn(".fill(", script)
+            self.assertNotIn(".click(", script)
+            self.assertNotIn("fetch(", script)
+
+    def test_existing_foreign_composer_draft_is_never_touched(self):
+        calls = []
+        def opener(req, timeout=None):
+            calls.append(req.full_url)
+            return _Response({"success": True, "result": {"status": "composer_busy"}})
+        result = direct_chat.execute("qa-engineer", "b"*20,
+            "Read the approved public README before proceeding?",
+            environ={"KERNEL_API_KEY": "synthetic"}, opener=opener)
+        self.assertEqual(result["status"], "composer_busy")
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0].endswith("/playwright/execute"))
+
+    def test_mismatched_draft_stops_without_enter_or_erasure(self):
+        calls = []
+        inspections = [
+            {"status": "ready", "box": {"x": 20, "y": 40}},
+            {"status": "draft_mismatch"}]
+        def opener(req, timeout=None):
+            calls.append(req.full_url)
+            if req.full_url.endswith("/playwright/execute"):
+                return _Response({"success": True, "result": inspections.pop(0)})
+            return _Response({})
+        result = direct_chat.execute("qa-engineer", "c"*20,
+            "Which public check should the specialist inspect first?",
+            environ={"KERNEL_API_KEY": "synthetic"}, opener=opener)
+        self.assertEqual(result["status"], "delivery_unknown")
+        self.assertEqual(len(calls), 4)
+        self.assertFalse(any(x.endswith("/press_key") for x in calls))
+
+    def test_existing_ticket_only_reads_without_resending(self):
+        calls = []
+        def opener(req, timeout=None):
+            calls.append(req.full_url)
+            return _Response({"success": True, "result": {"status": "sent"}})
+        result = direct_chat.execute("qa-engineer", "d"*20,
+            "Which public file should QA inspect first?",
+            environ={"KERNEL_API_KEY": "synthetic"}, opener=opener)
+        self.assertEqual(result["status"], "sent")
+        self.assertEqual(len(calls), 1)
+
+    def test_local_mode_does_not_use_playwright_to_submit(self):
+        calls = []
+        class Completed:
+            returncode = 0
+            stdout = '{"status":"sent"}'
+        def runner(args, **kwargs):
+            calls.append((args, kwargs))
+            return Completed()
+        got = direct_chat.execute_local("horizon-skills", "e"*20,
+            "Which public README should be inspected first?", runner=runner)
+        self.assertEqual(got["status"], "sent")
+        self.assertEqual(len(calls), 1)
+        js = calls[0][0][2]
+        self.assertIn("spawnSync('xdotool'", js)
+        self.assertIn("shift+Return", js)
+        self.assertIn("draft_ready", js)
+        self.assertNotIn(".fill(", js)
+        self.assertNotIn(".click(", js)
+        self.assertNotIn("await browser.close()", js)
+
+    def test_unconfirmed_send_cli_is_not_marked_success(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = chat_cli_main(
+                ["--agent", "horizon-skills", "--task-id", "synthetic-check", "--checkin"],
+                transport=lambda agent, key, **kwargs: {"status": "send_unconfirmed"})
+        self.assertEqual(code, 2)
+        self.assertEqual(json.loads(out.getvalue())["status"], "send_unconfirmed")
+
 
     def test_ambiguous_network_failures_do_not_resend(self):
         from urllib.error import URLError
