@@ -213,6 +213,48 @@ def build_may_review_handoff(request_id, status, quality_approved, publication):
     return packet
 
 
+def task_blocker(task):
+    """Export only bounded machine diagnostics; never raw provider/tool errors."""
+    status = task.get('status')
+    error = task.get('error') or {}
+    if not isinstance(error, dict):
+        error = {}
+    if status in ('failed', 'blocked'):
+        safe = {'code': 'task_' + status}
+        for key in ('kind', 'reason'):
+            value = error.get(key)
+            if isinstance(value, str) and re.fullmatch(r'[A-Za-z][A-Za-z0-9_-]{0,79}', value):
+                safe[key] = value
+        dependencies = error.get('failed_dependencies')
+        if isinstance(dependencies, list):
+            safe['failed_dependencies'] = [
+                item for item in dependencies[:17]
+                if isinstance(item, str) and re.fullmatch(r'[a-zA-Z0-9._:-]{1,160}', item)
+            ]
+        signatures = error.get('signatures')
+        if isinstance(signatures, list):
+            safe['signatures'] = [
+                item for item in signatures[:12]
+                if isinstance(item, str) and re.fullmatch(r'[a-zA-Z0-9_:-]{1,80}', item)
+            ]
+        return safe
+    checkpoint = task.get('checkpoint')
+    if status == 'queued' and isinstance(checkpoint, dict):
+        waiting = checkpoint.get('pending_may')
+        if isinstance(waiting, dict):
+            outcome = {'code': 'awaiting_may_consultation'}
+            ticket = waiting.get('ticket')
+            if isinstance(ticket, str) and re.fullmatch(r'[a-f0-9]{20}', ticket):
+                outcome['ticket'] = ticket
+            round_index = waiting.get('round')
+            if type(round_index) is int and 0 <= round_index <= 1000:
+                outcome['round'] = round_index
+            return outcome
+        if isinstance(checkpoint.get('deferred_may_request'), dict):
+            return {'code': 'may_consultation_cooldown'}
+    return None
+
+
 def summarize(request_id, tasks, publication=None):
     statuses = [task['status'] for task in tasks]
     status = 'pending' if any(value in ('queued', 'running') for value in statuses) else (
@@ -236,6 +278,7 @@ def summarize(request_id, tasks, publication=None):
         reports.append({'task_id': task['task_id'], 'agent': task['agent'], 'status': task['status'],
                         'attempts': task.get('attempts', 0), 'summary': str(result.get('summary', ''))[:12000],
                         'verification': checks,
+                        'blocker': task_blocker(task),
                         'model_used': {'provider': provider, 'model': identifier} if provider else None})
     # A model's finish is not a verified delivery: failed or absent QA evidence
     # must remain actionable regardless of all specialists saying 'succeeded'.
