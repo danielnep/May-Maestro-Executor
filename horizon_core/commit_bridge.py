@@ -384,6 +384,54 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
         return summarize(validated['id'], scoped.tasks(), publication)
 
 
+def wake_owner_may_reply(state, event, reader=None):
+    """Expedite only an authenticated owner reply matching a pending ticket."""
+    if not isinstance(event, dict) or event.get("action") != "created":
+        return []
+    repository, issue, comment = (event.get("repository") or {},
+                                   event.get("issue") or {},
+                                   event.get("comment") or {})
+    if not all(isinstance(x, dict) for x in (repository, issue, comment)):
+        return []
+    user = comment.get("user") or {}
+    prefix = "[May consultation] "
+    title = issue.get("title")
+    if (not isinstance(user, dict)
+            or repository.get("full_name") != REPOSITORY
+            or user.get("login") != OWNER
+            or issue.get("pull_request") is not None
+            or not isinstance(comment.get("body"), str)
+            or not comment["body"].startswith("MAY_CONSULT_REPLY_V2\n")
+            or not isinstance(title, str) or not title.startswith(prefix)
+            or not re.fullmatch(r"[0-9a-f]{20}", title[len(prefix):])
+            or type(issue.get("number")) is not int):
+        return []
+    ticket = title[len(prefix):]
+    if reader is None:
+        from .may_consultation import read_consultation
+        reader = read_consultation
+    awakened = []
+    for row in state.tasks():
+        checkpoint = row.get("checkpoint") or {}
+        pending = checkpoint.get("pending_may") if isinstance(checkpoint, dict) else None
+        if (not row["project"].startswith("chat:") or row["status"] != "queued"
+                or not isinstance(pending, dict) or pending.get("ticket") != ticket
+                or pending.get("transport") == "kernel"):
+            continue
+        round_index = pending.get("round", 0)
+        if type(round_index) is not int or round_index < 0:
+            continue
+        reply = reader(row["task_id"], agent=row["agent"], round_index=round_index)
+        if (not isinstance(reply, dict) or reply.get("issue") != issue["number"]
+                or reply.get("source") != "public_owner_comment"
+                or not (reply.get("decision_untrusted")
+                        or reply.get("decisions_untrusted"))):
+            continue
+        if state.wake_may_reply(row["task_id"], ticket, round_index):
+            awakened.append(row["task_id"])
+    return awakened
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Versioned ChatGPT requests -> private specialist queue')
     parser.add_argument('--root', default='.')
@@ -408,6 +456,13 @@ def main(argv=None):
         state = RailwayPostgresState()
     else:
         raise RuntimeError('Unsupported state backend; refusing implicit fallback')
+    if os.getenv("GITHUB_EVENT_NAME") == "issue_comment":
+        event_path = os.getenv("GITHUB_EVENT_PATH")
+        if not event_path:
+            raise RuntimeError("Authenticated issue event payload missing")
+        event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+        awakened = wake_owner_may_reply(state, event)
+        print(json.dumps({"may_reply_awakened": len(awakened)}))
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))

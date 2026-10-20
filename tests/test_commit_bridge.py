@@ -370,6 +370,67 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertEqual(result['publication']['target_branch'], 'agent/chat-proof-request')
         self.assertEqual(result['publication']['patch_files'][0]['path'], 'src/ui.js')
 
+class MayReplyWakeTests(unittest.TestCase):
+    def setUp(self):
+        import time
+        self.now = time.time()
+        self.state = State(":memory:")
+        self.ticket = "a" * 20
+        self.task_id = "chat-p0-task"
+        self.state.enqueue(self.task_id, "may-maestro", "chat:p0", "Delegate specialists")
+        self.state.claim("worker", now=self.now)
+        self.state.checkpoint(self.task_id, "worker",
+            {"pending_may": {"ticket": self.ticket, "round": 0}}, now=self.now)
+        self.state.defer(self.task_id, "worker", seconds=900, now=self.now)
+        self.event = {
+            "action": "created", "repository": {"full_name": REPOSITORY},
+            "issue": {"title": "[May consultation] " + self.ticket, "number": 47},
+            "comment": {"user": {"login": "danielnep"},
+                        "body": "MAY_CONSULT_REPLY_V2\n{}"},
+        }
+
+    def tearDown(self):
+        self.state.close()
+
+    @staticmethod
+    def reply(*args, **kwargs):
+        return {"source": "public_owner_comment", "issue": 47,
+                "decision_untrusted": {"action": "delegate", "args": {},
+                                        "summary": "Validated downstream by worker"}}
+
+    def test_valid_owner_reply_wakes_once_preserving_checkpoint(self):
+        from horizon_core.commit_bridge import wake_owner_may_reply
+        import time
+        self.assertEqual(wake_owner_may_reply(self.state, self.event, self.reply), [self.task_id])
+        row = self.state.get(self.task_id)
+        self.assertLess(row["not_before"], self.now + 900)
+        self.assertEqual(row["attempts"], 0)
+        self.assertEqual(row["checkpoint"]["pending_may"]["ticket"], self.ticket)
+        self.assertEqual(wake_owner_may_reply(self.state, self.event, self.reply), [])
+        self.assertEqual(len([x for x in self.state.events(self.task_id)
+                              if x["kind"] == "may_reply_ready"]), 1)
+
+    def test_untrusted_author_wrong_issue_and_diagnosis_do_not_wake(self):
+        from horizon_core.commit_bridge import wake_owner_may_reply
+        import copy
+        before = self.state.get(self.task_id)["not_before"]
+        bad_author = copy.deepcopy(self.event)
+        bad_author["comment"]["user"]["login"] = "unknown"
+        self.assertEqual(wake_owner_may_reply(self.state, bad_author, self.reply), [])
+        self.assertEqual(wake_owner_may_reply(
+            self.state, self.event, lambda *a, **kw: {**self.reply(), "issue": 50}), [])
+        self.assertEqual(wake_owner_may_reply(
+            self.state, self.event, lambda *a, **kw:
+                {"source": "public_owner_comment", "issue": 47,
+                 "advice_untrusted": "Only diagnosis"}), [])
+        self.assertEqual(self.state.get(self.task_id)["not_before"], before)
+
+    def test_other_ticket_cannot_resume_existing_task(self):
+        from horizon_core.commit_bridge import wake_owner_may_reply
+        event = dict(self.event, issue={"title": "[May consultation] " + "b" * 20,
+                                        "number": 47})
+        self.assertEqual(wake_owner_may_reply(self.state, event, self.reply), [])
+
 
 if __name__ == '__main__':
     unittest.main()

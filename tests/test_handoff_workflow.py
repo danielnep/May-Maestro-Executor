@@ -34,6 +34,13 @@ class HandoffWorkflowRegressionTests(unittest.TestCase):
         tests = re.findall(r"(?m)^          python -m unittest discover -s tests -p (\S+) -v$", workflow)
         self.assertEqual(len(tests), len(set(tests)))
 
+    def test_owner_reply_trigger_is_guarded(self):
+        workflow = (ROOT / ".github/workflows/chat-requests.yml").read_text(encoding="utf-8")
+        self.assertIn("  issue_comment:\n    types: [created]", workflow)
+        self.assertIn("github.event.comment.user.login == 'danielnep'", workflow)
+        self.assertIn("github.event.issue.pull_request == null", workflow)
+        self.assertIn("startsWith(github.event.issue.title, '[May consultation] ')", workflow)
+
     def test_marker_written_before_returning_failure(self):
         controller = (ROOT / "horizon_core/commit_bridge.py").read_text(encoding="utf-8")
         self.assertLess(controller.index("write_marker(continuation)"),
