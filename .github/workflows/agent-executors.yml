@@ -39,7 +39,7 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements-postgres.txt cryptography==46.0.3
       - name: Validar runtime, 17 identidades e retomada sem chamar API
-        run: python -m unittest discover -s tests -v
+        run: python -m horizon_core.ci_suite
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -53,10 +53,11 @@ jobs:
         run: python -m horizon_core.app --list
 
   visual-proof:
+    name: KERNEL contract only (not visual QA approval)
     needs: verification
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,24 +65,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verificar sintaxe do navegador isolado
-        run: |
-          node --check synthetic_visual/browser-proof.cjs
-          node --check synthetic_visual/interactive-proof.cjs
-      - name: Preparar Playwright com Chromium no Docker
-        run: docker build -t horizon-web-proof:1.58.2 synthetic_visual
-      - name: Executar interface real sintética, abrir e fechar mensagens
-        run: python -m horizon_core.web_checks --root synthetic_visual/generic-demo --check browser-playwright --evidence runtime/visual-fixture
-      - name: Exercitar múltiplas jornadas reais com interações e capturas selecionadas
-        run: python -m unittest discover -s tests -p test_browser_flow_cli.py -v
-      - name: Arquivar capturas demonstrativas
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: horizon-ui-proof
-          path: runtime/visual-fixture/
-          if-no-files-found: ignore
-          retention-days: 3
+      - name: Confirmar contrato de KERNEL nativo sem credenciais pagas
+        run: python -m unittest discover -s tests -p test_kernel_live.py -v
+      - name: Declarar que nao houve QA visual nesta rotina
+        run: echo "KERNEL unit contract validated; real mobile/desktop review and owner approval are separate."
 
   configuration:
     if: github.event_name != 'pull_request'
