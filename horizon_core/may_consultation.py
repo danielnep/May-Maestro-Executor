@@ -241,7 +241,19 @@ def request_consultation(task, reason, *, api=None, question=None, round_index=0
             # An ambiguous send is deliberately NOT re-posted via GitHub.
             return {"status": "direct_pending", "agent": agent,
                     "ticket": key, "transport": "kernel"}
-        # A definitively unavailable browser may use the existing GitHub fallback.
+        # A browser-level blocker is NOT authorization to move the question
+        # to a public GitHub Issue. Defer the same ticket, preserving every draft.
+        # The worker's deferred_may_request retries only after this cooldown.
+        # Unknown post-click delivery remains direct_pending, never re-posted.
+        return {"status": "cooldown", "agent": agent,
+                "retry_after_seconds": 300,
+                "window_seconds": CONSULTATION_WINDOW_SECONDS,
+                "reason": "direct_browser_" + (
+                    direct_status if direct_status in (
+                        "composer_busy", "composer_unavailable",
+                        "conversation_unavailable", "not_authenticated",
+                        "transport_unavailable", "not_found", "not_configured")
+                    else "unavailable")}
     if not os.environ.get("GITHUB_TOKEN") and api is None:
         return {"status": "not_configured"}
     call = api or _github
