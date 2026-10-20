@@ -172,8 +172,67 @@ class DirectBrowserContractTests(unittest.TestCase):
                                      "What is the safest check to run?",
                                      environ={"KERNEL_API_KEY":"synthetic"},
                                      opener=opener)
-        self.assertEqual(result["status"], "delivery_unknown")
+        self.assertEqual(result["status"], "transport_unavailable")
         self.assertEqual(len(calls), 1)
+
+    def test_existing_tabs_only_and_foreign_drafts_block_every_send(self):
+        code = direct_chat._browser_code("qa-engineer", "a"*20,
+                                        "Inspect the approved public README first?",
+                                        "providers_unavailable", "send")
+        self.assertIn("context.pages().filter", code)
+        self.assertIn("if (busy) return {status: \"composer_busy\"}", code)
+        self.assertNotIn("central.goto(", code)
+        self.assertNotIn("newPage(", code)
+        self.assertNotIn(".fill(", code)
+        self.assertNotIn("fetch(", code)
+        self.assertIn("TICKET: ", code)
+
+    def test_remote_preclick_error_can_be_deferred_without_issue(self):
+        state = State(":memory:")
+        self.addCleanup(state.close)
+        task = {"task_id": "ronda-private", "agent": "qa-engineer",
+                "payload": {"may_public_context_allowed": True}}
+        with patch.dict("os.environ", {"GITHUB_TOKEN": "synthetic", "KERNEL_API_KEY": "synthetic"}, clear=True):
+            for status in ("composer_busy", "not_authenticated",
+                           "conversation_unavailable", "transport_unavailable"):
+                outcome = request_consultation(task, "providers_unavailable",
+                    state=state, direct_transport=lambda *a, **k: {"status": status})
+                self.assertEqual(outcome["status"], "cooldown")
+                self.assertEqual(outcome["retry_after_seconds"], 300)
+                self.assertEqual(outcome["reason"], "direct_browser_" + status)
+            self.assertEqual(state.recall("__runtime__", "qa-engineer"), {})
+
+    def test_uncertain_direct_delivery_keeps_same_ticket_no_public_issue(self):
+        state = State(":memory:")
+        self.addCleanup(state.close)
+        task = {"task_id": "ronda-private", "agent": "qa-engineer", "payload": {}}
+        with patch.dict("os.environ", {"GITHUB_TOKEN": "synthetic", "KERNEL_API_KEY": "synthetic"}, clear=True):
+            result = request_consultation(task, "providers_unavailable",
+                state=state, direct_transport=lambda *a, **k: {"status": "delivery_unknown"})
+        self.assertEqual(result["status"], "direct_pending")
+        self.assertEqual(result["transport"], "kernel")
+        self.assertEqual(result["ticket"], ticket(task["task_id"], task["agent"]))
+        self.assertEqual(state.recall("__runtime__", "qa-engineer")["may_direct_slots"][0]["ticket"],
+                         result["ticket"])
+
+    def test_no_authenticating_tab_does_not_start_new_browser_tab(self):
+        code = direct_chat._browser_code("horizon-skills", "e"*20,
+                                        "Which public README should be checked?",
+                                        "specialist_question", "send")
+        self.assertIn("return {status: \"conversation_unavailable\"}", code)
+        script_calls = []
+        class Completed:
+            returncode = 0
+            stdout = '{"status":"conversation_unavailable"}'
+        def fake_run(args, **kwargs):
+            script_calls.append(args[2])
+            return Completed()
+        outcome = direct_chat.execute_local("horizon-skills", "e"*20,
+            "Which public README should be checked?", runner=fake_run)
+        self.assertEqual(outcome["status"], "conversation_unavailable")
+        self.assertNotIn("context.newPage()", script_calls[0])
+        self.assertNotIn("await page.close()", script_calls[0])
+        self.assertIn("context.pages().find", script_calls[0])
 
     def test_direct_reply_is_untrusted_not_an_authorization(self):
         action = '{"action":"read_file","args":{"path":"README.md"},"summary":"Check it"}'

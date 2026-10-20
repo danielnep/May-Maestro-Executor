@@ -705,6 +705,65 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state.get(child)['status'], 'queued')
         self.assertIn('pending_may', result['checkpoint'])
 
+    def test_existing_unanswered_issue_may_consultation_uses_same_kernel_ticket(self):
+        from horizon_core.may_consultation import ticket
+        tid = 'old-outage-qa'
+        key = ticket(tid, 'qa-engineer')
+        self.state.enqueue(tid, 'qa-engineer', 'fixture',
+                           'Resume legitimate existing P0 QA ticket')
+        self.state.claim('old-worker')
+        self.state.checkpoint(tid, 'old-worker', {
+            'step': 0,
+            'history': [{'action':'may_provider_fallback', 'round':0,
+                         'outcome':{'status':'requested','ticket':key,'issue':66}}],
+            'pending_may': {'ticket':key,'round':0}})
+        self.state.defer(tid, 'old-worker', seconds=60)
+        now = self.state.get(tid)['not_before']+1
+        sent_calls = []
+        with patch('horizon_core.state.time.time',return_value=now), \
+             patch('horizon_core.worker.read_consultation',return_value=None), \
+             patch('horizon_core.worker.direct_chat.configured',return_value=True), \
+             patch('horizon_core.worker.direct_chat.execute',
+                   side_effect=lambda agent,key,**kwargs: (
+                     sent_calls.append((agent,key,kwargs)) or {'status':'sent'})):
+            queued=Worker(self.state,FakeGateway(
+                lambda *a:self.fail('No provider request expected')),self.root).run_one()
+        self.assertEqual(queued['status'],'queued')
+        self.assertEqual(queued['checkpoint']['pending_may']['ticket'],key)
+        self.assertEqual(queued['checkpoint']['pending_may']['transport'],'kernel')
+        self.assertEqual(len(sent_calls),1)
+        self.assertEqual(sent_calls[0][0],'qa-engineer')
+        self.assertEqual(sent_calls[0][1],key)
+        self.assertEqual(sent_calls[0][2]['mode'],'send')
+        self.assertEqual(sent_calls[0][2]['reason'],'providers_unavailable')
+        self.assertNotIn('issue',queued['checkpoint']['pending_may'])
+
+    def test_existing_issue_draft_busy_does_not_create_new_ticket_or_erase_draft(self):
+        from horizon_core.may_consultation import ticket
+        tid='old-outage-busy'
+        key=ticket(tid,'qa-engineer')
+        self.state.enqueue(tid,'qa-engineer','fixture','Keep draft during browser outage')
+        self.state.claim('old-worker')
+        self.state.checkpoint(tid,'old-worker',{
+            'step':0,
+            'history':[{'action':'may_provider_fallback','round':0,
+                        'outcome':{'status':'requested','ticket':key,'issue':70}}],
+            'pending_may':{'ticket':key,'round':0}})
+        self.state.defer(tid,'old-worker',seconds=60)
+        now=self.state.get(tid)['not_before']+1
+        with patch('horizon_core.state.time.time',return_value=now), \
+             patch('horizon_core.worker.read_consultation',return_value=None), \
+             patch('horizon_core.worker.direct_chat.configured',return_value=True), \
+             patch('horizon_core.worker.direct_chat.execute',
+                   return_value={'status':'composer_busy'}) as send:
+            queued=Worker(self.state,FakeGateway(
+                lambda *a:self.fail('No provider call expected')),self.root).run_one()
+        send.assert_called_once()
+        self.assertEqual(queued['status'],'queued')
+        self.assertEqual(queued['checkpoint']['pending_may'],
+                         {'ticket':key,'round':0})
+        self.assertGreater(queued['not_before'],now)
+
     def test_legacy_missing_child_does_not_bypass_consultation(self):
         parent_id = 'invalid-legacy'
         self.state.enqueue(parent_id, 'may-maestro', 'fixture', 'Keep unverified ticket')
