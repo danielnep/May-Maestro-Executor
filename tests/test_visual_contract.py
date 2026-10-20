@@ -1,7 +1,7 @@
 """A UI review requires measured mobile and desktop DOM, not Gemini image calls."""
 import unittest
 from horizon_core.registry import load_agent
-from horizon_core.visual_contract import requires_visual_review, visual_review_status
+from horizon_core.visual_contract import has_source_edits, requires_visual_review, visual_review_status
 
 def proof(*, mobile=True, desktop=True, passed=True, geometry=True, clicks=4, blocked=False):
     screenshots=[{"file":name+"-rendered.png","sha256":"a"*64}
@@ -26,6 +26,25 @@ class VisualReviewTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             requires_visual_review({"agent":"frontend-engineer",
                                     "payload":{"visual_review_required":"no"}})
+
+    def test_read_only_audit_does_not_require_post_edit_browser_proof(self):
+        task = {"agent": "horizon-ui-guardian"}
+        history = [{"action": "read_file", "outcome": {}},
+                   {"action": "remember", "outcome": {}},
+                   {"action": "run_check", "outcome": {"check": "browser-playwright",
+                                                     "passed": False}},
+                   {"action": "visual_evidence_required", "outcome": {}}]
+        self.assertFalse(has_source_edits(history))
+        self.assertFalse(requires_visual_review(task, history))
+        self.assertTrue(requires_visual_review(task))
+        self.assertTrue(requires_visual_review(
+            {"agent": "horizon-ui-guardian", "payload": {"visual_review_required": True}}, history))
+        self.assertTrue(requires_visual_review(task, history + [
+            {"action": "write_file", "outcome": {"sha256": "after", "before_sha256": "before"}}]))
+        self.assertFalse(requires_visual_review(task, history + [
+            {"action": "write_file", "outcome": {"sha256": "same", "before_sha256": "same"}}]))
+        self.assertFalse(requires_visual_review(task, history + [
+            {"action": "write_file", "outcome": {"tool_error": "ValueError"}}]))
 
     def test_both_viewports_required_after_last_edit(self):
         edit={"action":"write_file"}
