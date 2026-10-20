@@ -168,6 +168,48 @@
       "id": 933,
       "ref": "3acc93a22b09",
       "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T05:13:49Z",
+      "id": 938,
+      "ref": "3acc93a22b09",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T05:14:15Z",
+      "id": 953,
+      "ref": "3acc93a22b09",
+      "status": "concluiu"
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "at": "2026-10-20T05:14:17Z",
+      "id": 954,
+      "ref": "175fcce0a3f4",
+      "status": "iniciou"
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "at": "2026-10-20T05:15:46Z",
+      "id": 973,
+      "ref": "175fcce0a3f4",
+      "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T05:15:48Z",
+      "id": 974,
+      "ref": "08f40c5b70a8",
+      "status": "iniciou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T05:15:58Z",
+      "id": 977,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
     }
   ],
   "request_id": "a-ronda-pro-auditoria-total-20261019",
@@ -175,9 +217,51 @@
   "roster": [
     {
       "agent": "may-maestro",
-      "attempts": 0,
+      "attempts": 1,
       "ref": "3acc93a22b09",
+      "status": "concluido",
+      "step": 1
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "attempts": 0,
+      "ref": "175fcce0a3f4",
       "status": "aguardando",
+      "step": 4
+    },
+    {
+      "agent": "ui-ux-designer",
+      "attempts": 0,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando",
+      "step": 0
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "ref": "cbf18d747dc6",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "mobile-app-builder",
+      "attempts": 0,
+      "ref": "58d40897c9a8",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "ref": "a79a05c39981",
+      "status": "na_fila",
+      "step": 0
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 0,
+      "ref": "68616972be0c",
+      "status": "na_fila",
       "step": 0
     }
   ],
