@@ -588,6 +588,20 @@
       "id": 1147,
       "ref": "ab746bc96407",
       "status": "aguardando"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T09:14:13Z",
+      "id": 1150,
+      "ref": "ab746bc96407",
+      "status": "retomou"
+    },
+    {
+      "agent": "may-maestro",
+      "at": "2026-10-20T09:14:15Z",
+      "id": 1151,
+      "ref": "ab746bc96407",
+      "status": "aguardando"
     }
   ],
   "request_id": "a-ronda-pro-mobile-field-20261019",
