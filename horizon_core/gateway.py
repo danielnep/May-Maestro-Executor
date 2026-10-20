@@ -237,8 +237,14 @@ class GroqGateway(_HTTPGateway):
         payload = {"model": model,
                    "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
                    "response_format": {"type": "json_object"}}
-        if level == "high" and model.startswith("openai/gpt-oss-"):
-            payload["reasoning_effort"] = "high"
+        # Both Groq families support low/medium/high reasoning; keep reasoning out
+        # of the action JSON so it cannot be mistaken for a tool call.
+        if model == "qwen/qwen3.8-27b":
+            payload["reasoning_effort"] = "high" if level == "high" else "low"
+            payload["reasoning_format"] = "hidden"
+        elif model.startswith("openai/gpt-oss-"):
+            payload["reasoning_effort"] = "high" if level == "high" else "medium"
+            payload["reasoning_format"] = "hidden"
         if self.max_output_tokens is not None:
             payload["max_tokens"] = self.max_output_tokens
         request = urllib.request.Request(
