@@ -5,13 +5,34 @@ VISUAL_AGENTS = frozenset((
 ))
 
 
-def requires_visual_review(task):
+def has_source_edits(history):
+    """A read/remember/failed check does not count as a changed source file."""
+    if not isinstance(history, list):
+        return False
+    for item in history:
+        if not isinstance(item, dict) or item.get("action") != "write_file":
+            continue
+        outcome = item.get("outcome")
+        if not isinstance(outcome, dict) or outcome.get("tool_error"):
+            continue
+        before, after = outcome.get("before_sha256"), outcome.get("sha256")
+        if isinstance(before, str) and isinstance(after, str) and before == after:
+            continue
+        return True
+    return False
+
+
+def requires_visual_review(task, history=None):
     override = (task.get("payload") or {}).get("visual_review_required")
     if override is not None:
         if type(override) is not bool:
             raise ValueError("visual_review_required must be a boolean")
         return override
-    return task.get("agent") in VISUAL_AGENTS
+    if task.get("agent") not in VISUAL_AGENTS:
+        return False
+    # Preserve conservative callers that cannot supply history. The worker
+    # enforces post-edit proof only after source was actually changed.
+    return True if history is None else has_source_edits(history)
 
 
 def visual_review_status(history):
