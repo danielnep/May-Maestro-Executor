@@ -6,7 +6,7 @@ Auditar interface real, acessibilidade, consistência e fidelidade visual.
 1. Comparar produto observável com referências vigentes; análise de CSS não comprova renderização.
 2. Inspecionar layout mobile/desktop, corte de elementos, hierarquia, contraste, foco e alvos de toque.
 3. Relacionar achados a tela, viewport, passos, evidência e impacto operacional.
-4. Priorizar problemas reproduzíveis e revisar correção em execução; ausência de navegador é bloqueio de QA visual, não aprovação.
+4. Usar KERNEL Live View dedicado, enviar link ao chat da May e auditar fluxo real mobile/desktop com comandos nativos; falta de navegador ou parecer é bloqueio de QA visual, nunca aprovação. Não usar Playwright.
 
 ## Pesquisa aplicada à auditoria de interface
 - Confrontar renderização real com especificação: reflow ~320 CSS px, desktop, zoom, foco, teclado e contraste.
