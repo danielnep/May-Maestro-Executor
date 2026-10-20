@@ -302,16 +302,9 @@ class Worker:
                          'repair_source': reused['recipe_source']})
                     self.persist()
                     if reused['verified'] and requires_visual_review(task):
-                        try:
-                            browser = tools.run_check({'name': 'browser-playwright'})
-                        except (OSError, ValueError, RuntimeError) as error:
-                            browser = {'check':'browser-playwright','passed':False,
-                                       'reason':type(error).__name__}
-                        history.append({'action':'run_check',
-                           'summary':'automatic dual-viewport QA after reused fix',
-                           'outcome':browser})
-                        checks.append(browser)
-                        reused['verified'] = visual_review_status(history)['verified']
+                        # Cached repairs still require a NEW authenticated KERNEL
+                        # visual review; unit tests never authorize UI publication.
+                        reused['verified'] = False
                     if reused['verified']:
                         result = {'agent': agent['id'],
                                   'summary': 'Exact verified repair reused; isolated check passed',
@@ -459,36 +452,43 @@ class Worker:
                 if name == 'finish':
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                     if requires_visual_review(task):
-                        visual = visual_review_status(history)
-                        if visual['reason'] == 'browser_check_missing_after_edit':
-                            # Mandatory runtime verification, never an optional LLM suggestion.
+                        # Source inspection is NOT functional UI approval.
+                        # Never execute Playwright or treat an unattended screenshot
+                        # as May's live-browser review.
+                        live_review = previous.get('kernel_review')
+                        if not isinstance(live_review, dict):
                             try:
-                                actual = tools.run_check({'name': 'browser-playwright'})
-                            except (OSError, ValueError, RuntimeError) as exc:
-                                actual = {'check': 'browser-playwright', 'passed': False,
-                                          'reason': type(exc).__name__}
-                            checks.append(actual)
-                            history.append({'action': 'run_check',
-                                'summary': 'automatic mobile and desktop Chromium validation',
-                                'outcome': actual})
-                            visual = visual_review_status(history)
-                        if not visual['verified']:
-                            step += 1
-                            failure_counts['missing_visual_evidence'] = failure_counts.get('missing_visual_evidence', 0) + 1
-                            history.append({'action': 'visual_evidence_required',
-                              'outcome': {'reason': visual['reason'],
-                              'instruction': 'Fix the precise failed browser scenario and rerun real mobile and desktop layout checks. A Gemini screenshot call is optional when DOM evidence is ambiguous.'}})
-                            self.state.checkpoint(task_id, self.worker_id,
-                                {'step': step, 'history': history, 'checks': checks,
-                                 'delegated': delegated, 'failure_counts': failure_counts})
-                            if failure_counts['missing_visual_evidence'] >= 3:
-                                self.state.fail(task_id, self.worker_id,
-                                    {'reason': 'visual_evidence_missing', 'detail': visual['reason'],
-                                     'max_identical_failures': 3}, retryable=False)
+                                from .kernel_live import prepare_live_review
+                                live_review = prepare_live_review(task)
+                            except Exception as exc:
+                                live_review = {'check': 'kernel-live', 'passed': False,
+                                               'review_status': type(exc).__name__}
+                            history.append({'action': 'kernel_live_requested',
+                                            'summary': 'Await May live visual and functional review',
+                                            'outcome': {'check': 'kernel-live',
+                                                        'status': live_review.get('review_status')}})
+                        checkpoint = {'step': step, 'history': history, 'checks': checks,
+                                      'delegated': delegated, 'failure_counts': failure_counts,
+                                      'kernel_review': live_review}
+                        if live_review.get('approved_by_owner') is not True:
+                            self.state.checkpoint(task_id, self.worker_id, checkpoint)
+                            self.state.defer(task_id, self.worker_id, seconds=900)
                             self.persist()
-                            if failure_counts['missing_visual_evidence'] >= 3:
-                                return self.state.get(task_id)
-                            continue
+                            return self.state.get(task_id)
+                        # Only the controller may attach an authenticated owner
+                        # receipt to the checkpoint. A model-generated finish
+                        # cannot fabricate this flag.
+                        checks.append({'check': 'kernel-live', 'passed': True,
+                                       'tests_run': live_review['verified_scenarios'],
+                                       'source': 'authenticated_owner_review',
+                                       'simulated': False})
+                        history.append({'action': 'kernel_review_verified',
+                                        'outcome': {'source': 'authenticated_owner_review',
+                                                    'passed': True}})
+                        self.state.checkpoint(task_id, self.worker_id,
+                            {'step': step, 'history': history, 'checks': checks,
+                             'delegated': delegated, 'failure_counts': failure_counts,
+                             'kernel_review': live_review})
                     # A completed May plan must not leave stale pending work in
                     # the durable checkpoint after its last validated action.
                     if pending_may or recovery_pending or previous.get('may_plan'):
