@@ -38,7 +38,7 @@ if (request.url !== "https://chatgpt.com/c/6ad68dab-1178-83e9-a409-7c7014281b68"
 const central = page;
 const current = central.url().split("?")[0];
 if (current !== request.url) {
-  if (current !== "about:blank" || request.stage !== "prepare")
+  if (current !== "about:blank" || !["prepare", "read"].includes(request.stage))
     return {status: "conversation_unavailable"};
   await central.goto(request.url, {waitUntil: "domcontentloaded"});
 }
@@ -215,57 +215,93 @@ def execute(agent, key, question="", reason="specialist_question", *,
 
 def execute_local(agent, key, question="", reason="specialist_question", *,
                   mode="send", runner=None):
-    """Run from the SAME KERNEL browser VM, as in the proven external test.
+    """Inside a KERNEL browser VM: Playwright inspects, X11 clicks and types.
 
-    This endpoint is loopback inside KERNEL, not the GitHub runner's localhost.
-    It uses Playwright Core over Chrome DevTools Protocol in a subordinate Node
-    process; Python handles the external agent contract. Never start Chrome,
-    read cookies or copy a browser websocket URL into state.
+    The old local Playwright .fill/.click path is deliberately removed. Native
+    key input uses Shift+Return for line breaks, then checks the exact composer
+    text before pressing Return. A missing X11 controller fails closed.
     """
-    browser_code = _browser_code(agent, key, question, reason, mode)
-    js = """
+    prepare = _browser_code(agent, key, question, reason, mode, stage="prepare")
+    draft = _browser_code(agent, key, question, reason, mode, stage="draft")
+    read = _browser_code(agent, key, question, reason, mode, stage="read")
+    prompt_json = json.dumps(_prompt(agent, key, question, reason) if mode == "send" else "",
+                             ensure_ascii=False)
+    script = r"""
 const {chromium} = require('/usr/local/lib/node_modules/playwright-core');
-(async()=> {
-  const browser = await chromium.connectOverCDP(
-    'http://127.0.0.1:9222', {timeout: 7000});
+const {spawnSync} = require('node:child_process');
+(async()=>{
+  const browser = await chromium.connectOverCDP('http://127.0.0.1:9222',
+                                                {timeout:7000});
   const contexts = browser.contexts();
-  if(contexts.length !== 1) throw Error('Unrecognized browser context');
-  const context = contexts[0];
-  const page = await context.newPage();
+  if (contexts.length !== 1) throw Error('Unrecognized browser context');
+  const context = contexts[0], page = await context.newPage();
+  const inspect = async(stage) => {
+    if (stage === 'prepare') return await (async()=>{ BROWSER_PREPARE })();
+    if (stage === 'draft') return await (async()=>{ BROWSER_DRAFT })();
+    return await (async()=>{ BROWSER_READ })();
+  };
+  const native = (args) => {
+    const p = spawnSync('xdotool',args,{stdio:'ignore',timeout:15000});
+    if (p.error || p.status !== 0) throw Error('kernel_local_input_unavailable');
+  };
   let outcome;
   try {
-    outcome = await (async()=>{ BROWSER_CODE })();
+    if (MODE === 'read') {
+      outcome = await inspect('read');
+    } else {
+      const initial = await inspect('prepare');
+      if (initial.status !== 'ready') {
+        outcome = initial;
+      } else {
+        // Probe before touching the GUI; never perform DOM-based submission.
+        native(['--version']);
+        const b = initial.box;
+        if (!b || !Number.isInteger(b.x) || !Number.isInteger(b.y))
+          throw Error('kernel_local_composer_unavailable');
+        native(['mousemove', String(b.x), String(b.y)]);
+        native(['click','1']);
+        const lines = PROMPT.split('\n');
+        for (let i=0;i<lines.length;i++) {
+          if (lines[i]) native(['type','--clearmodifiers','--delay','2','--',lines[i]]);
+          if (i+1<lines.length) native(['key','shift+Return']);
+        }
+        const checked=await inspect('draft');
+        if (checked.status !== 'draft_ready') {
+          // No attempt to clear the field: the draft belongs to the owner.
+          outcome = {status:'delivery_unknown'};
+        } else {
+          native(['key','Return']);
+          const posted = await inspect('read');
+          outcome = posted.status === 'not_found'
+            ? {status:'send_unconfirmed'} : posted;
+        }
+      }
+    }
   } finally {
     await page.close();
+    await browser.close();
   }
-  // Disconnect only this worker process. Do not close Chrome or its profile.
-  process.stdout.write(JSON.stringify(outcome) + '\\n', () => process.exit(0));
-})().catch(e=>{
-  process.stderr.write('kernel_local_unavailable\\n', () => process.exit(2));
+  process.stdout.write(JSON.stringify(outcome)+'\n',()=>process.exit(0));
+})().catch(()=>{
+  // No upstream browser bodies, text or secrets in stderr.
+  process.stderr.write('kernel_local_unavailable\n',()=>process.exit(2));
 });
-""".replace("BROWSER_CODE", browser_code)
+""".replace("BROWSER_PREPARE", prepare).replace("BROWSER_DRAFT", draft).replace(
+        "BROWSER_READ", read).replace("MODE", json.dumps(mode)).replace(
+        "PROMPT", prompt_json)
     call = runner or subprocess.run
     try:
-        result = call(["node", "-e", js], capture_output=True, text=True,
+        result = call(["node", "-e", script], capture_output=True, text=True,
                       timeout=MAX_TIMEOUT + 10, check=False)
     except (OSError, subprocess.TimeoutExpired):
-        return {"status": "delivery_unknown", "ticket": key, "agent": agent}
+        return _status(None, agent, key)
     if result.returncode:
-        return {"status": "local_browser_unavailable", "ticket": key, "agent": agent}
+        # The subprocess may have failed after touching the composer.
+        return _status(None, agent, key)
     try:
-        response = json.loads(result.stdout.strip())
+        payload = json.loads(result.stdout.strip())
     except (ValueError, TypeError):
-        return {"status": "delivery_unknown", "ticket": key, "agent": agent}
-    if not isinstance(response, dict) or response.get("status") not in (
-            "answered", "sent", "pending_interleaved", "send_unconfirmed",
-            "not_found", "not_authenticated", "conversation_unavailable",
-            "composer_busy"):
-        return {"status": "delivery_unknown", "ticket": key, "agent": agent}
-    output = {"status": response["status"], "ticket": key, "agent": agent}
-    if response["status"] == "answered":
-        value = response.get("answer")
-        if not isinstance(value, str) or not value:
-            return {"status": "delivery_unknown", "ticket": key, "agent": agent}
-        output["answer"] = value[:MAX_REPLY]
-    return output
-
+        return _status(None, agent, key)
+    if isinstance(payload, dict) and payload.get("status") == "not_found" and mode == "send":
+        payload = {"status": "send_unconfirmed"}
+    return _status(payload, agent, key)
