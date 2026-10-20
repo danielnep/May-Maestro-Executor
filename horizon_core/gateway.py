@@ -289,7 +289,7 @@ class GroqGateway(_HTTPGateway):
                                   "oversized_prompt")
             if reservation is not None:
                 receipt = reservation
-                payload["max_tokens"] = output_cap
+                payload["max_completion_tokens"] = output_cap
                 break
             if attempt == 0 and wait <= 20:
                 time.sleep(wait + 0.05)
