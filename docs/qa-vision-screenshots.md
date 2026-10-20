@@ -26,3 +26,7 @@
 ## Aceite P0 Ronda Pro
 
 Vigia/Ronda, Vistoriador e site/COI/Admin devem ter perfis/estados testados em viewport real, incluindo arrastos por toda superfície das barras, foco/teclado, ícones sem deformação, animações sem instabilidade de clique, chat visível e controles com cores corretas. **Uma captura aprovada não prova gesto nem APK Android**. Exigir capturas e provas das ações após cada reparo, e inspeção visual real quando a composição exigir julgamento.
+
+## Revisão pública pela Central Horizon
+
+A arquitetura principal de testes navegáveis já é `interactive-flows-v1`, em `synthetic_visual/interactive-proof.cjs`, com `flows` para mobile e desktop; **não criar um segundo executor de fluxos no smoke genérico**. Na consulta V2 de um projeto `ronda-pro`, o operador já aprovou o preview público fixo `https://danielnep.github.io/app-hondas-maxvel/`; o ticket pode incluir esse link, mas não imagens locais, dados de cliente nem sessões autenticadas. May reproduz os gestos na interface do navegador KERNEL quando for auditoria visual; o agente permanece responsável pelos testes locais e por corrigir a implementação.
