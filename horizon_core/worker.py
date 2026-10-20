@@ -7,10 +7,6 @@ import time
 import os
 from .context_budget import compact_memory, compact_history
 from .gateway import GatewayError, validate_action
-from .may_consultation import (read_consultation, read_direct_consultation,
-                               request_consultation, ticket as may_ticket,
-                               _public_question)
-from . import direct_chat
 from .registry import load_agent
 from .tools import Tools
 from .deterministic import inspect_project, execute_read_only_with_retry
@@ -205,139 +201,18 @@ class Worker:
             tools = Tools(self.root, agent, task['payload'].get('allowed_paths', []), task['payload'].get('branch'),
                           **tool_options)
             previous = task.get('checkpoint') or {}
-            deferred_request = previous.get('deferred_may_request')
-            if deferred_request:
-                # Retry this exact consultation without another model call.
-                # Waiting on a rate limit never consumes task retries.
-                try:
-                    resumed = request_consultation(
-                        task, deferred_request['reason'],
-                        question=deferred_request.get('question'),
-                        round_index=deferred_request['round'], state=self.state)
-                except Exception:
-                    resumed = {'status': 'integration_unavailable'}
-                if resumed.get('status') == 'cooldown':
-                    self.state.defer(task_id, self.worker_id,
-                        seconds=max(60, min(3600, int(resumed['retry_after_seconds']))))
-                    self.persist()
-                    return self.state.get(task_id)
-                if resumed.get('status') not in ('requested', 'already_requested', 'direct_pending'):
-                    self.state.fail(task_id, self.worker_id,
-                        {'kind': 'MayConsultationUnavailable',
-                         'reason': resumed.get('status', 'unknown')}, retryable=True)
-                    self.persist()
-                    return self.state.get(task_id)
-                updated = dict(previous)
-                updated.pop('deferred_may_request', None)
-                name = ('consult_may' if deferred_request['reason'] == 'specialist_question'
-                        else 'may_provider_fallback')
-                updated['history'] = list(previous.get('history') or []) + [{
-                    'action': name, 'round': deferred_request['round'],
-                    'summary': 'Technical consultation requested after cooldown',
-                    'outcome': resumed}]
-                if name == 'consult_may':
-                    updated['step'] = int(previous.get('step', 0)) + 1
-                updated['pending_may'] = {'ticket': resumed['ticket'],
-                                          'round': deferred_request['round'],
-                                          **({'transport': 'kernel'}
-                                             if resumed.get('transport') == 'kernel' else {})}
-                self.state.checkpoint(task_id, self.worker_id, updated)
-                self.state.defer(task_id, self.worker_id,
-                    seconds=75 if resumed.get('status') == 'direct_pending' else 300)
+            # Legacy consultation checkpoints are migrated to local model retry.
+            # Preserve real work and tests, but never re-send or consume May tickets.
+            obsolete = ('pending_may', 'deferred_may_request', 'may_plan', 'may_reply_status')
+            if any(key in previous for key in obsolete):
+                previous = {key: value for key, value in previous.items() if key not in obsolete}
+                self.state.checkpoint(task_id, self.worker_id, previous)
                 self.persist()
-                return self.state.get(task_id)
-            # The owner-authenticated issue reply can supply a bounded plan of
-            # individually authorized tool steps, checkpointed after each one.
-            # It never expands this specialist's tool or filesystem permissions.
             may_advice = None
             may_decision = None
-            may_decisions = list(previous.get('may_plan') or [])
-            pending_may = previous.get('pending_may')
+            may_decisions = []
+            pending_may = None
             recovery_pending = None
-            if pending_may:
-                # The durable DAG has already been checked above. No reply to
-                # a superseded ticket is required when its children were proven.
-                # Older checkpoints use a plain hash (round zero).
-                pending_round = pending_may.get('round', 0) if isinstance(pending_may, dict) else 0
-                is_direct = (isinstance(pending_may, dict)
-                             and pending_may.get('transport') == 'kernel')
-                provider_fallback = any(
-                    row.get('action') == 'may_provider_fallback'
-                    and row.get('round', 0) == pending_round
-                    for row in previous.get('history', []))
-                try:
-                    if is_direct:
-                        response = read_direct_consultation(
-                            task_id, agent=agent['id'], round_index=pending_round)
-                    else:
-                        response = read_consultation(
-                            task_id, agent=agent['id'], round_index=pending_round)
-                except Exception:
-                    response = None
-                # Preserve existing Issues while giving their unanswered V2
-                # outage tickets the same authenticated Railway browser route.
-                # No sensitive task payload enters the public prompt.
-                if (response is None and not is_direct and provider_fallback
-                        and direct_chat.configured()
-                        and isinstance(pending_may, dict)
-                        and pending_may.get('ticket') == may_ticket(
-                            task_id, agent['id'], pending_round)):
-                    question = _public_question(task, None, 'providers_unavailable')
-                    try:
-                        sent = direct_chat.execute(
-                            agent['id'], pending_may['ticket'],
-                            question=question, reason='providers_unavailable',
-                            mode='send')
-                    except (direct_chat.DirectChatError, ValueError):
-                        sent = {'status': 'transport_unavailable'}
-                    if sent.get('status') in (
-                            'sent', 'answered', 'send_unconfirmed',
-                            'delivery_unknown', 'pending_interleaved'):
-                        # Possible delivery uncertainty: future cycles only
-                        # READ this exact ticket without creating another Issue.
-                        updated = dict(previous)
-                        updated['pending_may'] = dict(pending_may,
-                                                      transport='kernel')
-                        self.state.checkpoint(task_id, self.worker_id, updated)
-                        self.state.defer(task_id, self.worker_id, seconds=75)
-                        self.persist()
-                        return self.state.get(task_id)
-                    # If another tab contains a draft, preserve it and wait.
-                    # No new ticket, Issue, or browser tab is created.
-                    self.state.defer(task_id, self.worker_id, seconds=300)
-                    self.persist()
-                    return self.state.get(task_id)
-                if response is not None:
-                    may_decisions = list(response.get('decisions_untrusted') or (
-                        [response['decision_untrusted']] if response.get('decision_untrusted') else []))
-                    may_advice = response.get('advice_untrusted') or None
-                if provider_fallback and not may_decisions:
-                    # A missing or diagnosis-only May reply cannot indefinitely
-                    # suppress healthy models. Recheck every 15 minutes, keeping
-                    # the EXACT original ticket to avoid duplicate public issues.
-                    retry_after = (pending_may.get('provider_retry_after', 0)
-                                   if isinstance(pending_may, dict) else 0)
-                    if time.time() >= retry_after:
-                        recovery_pending = dict(pending_may)
-                        previous = dict(previous)
-                        previous.pop('pending_may', None)
-                        previous.pop('may_reply_status', None)
-                        pending_may = None
-                    else:
-                        self.state.defer(task_id, self.worker_id,
-                                         seconds=75 if is_direct else 300)
-                        self.persist()
-                        return self.state.get(task_id)
-                elif response is None:
-                    # An explicit specialist question still requires May's reply.
-                    self.state.defer(task_id, self.worker_id,
-                                     seconds=75 if is_direct else 300)
-                    self.persist()
-                    return self.state.get(task_id)
-            for planned in may_decisions:
-                validate_action(planned, agent['tools'])
-            if any(item['action'] == 'finish' for item in may_decisions[:-1]):
-                raise ValueError('May plan must place finish last')
             step = previous.get('step', 0)
             start_step = step
             history = previous.get('history', [])
@@ -467,57 +342,6 @@ class Worker:
                 name, args = action['action'], action.get('args', {})
                 if name not in agent['tools']:
                     raise ValueError('Specialist capability denied')
-                if name == 'consult_may':
-                    # This is a specialist-requested OPTIONAL third route.
-                    # A model's question never authorizes public disclosure;
-                    # the task contract must enable it separately.
-                    consultation_round = sum(
-                        row.get('action') in ('consult_may', 'may_provider_fallback')
-                        and isinstance(row.get('outcome'), dict)
-                        and row['outcome'].get('status') in ('requested', 'already_requested', 'direct_pending')
-                        for row in history)
-                    result = request_consultation(
-                        task, 'specialist_question', question=args.get('question'),
-                        round_index=consultation_round, state=self.state)
-                    if result.get('status') == 'cooldown':
-                        self.state.checkpoint(task_id, self.worker_id,
-                            {'step': step, 'history': history, 'checks': checks,
-                             'delegated': delegated, 'failure_counts': failure_counts,
-                             'deferred_may_request': {
-                                 'reason': 'specialist_question',
-                                 'question': args.get('question'),
-                                 'round': consultation_round}})
-                        self.state.defer(task_id, self.worker_id,
-                            seconds=max(60, min(3600, int(result['retry_after_seconds']))))
-                        self.persist()
-                        return self.state.get(task_id)
-                    step += 1
-                    history.append({'action': 'consult_may', 'summary': 'Technical consultation requested',
-                                    'round': consultation_round, 'outcome': result})
-                    if result.get('status') in ('requested', 'already_requested', 'direct_pending'):
-                        self.state.checkpoint(task_id, self.worker_id,
-                            {'step': step, 'history': history, 'checks': checks,
-                             'delegated': delegated, 'failure_counts': failure_counts,
-                             'pending_may': {'ticket': result['ticket'],
-                                             'round': consultation_round,
-                                             **({'transport': 'kernel'}
-                                                if result.get('transport') == 'kernel' else {})}})
-                        self.state.defer(task_id, self.worker_id,
-                            seconds=75 if result.get('status') == 'direct_pending' else 300)
-                        self.persist()
-                        return self.state.get(task_id)
-                    failure_counts['consultation_blocked'] = failure_counts.get('consultation_blocked',0)+1
-                    self.state.checkpoint(task_id, self.worker_id,
-                        {'step': step, 'history': history, 'checks': checks,
-                         'delegated': delegated, 'failure_counts': failure_counts})
-                    if failure_counts['consultation_blocked'] >= 3:
-                        self.state.fail(task_id, self.worker_id,
-                            {'reason':'consultation_blocked','status':result.get('status')},
-                            retryable=False)
-                        self.persist()
-                        return self.state.get(task_id)
-                    self.persist()
-                    continue
                 if name == 'finish':
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                     if requires_visual_review(task):
@@ -611,7 +435,7 @@ class Worker:
                                  'provider':error.provider, 'reason':error.reason,
                                  'status':error.status, 'retryable':error.retryable,
                                  'actual_image_analyzed':False,
-                                 'next_action':'Use verified DOM/browser findings. Retry visual analysis only when a configured image-capable provider is available, or request a May review of a public-safe screenshot.'}
+                                 'next_action':'Use verified DOM/browser findings. Retry visual analysis only when a configured image-capable provider is available, and retry the configured vision provider when available.'}
                     except (ValueError,OSError) as error:
                         outcome={'tool_error':type(error).__name__, 'actual_image_analyzed':False,
                                  'message':str(error)[:300],
@@ -716,68 +540,8 @@ class Worker:
                     {key: failure.get(key) for key in ('provider', 'reason', 'status', 'retryable')}
                     for failure in error.failures if isinstance(failure, dict)
                 ]
-            if isinstance(error, GatewayError) and error.reason == 'providers_unavailable':
-                record_failure(self.state, task['project'], task['agent'], task_id,
-                               'provider_unavailable', action='model_gateway')
-                if recovery_pending is not None:
-                    # This same consultation was already issued. Keep its ticket
-                    # and task progress; retry providers later without reopening
-                    # issues, exhausting failure attempts or fabricating success.
-                    self.state.checkpoint(task_id, self.worker_id,
-                        {'step': step, 'history': history, 'checks': checks,
-                         'delegated': delegated, 'failure_counts': failure_counts,
-                         'pending_may': dict(recovery_pending,
-                            provider_retry_after=time.time() + 900)})
-                    # A May response can be executable before a model recovers.
-                    # Check its ticket promptly without hammering Gemini/DeepSeek.
-                    self.state.defer(task_id, self.worker_id,
-                        seconds=75 if recovery_pending.get('transport') == 'kernel' else 300)
-                    self.persist()
-                    return self.state.get(task_id)
-                consultation_round = sum(
-                    row.get('action') in ('consult_may', 'may_provider_fallback')
-                    and isinstance(row.get('outcome'), dict)
-                    and row['outcome'].get('status') in ('requested', 'already_requested', 'direct_pending')
-                    for row in history)
-                try:
-                    consultation = request_consultation(
-                        task, error.reason, round_index=consultation_round, state=self.state)
-                except Exception:
-                    consultation = {'status': 'integration_unavailable'}
-                if consultation.get('status') == 'cooldown':
-                    self.state.checkpoint(task_id, self.worker_id,
-                        {'step': step, 'history': history, 'checks': checks,
-                         'delegated': delegated, 'failure_counts': failure_counts,
-                         'deferred_may_request': {'reason': error.reason,
-                                                  'round': consultation_round}})
-                    self.state.defer(task_id, self.worker_id,
-                        seconds=max(60, min(3600,
-                                            int(consultation['retry_after_seconds']))))
-                    self.persist()
-                    return self.state.get(task_id)
-                # Preserve the legacy safe error shape if no May channel is
-                # configured; record the side channel only when it exists.
-                if consultation.get('status') not in ('not_configured', 'not_applicable'):
-                    details['may_consultation'] = consultation
-                if consultation.get('status') in ('requested', 'already_requested', 'direct_pending'):
-                    # Durable per-agent cooldown protects May without imposing
-                    # a terminal cap on legitimate reasoning requests.
-                    history.append({'action': 'may_provider_fallback',
-                                    'round': consultation_round, 'outcome': consultation})
-                    # Suspend this specialist pending May's OWN reasoning.
-                    # Never waste Gemini/DeepSeek tokens or retry attempts in
-                    # a five-minute loop while an external answer is pending.
-                    self.state.checkpoint(task_id, self.worker_id,
-                        {'step': step, 'history': history, 'checks': checks,
-                         'delegated': delegated, 'failure_counts': failure_counts,
-                         'pending_may': {'ticket': consultation['ticket'],
-                                         'round': consultation_round,
-                                         **({'transport': 'kernel'}
-                                            if consultation.get('transport') == 'kernel' else {})}})
-                    self.state.defer(task_id, self.worker_id,
-                        seconds=75 if consultation.get('status') == 'direct_pending' else 300)
-                    self.persist()
-                    return self.state.get(task_id)
+            # Provider outages remain retryable in the durable local queue.
+            # They must never create a ChatGPT ticket or wait for May.
             self.state.fail(task_id, self.worker_id, details, retryable=retryable)
             self.persist()
             return self.state.get(task_id)
