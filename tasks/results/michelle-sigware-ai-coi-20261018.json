@@ -93,7 +93,8 @@
         "tests_run": 0
       }
     ],
-    "qa_missing_evidence": []
+    "qa_missing_evidence": [],
+    "qa_missing_for_publication": false
   },
   "request_id": "michelle-sigware-ai-coi-20261018",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/michelle-sigware-ai-coi-20261018.json",
