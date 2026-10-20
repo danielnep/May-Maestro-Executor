@@ -59,11 +59,7 @@
     {
       "agent": "ui-ux-designer",
       "attempts": 0,
-      "blocker": {
-        "code": "awaiting_may_consultation",
-        "round": 1,
-        "ticket": "d70e81262606caa9f6f3"
-      },
+      "blocker": null,
       "model_used": null,
       "status": "queued",
       "summary": "",
