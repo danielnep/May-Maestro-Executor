@@ -487,6 +487,9 @@ class Worker:
                             try:
                                 from .kernel_live import prepare_live_review
                                 live_review = prepare_live_review(task)
+                                if live_review.get('review_status') == 'awaiting_may_visual_review':
+                                    from .kernel_live import send_live_review
+                                    live_review['chat_delivery'] = send_live_review(live_review, task_id)
                             except Exception as exc:
                                 live_review = {'check': 'kernel-live', 'passed': False,
                                                'review_status': type(exc).__name__}
