@@ -1,8 +1,134 @@
 {
-  "error": {
-    "kind": "GitHubStateError"
+  "delivery_mode": "read_result_in_chat",
+  "may_review": {
+    "branch": null,
+    "commit": null,
+    "handoff_mode": "durable_github_result_not_chat_push",
+    "notes": "No verified published preview and complete QA yet; do not claim an audit link was sent.",
+    "preview_url": null,
+    "repository": null,
+    "required_review": [
+      "mobile_and_desktop_flows",
+      "motion_and_transitions",
+      "gestures_and_dismissal",
+      "visual_hierarchy_icons_and_states"
+    ],
+    "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/a-ronda-pro-auditoria-total-20261019.json",
+    "status": "in_progress"
   },
-  "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
+  "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
+  "publication": {
+    "published": false,
+    "reason": "No generated workspace files"
+  },
+  "quality": {
+    "approved": false,
+    "failed_checks": [],
+    "qa_missing_evidence": [
+      "chat-a-ronda-pro-auditoria-total-20261019:ronda-cross-qa"
+    ],
+    "qa_missing_for_publication": false
+  },
   "request_id": "a-ronda-pro-auditoria-total-20261019",
-  "status": "blocked"
+  "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/a-ronda-pro-auditoria-total-20261019.json",
+  "status": "pending",
+  "tasks": [
+    {
+      "agent": "may-maestro",
+      "attempts": 1,
+      "blocker": null,
+      "model_used": null,
+      "status": "succeeded",
+      "summary": "P0 do Ronda Pro: orquestracao delegada sob escopo autorizado. Implementacao, testes, branch e entrega ainda pendentes.",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019",
+      "verification": []
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "attempts": 1,
+      "blocker": {
+        "code": "task_failed",
+        "reason": "visual_evidence_missing"
+      },
+      "model_used": null,
+      "status": "failed",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:audit-ui",
+      "verification": []
+    },
+    {
+      "agent": "ui-ux-designer",
+      "attempts": 0,
+      "blocker": {
+        "code": "awaiting_may_consultation",
+        "round": 1,
+        "ticket": "d70e81262606caa9f6f3"
+      },
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:audit-ux",
+      "verification": []
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "blocker": {
+        "code": "task_blocked",
+        "failed_dependencies": [
+          "chat-a-ronda-pro-auditoria-total-20261019:audit-ui"
+        ]
+      },
+      "model_used": null,
+      "status": "blocked",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:frontend-source-fixes",
+      "verification": []
+    },
+    {
+      "agent": "mobile-app-builder",
+      "attempts": 0,
+      "blocker": {
+        "code": "task_blocked",
+        "failed_dependencies": [
+          "chat-a-ronda-pro-auditoria-total-20261019:frontend-source-fixes"
+        ]
+      },
+      "model_used": null,
+      "status": "blocked",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:native-field-check",
+      "verification": []
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "blocker": {
+        "code": "task_blocked",
+        "failed_dependencies": [
+          "chat-a-ronda-pro-auditoria-total-20261019:native-field-check"
+        ]
+      },
+      "model_used": null,
+      "status": "blocked",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:ronda-cross-qa",
+      "verification": []
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 0,
+      "blocker": {
+        "code": "task_blocked",
+        "failed_dependencies": [
+          "chat-a-ronda-pro-auditoria-total-20261019:ronda-cross-qa"
+        ]
+      },
+      "model_used": null,
+      "status": "blocked",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:corregedoria-final",
+      "verification": []
+    }
+  ]
 }
