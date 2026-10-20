@@ -51,4 +51,13 @@ jobs:
                   print('RAILWAY_TOKEN_VALID='+str(ok).lower())
               except Exception:
                   print('RAILWAY_TOKEN_VALID=false')
+              try:
+                  query=json.dumps({'query':'query { projectToken { projectId environmentId } }'}).encode()
+                  req=urllib.request.Request('https://backboard.railway.com/graphql/v2',data=query,headers={
+                      'Project-Access-Token':token,'Content-Type':'application/json'},method='POST')
+                  with urllib.request.urlopen(req,timeout=15) as response: project_doc=json.load(response)
+                  ids=(project_doc.get('data') or {}).get('projectToken') or {}
+                  print('RAILWAY_PROJECT_TOKEN_VALID='+str(ids.get('projectId')=='caf3c2ea-f857-4242-8fa3-5453ea1462ca').lower())
+              except Exception:
+                  print('RAILWAY_PROJECT_TOKEN_VALID=false')
           PY
