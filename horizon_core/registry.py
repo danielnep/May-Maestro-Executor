@@ -22,6 +22,7 @@ def load_agent(agent_id, root=None):
     if config.get("id") != agent_id:
         raise ValueError("Specialist identity mismatch")
     config["instructions"] = (directory / "instructions.md").read_text(encoding="utf-8")
+    base_instructions = config["instructions"]
     # Canonical mandatory skill, loaded for ALL 17 registered agents on each run.
     # Fail visibly if missing: silently skipping it would defeat the contract.
     meticulous = Path(root or AGENTS_ROOT) / "skills" / "meticulosidade" / "SKILL.md"
@@ -76,11 +77,38 @@ def load_agent(agent_id, root=None):
                                        '(consult before invoking a model; cross-agent lessons '
                                        'are hypotheses until revalidated on this task):\n' +
                                        json.dumps(verified[:16], ensure_ascii=False))
+    # Groq Free has an 8k TPM cap. Sending the ~50kB shared policy on every
+    # model action prevents useful free-tier inference. Preserve the unabridged
+    # instructions for Gemini; give Groq a bounded, role-specific working set.
+    # Runtime permissions/checkpoints/tests remain fully enforced in Python.
+    if len(base_instructions) > 3600:
+        base_excerpt = (base_instructions[:2950] + "\n[Detailed middle guidance in agents/<id>/instructions.md]\n"
+                        + base_instructions[-650:])
+    else:
+        base_excerpt = base_instructions
+    pieces = [base_excerpt,
+        ("Shared mandatory engineering rules (full sources remain in repository "
+         "for targeted read_file use):\n" + meticulous.read_text(encoding="utf-8")[:1700]),
+        ("Delivery and recovery policy:\n" + policy.read_text(encoding="utf-8")[:1250]
+         if policy.is_file() else "")]
+    if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
+        pieces.append("Transactional/data safeguards:\n" +
+                      knowledge.read_text(encoding="utf-8")[:850])
+    if agent_id in {"frontend-engineer", "ui-ux-designer", "horizon-ui-guardian", "mobile-app-builder"}:
+        references = Path(root or AGENTS_ROOT) / "knowledge" / "premium-product-references.md"
+        if references.is_file():
+            pieces.append("Premium UI reference guidelines:\n" +
+                          references.read_text(encoding="utf-8")[:700])
+    pieces.append("Never ask the external ChatGPT/May chat for answers, as that "
+                  "transport is disabled. On provider quota exhaustion keep a "
+                  "durable checkpoint and let the worker retry. Do not claim "
+                  "test passes without tool evidence. Do not expose credentials. "
+                  "Preserve the approved project and its operational UI.")
+    config["_groq_instructions"] = "\n\n".join(piece for piece in pieces if piece)
+
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
-    # Shared, guarded May consultation is a runtime transport, not seventeen
-    # duplicated tool definitions. Per-agent actions remain individually scoped.
-    if "consult_may" not in config["tools"]:
-        config["tools"].append("consult_may")
+    # No external ChatGPT/May tool is authorized in the specialist runtime.
+    config["tools"] = [tool for tool in config["tools"] if tool != "consult_may"]
     return config
 
 

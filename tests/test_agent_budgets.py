@@ -49,8 +49,10 @@ class GuardTests(unittest.TestCase):
         gateway=Gateway(bad)
         self.state.enqueue('task','frontend-engineer','scope','Fix action protocol')
         result=Worker(self.state,gateway,self.root).run_one()
-        self.assertEqual(result['status'],'failed')
-        self.assertEqual(result['error']['reason'],'retry_limit_exceeded')
+        self.assertEqual(result['status'],'queued')
+        self.assertNotEqual(result.get("status"), "succeeded")
+        self.assertTrue(any(row.get("action") == "repair_cycle"
+                            for row in result["checkpoint"]["history"]))
         self.assertEqual(gateway.calls,3)
         self.assertEqual(result['checkpoint']['step'],3)
 
@@ -64,8 +66,10 @@ class GuardTests(unittest.TestCase):
         self.state.enqueue('checks','qa-engineer','scope','Verify unit checks')
         with patch.object(Tools,'run_check',return_value={'check':'python-unittest','passed':False,'tests_run':1,'exit_code':1}):
             result=Worker(self.state,gateway,self.root).run_one()
-        self.assertEqual(result['status'],'failed')
-        self.assertEqual(result['error']['reason'],'retry_limit_exceeded')
+        self.assertEqual(result['status'],'queued')
+        self.assertNotEqual(result.get("status"), "succeeded")
+        self.assertTrue(any(row.get("action") == "repair_cycle"
+                            for row in result["checkpoint"]["history"]))
         self.assertEqual(result['checkpoint']['failure_counts']['check:python-unittest'],3)
         self.assertEqual(gateway.calls,3)
 
@@ -84,8 +88,10 @@ class GuardTests(unittest.TestCase):
         with patch.object(Tools,'run_check',
                           return_value={'check':'python-unittest','passed':False,'tests_run':1,'exit_code':1}):
             result=Worker(self.state,gateway,self.root).run_one()
-        self.assertEqual(result['status'],'failed')
-        self.assertEqual(result['error']['reason'],'retry_limit_exceeded')
+        self.assertEqual(result['status'],'queued')
+        self.assertNotEqual(result.get("status"), "succeeded")
+        self.assertTrue(any(row.get("action") == "repair_cycle"
+                            for row in result["checkpoint"]["history"]))
         self.assertEqual(result['checkpoint']['failure_counts']['check:python-unittest'],3)
         self.assertEqual(gateway.calls,4)
 
@@ -104,8 +110,13 @@ class GuardTests(unittest.TestCase):
         with patch.object(Tools,'run_check',
                           return_value={'check':'python-unittest','passed':False,'tests_run':1,'exit_code':1}):
             result=Worker(self.state,gateway,self.root).run_one()
-        self.assertEqual(result['status'],'succeeded')
-        self.assertEqual(gateway.calls,5)
+        self.assertEqual(result['status'],'queued')
+        # A changed file resets the failure fingerprint, but unresolved
+        # checks must not be falsely reported as a successful delivery.
+        self.assertGreaterEqual(gateway.calls, 4)
+        self.assertNotEqual(result.get("status"), "succeeded")
+        self.assertTrue(any(row.get("action") == "repair_cycle"
+                            for row in result["checkpoint"]["history"]))
 
     def test_context_limited_but_checkpoint_keeps_full_tool_evidence(self):
         long='data:'+'x'*20000

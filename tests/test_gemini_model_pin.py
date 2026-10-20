@@ -1,4 +1,4 @@
-"""Keep Gemini 3.6 Flash primary and restrict Lite to quota-only last resort."""
+"""Keep Gemini 3.6 Flash as Groq fallback, with Lite restricted to real quota failures."""
 from pathlib import Path
 import unittest
 
@@ -18,8 +18,8 @@ class ModelPinTest(unittest.TestCase):
                 if path.endswith("chat-requests.yml"):
                     self.assertIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)
                     gateway=(ROOT/"horizon_core/gateway.py").read_text()
-                    self.assertIn('primary.get("reason") == "quota"',gateway)
-                    self.assertIn('primary.get("status") == 429',gateway)
+                    self.assertIn('error.reason == "quota"',gateway)
+                    self.assertIn('error.status == 429',gateway)
                     self.assertIn('GEMINI_FREE_TIER_CONFIRMED',gateway)
                 else:
                     self.assertNotIn("GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite",text)

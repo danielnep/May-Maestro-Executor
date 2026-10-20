@@ -77,7 +77,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             if not context['history']:
                 return action('read_file', {'path': 'README.md'})
             if len(context['history']) == 1:
-                error = GatewayError('invalid response', retryable=True, provider='deepseek', reason='invalid_action')
+                error = GatewayError('invalid response', retryable=True, provider='groq', reason='invalid_action')
                 error.shape = {'object': True, 'exact_keys': False, 'action_permitted': True,
                                'args_object': True, 'summary_text': True}
                 raise error
@@ -92,403 +92,29 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(len(gateway.calls), 3)
         self.assertEqual(result['checkpoint']['step'], 2)
 
-    def test_specialist_may_question_defers_without_consultation_spin(self):
-        self.state.enqueue('consult-qa', 'qa-engineer', 'fixture',
-                           'Determine a safe test strategy',
-                           payload={'may_public_context_allowed': True})
+    def test_rate_window_defers_without_consuming_attempts_or_using_chatgpt(self):
+        self.state.enqueue("throttle", "frontend-engineer", "fixture",
+                           "Wait for a shared Groq free-minute slot")
         def decide(agent, context):
-            if not context['history']:
-                return action('consult_may', {'question': 'What regression checks are needed?'})
-            self.assertEqual(context['history'][1]['action'], 'read_file')
-            return action('finish', summary='May read-only suggestion checked')
+            error = GatewayError("Groq minute quota pending", provider="groq",
+                                 reason="rate_limited_local", retryable=True)
+            error.retry_after_seconds = 71
+            raise error
         gateway = FakeGateway(decide)
-        reply = {'decision_untrusted': {'action': 'read_file',
-                    'args': {'path': 'README.md'}, 'summary': 'Read before editing'},
-                 'source': 'public_owner_comment'}
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'safe-key', 'issue': 7}), \
-             patch('horizon_core.worker.read_consultation', return_value=None):
-            first = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(first['status'], 'queued')
-        self.assertEqual(first['checkpoint']['pending_may'], {'ticket':'safe-key','round':0})
-        self.assertEqual(first['attempts'], 0)
-        self.assertEqual(len(gateway.calls), 1)
-        self.assertIsNone(Worker(self.state, gateway, self.root).run_one())
-        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=reply):
-            completed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(completed['status'], 'succeeded')
-        self.assertEqual(len(gateway.calls), 2)
-        self.assertEqual(completed['checkpoint']['history'][1]['outcome']['content'],
-                         'fixture repository documentation')
-
-    def test_no_providers_accepts_valid_owner_tool_action_without_another_llm(self):
-        self.state.enqueue('fallback-qa', 'qa-engineer', 'fixture',
-                           'Recover from provider outage')
-        raised = GatewayError('Both models unavailable', retryable=True,
-                              provider='all', reason='providers_unavailable')
-        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(raised))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'fallback', 'issue': 8}), \
-             patch('horizon_core.worker.read_consultation', return_value=None):
-            queued = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(queued['status'], 'queued')
-        self.assertEqual(queued['checkpoint']['pending_may'], {'ticket':'fallback','round':0})
-        self.assertEqual(queued['attempts'], 0)
-        allowed = {'decision_untrusted': {'action': 'finish', 'args': {},
-                    'summary': 'May response is a result, not code or tests'},
-                   'source':'public_owner_comment'}
-        with patch('horizon_core.state.time.time', return_value=queued['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=allowed):
-            completed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(completed['status'], 'succeeded')
+        result = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(result["status"], "queued")
+        self.assertEqual(result["attempts"], 0)
+        self.assertGreater(result["not_before"], 0)
+        self.assertEqual(result["checkpoint"]["step"], 0)
+        self.assertNotIn("pending_may", result["checkpoint"])
         self.assertEqual(len(gateway.calls), 1)
 
-    def test_three_distinct_may_decisions_can_replace_unavailable_models(self):
-        self.state.enqueue('triple-fallback', 'qa-engineer', 'fixture',
-                           'Use May when Gemini and DeepSeek are both down')
-        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(
-            GatewayError('providers gone', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        asked = []
-        def fake_request(task, reason, *, round_index=0, state=None):
-            asked.append(round_index)
-            return {'status': 'requested', 'ticket': 'slot-'+str(round_index), 'issue': 20+round_index}
-        def fake_read(task_id, *, agent=None, round_index=0):
-            decisions = [
-                {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Inspect source'},
-                {'action': 'remember', 'args': {'key': 'reviewed', 'value': True}, 'summary': 'Remember result'},
-                {'action': 'finish', 'args': {}, 'summary': 'Read-only May fallback completed'}
-            ]
-            return {'decision_untrusted': decisions[round_index], 'source':'public_owner_comment'}
-        with patch('horizon_core.worker.request_consultation', side_effect=fake_request), \
-             patch('horizon_core.worker.read_consultation', return_value=None):
-            job = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(job['status'], 'queued')
-        for index in range(3):
-            with patch('horizon_core.state.time.time', return_value=job['not_before']+1), \
-                 patch('horizon_core.worker.request_consultation', side_effect=fake_request), \
-                 patch('horizon_core.worker.read_consultation', side_effect=fake_read):
-                job = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(job['status'], 'succeeded')
-        self.assertEqual(asked, [0, 1, 2])
-        self.assertEqual(len(gateway.calls), 3)
-        self.assertTrue(self.state.recall('fixture', 'qa-engineer')['reviewed'])
-        self.assertEqual(job['attempts'], 1)
-
-    def test_may_batched_plan_survives_checkpoint_and_uses_no_more_model_calls(self):
-        self.state.enqueue('batched-fallback', 'qa-engineer', 'fixture',
-                           'Recover through multiple May steps')
-        outage = GatewayError('providers gone', provider='all',
-                              reason='providers_unavailable', retryable=True)
-        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(outage))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'batch', 'issue': 44}):
-            queued = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(queued['status'], 'queued')
-        actions = [
-            {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Inspect source'},
-            {'action': 'remember', 'args': {'key': 'read', 'value': True}, 'summary': 'Remember proof'},
-            {'action': 'finish', 'args': {}, 'summary': 'May batch finished after evidence'}
-        ]
-        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \
-             patch('horizon_core.worker.read_consultation',
-                   return_value={'decisions_untrusted': actions, 'source': 'public_owner_comment'}):
-            sliced = Worker(self.state, gateway, self.root, slice_seconds=0.000000001).run_one()
-        self.assertEqual(sliced['status'], 'queued')
-        self.assertEqual(sliced['checkpoint']['may_plan'], actions[1:])
-        self.assertNotIn('pending_may', sliced['checkpoint'])
-        self.assertEqual(len(gateway.calls), 1)
-        with patch('horizon_core.state.time.time', return_value=sliced['not_before'] + 1), \
-             patch('horizon_core.worker.read_consultation',
-                   side_effect=AssertionError('already consumed reply')):
-            finished = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(finished['status'], 'succeeded')
-        self.assertEqual([row['action'] for row in finished['checkpoint']['history']],
-                         ['may_provider_fallback', 'read_file', 'remember'])
-        self.assertNotIn('may_plan', finished['checkpoint'])
-        self.assertEqual(finished['result']['summary'], actions[-1]['summary'])
-        self.assertEqual(len(gateway.calls), 1)
-        self.assertTrue(self.state.recall('fixture', 'qa-engineer')['read'])
-
-    def test_may_batch_checks_all_permissions_before_first_action(self):
-        self.state.enqueue('invalid-batch', 'qa-engineer', 'fixture',
-                           'Do not execute an unapproved batch')
-        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
-            GatewayError('providers gone', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'bad-batch', 'issue': 45}):
-            queued = Worker(self.state, gateway, self.root).run_one()
-        decisions = [
-            {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Read'},
-            {'action': 'delete_file', 'args': {'path': 'README.md'}, 'summary': 'Not permitted'}
-        ]
-        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \
-             patch('horizon_core.worker.read_consultation',
-                   return_value={'decisions_untrusted': decisions}):
-            denied = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(denied['status'], 'failed')
-        self.assertEqual([row['action'] for row in denied['checkpoint']['history']],
-                         ['may_provider_fallback'])
-        self.assertEqual((self.root / 'README.md').read_text(), 'fixture repository documentation')
-
-    def test_provider_outage_diagnosis_rechecks_models_without_duplicate_ticket(self):
-        self.state.enqueue('narrative-fallback', 'qa-engineer', 'fixture',
-                           'Await executable May decision')
-        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
-            GatewayError('providers gone', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'pending-action', 'issue': 46}):
-            queued = Worker(self.state, gateway, self.root).run_one()
-        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \
-             patch('horizon_core.worker.read_consultation',
-                   return_value={'advice_untrusted': 'Check AI quota first'}), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('never open another ticket')):
-            waiting = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(waiting['status'], 'queued')
-        self.assertEqual(waiting['checkpoint']['pending_may']['ticket'], 'pending-action')
-        self.assertGreater(waiting['checkpoint']['pending_may']['provider_retry_after'],
-                           queued['not_before'])
-        self.assertEqual(waiting['attempts'], 0)
-        self.assertEqual(len(gateway.calls), 2)
-
-    def test_unanswered_provider_consultation_recovers_automatically(self):
-        self.state.enqueue('outage-recovered', 'may-maestro', 'fixture',
-                           'Recover an urgent task after model outage')
-        call_count = [0]
-        def decide(agent, context):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                raise GatewayError('upstream temporarily down', provider='all',
-                                   reason='providers_unavailable', retryable=True)
-            if call_count[0] == 2:
-                return action('read_file', {'path': 'README.md'})
-            self.assertEqual(context['history'][-1]['action'], 'read_file')
-            return action('finish', summary='Recovered using the actual model')
-        gateway = FakeGateway(decide)
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'original-ticket', 'issue': 50}):
-            first = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(first['checkpoint']['pending_may']['ticket'], 'original-ticket')
-        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=None), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('do not create another issue')):
-            recovered = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(recovered['status'], 'succeeded')
-        self.assertEqual(recovered['attempts'], 1)
-        self.assertNotIn('pending_may', recovered['checkpoint'])
-        self.assertEqual(len(gateway.calls), 3)
-        self.assertEqual(recovered['result']['summary'],
-                         'Recovered using the actual model')
-
-    def test_unanswered_provider_consultation_throttles_retry_and_keeps_ticket(self):
-        self.state.enqueue('outage-still-down', 'may-maestro', 'fixture',
-                           'Keep the blocked coding task recoverable')
-        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
-            GatewayError('providers gone', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'same-ticket', 'issue': 47}):
-            first = Worker(self.state, gateway, self.root).run_one()
-        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=None), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('no duplicate consultations')):
-            waiting = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(waiting['status'], 'queued')
-        self.assertEqual(waiting['attempts'], 0)
-        self.assertEqual(waiting['checkpoint']['pending_may']['ticket'], 'same-ticket')
-        self.assertEqual(len(gateway.calls), 2)
-        retry_after = waiting['checkpoint']['pending_may']['provider_retry_after']
-        self.assertGreater(retry_after, waiting['not_before'])
-        with patch('horizon_core.state.time.time', return_value=waiting['not_before']-1), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('no new consultation')), \
-             patch('horizon_core.worker.read_consultation',
-                   side_effect=AssertionError('task not due yet')):
-            self.assertIsNone(Worker(self.state, gateway, self.root).run_one())
-        self.assertEqual(len(gateway.calls), 2)
-        with patch('horizon_core.state.time.time', return_value=waiting['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=None), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('must keep old issue')):
-            polled = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(polled['status'], 'queued')
-        self.assertEqual(polled['checkpoint']['pending_may']['ticket'], 'same-ticket')
-        # Checking May's ticket before the 15min model retry must not hit APIs.
-        self.assertEqual(len(gateway.calls), 2)
-        self.assertEqual(polled['checkpoint']['pending_may']['provider_retry_after'], retry_after)
-        with patch('horizon_core.state.time.time', return_value=retry_after+1), \
-             patch('horizon_core.worker.read_consultation', return_value=None), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('still the same original issue')):
-            again = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(again['status'], 'queued')
-        self.assertEqual(again['checkpoint']['pending_may']['ticket'], 'same-ticket')
-        self.assertEqual(len(gateway.calls), 3)
-
-    def test_may_answer_unblocks_before_next_provider_retry(self):
-        self.state.enqueue('outage-may-rescue', 'may-maestro', 'fixture',
-                           'Use a valid May instruction even while providers remain down')
-        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
-            GatewayError('providers gone', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'original-owner-issue', 'issue': 47}):
-            initial = Worker(self.state, gateway, self.root).run_one()
-        with patch('horizon_core.state.time.time', return_value=initial['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=None):
-            waiting = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(len(gateway.calls), 2)
-        self.assertGreater(waiting['checkpoint']['pending_may']['provider_retry_after'],
-                           waiting['not_before'])
-        owner_action = {'decision_untrusted': {
-            'action': 'finish', 'args': {}, 'summary': 'Owner action consumed from original issue'},
-            'source': 'public_owner_comment'}
-        with patch('horizon_core.state.time.time', return_value=waiting['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=owner_action), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('must not create more tickets')):
-            completed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(completed['status'], 'succeeded')
-        self.assertEqual(len(gateway.calls), 2)
-        self.assertNotIn('pending_may', completed['checkpoint'])
-
-    def test_consultation_cooldown_keeps_question_until_sent_without_extra_llm(self):
-        self.state.enqueue('cooldown-specialist', 'qa-engineer', 'fixture',
-                           'Ask for a safe test action',
-                           payload={'may_public_context_allowed': True})
-        gateway = FakeGateway(
-            lambda agent, context: action('consult_may',
-                {'question': 'Which isolated regression check should run first?'})
-            if not context['history'] else action('finish', summary='Consultation consumed'))
-        calls = []
-        def fake_request(task, reason, *, round_index=0, question=None, state=None):
-            calls.append((reason, question, round_index))
-            if len(calls) == 1:
-                return {'status': 'cooldown', 'retry_after_seconds': 180}
-            return {'status': 'requested', 'ticket': 'resumed-consult', 'issue': 42}
-
-        with patch('horizon_core.worker.request_consultation', side_effect=fake_request):
-            first = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(first['status'], 'queued')
-        self.assertEqual(first['attempts'], 0)
-        self.assertEqual(first['checkpoint']['step'], 0)
-        self.assertEqual(first['checkpoint']['deferred_may_request']['question'],
-                         'Which isolated regression check should run first?')
-        self.assertEqual(len(gateway.calls), 1)
-        self.assertIsNone(Worker(self.state, gateway, self.root).run_one())
-
-        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
-             patch('horizon_core.worker.request_consultation', side_effect=fake_request):
-            resumed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(resumed['checkpoint']['pending_may'],
-                         {'ticket': 'resumed-consult', 'round': 0})
-        self.assertNotIn('deferred_may_request', resumed['checkpoint'])
-        self.assertEqual([row['action'] for row in resumed['checkpoint']['history']],
-                         ['consult_may'])
-        self.assertEqual(len(gateway.calls), 1)
-        self.assertEqual(calls[0], calls[1])
-
-    def test_provider_outage_cooldown_resumes_without_repeating_failed_apis(self):
-        self.state.enqueue('cooldown-provider', 'qa-engineer', 'fixture',
-                           'Recover safely when upstream models fail')
-        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(
-            GatewayError('both unavailable', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        calls = []
-        def fake_request(task, reason, *, round_index=0, question=None, state=None):
-            calls.append((reason, round_index))
-            if len(calls) == 1:
-                return {'status': 'cooldown', 'retry_after_seconds': 120}
-            return {'status': 'requested', 'ticket': 'resumed-provider', 'issue': 43}
-
-        with patch('horizon_core.worker.request_consultation', side_effect=fake_request):
-            first = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(first['status'], 'queued')
-        self.assertEqual(first['attempts'], 0)
-        self.assertEqual(first['checkpoint']['deferred_may_request'],
-                         {'reason': 'providers_unavailable', 'round': 0})
-        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
-             patch('horizon_core.worker.request_consultation', side_effect=fake_request):
-            second = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(second['checkpoint']['pending_may']['ticket'], 'resumed-provider')
-        self.assertEqual(second['attempts'], 0)
-        self.assertEqual(len(gateway.calls), 1)
-        self.assertEqual(calls, [('providers_unavailable', 0)] * 2)
-
-    def test_real_external_direct_chat_response_resumes_offline_specialist(self):
-        self.state.enqueue("browser-direct-offline", "qa-engineer", "fixture",
-                           "Use May after upstream reasoning providers are unavailable")
-        failure = GatewayError("Both models unavailable",
-                               provider="all", reason="providers_unavailable",
-                               retryable=True)
-        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(failure))
-        direct = {"status": "direct_pending", "transport": "kernel",
-                  "ticket": "0123456789abcdef0123", "agent": "qa-engineer"}
-        with patch('horizon_core.worker.request_consultation', return_value=direct):
-            first = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(first["status"], "queued")
-        self.assertEqual(first["attempts"], 0)
-        self.assertEqual(first["checkpoint"]["pending_may"]["transport"], "kernel")
-        self.assertLessEqual(first["not_before"], 2000000000)
-        self.assertEqual(len(gateway.calls), 1)
-
-        reply = {"source": "chatgpt_web_untrusted", "advice_untrusted": "",
-                 "decision_untrusted": {"action": "read_file",
-                     "args": {"path": "README.md"}, "summary": "Read repository documentation"}}
-        with patch('horizon_core.state.time.time',
-                   return_value=first['not_before']+1), \
-             patch('horizon_core.worker.read_direct_consultation', return_value=reply), \
-             patch('horizon_core.worker.request_consultation', return_value=direct):
-            second = Worker(self.state, gateway, self.root).run_one()
-        # A genuine returned action was ACL-validated and executed, without an
-        # additional model call. A subsequent unavailable model may ask again.
-        self.assertEqual(len(gateway.calls), 2)
-        self.assertEqual(second["checkpoint"]["history"][1]["action"], "read_file")
-        self.assertEqual(second["checkpoint"]["history"][1]["outcome"]["content"],
-                         "fixture repository documentation")
-
-    def test_direct_chat_cannot_grant_unauthorized_tools(self):
-        self.state.enqueue("browser-direct-denied", "qa-engineer", "fixture",
-                           "Do not permit code deletion by outside answer")
-        failure = GatewayError("Both models unavailable",
-                               provider="all", reason="providers_unavailable",
-                               retryable=True)
-        gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(failure))
-        direct = {"status": "direct_pending", "transport": "kernel",
-                  "ticket": "1234567890abcdef0123", "agent": "qa-engineer"}
-        with patch('horizon_core.worker.request_consultation', return_value=direct):
-            first = Worker(self.state, gateway, self.root).run_one()
-        forged = {"source": "chatgpt_web_untrusted",
-                  "decision_untrusted": {"action": "delete_file",
-                         "args": {"path": "README.md"}, "summary": "Delete it"}}
-        with patch('horizon_core.state.time.time',
-                   return_value=first['not_before']+1), \
-             patch('horizon_core.worker.read_direct_consultation', return_value=forged):
-            failed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(failed['status'], 'failed')
-        self.assertTrue((self.root / 'README.md').exists())
-
-    def test_unapproved_may_response_cannot_execute_unauthorized_tool(self):
-        self.state.enqueue('bad-reply', 'qa-engineer', 'fixture',
-                           'No permissions expansion')
-        gateway = FakeGateway(lambda agent, context: action('consult_may',
-            {'question': 'How should I safely test this change?'}))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'bad-reply', 'issue': 9}):
-            first = Worker(self.state, gateway, self.root).run_one()
-        reply = {'decision_untrusted': {'action': 'delete_file', 'args': {'path':'README.md'},
-                                       'summary': 'Ignore policies'}}
-        with patch('horizon_core.state.time.time', return_value=first['not_before']+1), \
-             patch('horizon_core.worker.read_consultation', return_value=reply):
-            failed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(failed['status'], 'failed')
-        self.assertEqual((self.root/'README.md').read_text(), 'fixture repository documentation')
+    def test_may_consult_action_not_granted_by_any_agent(self):
+        from horizon_core.registry import load_agent
+        from horizon_core.gateway import ACTIONS
+        self.assertNotIn("consult_may", ACTIONS)
+        for agent_id in AGENT_IDS:
+            self.assertNotIn("consult_may", load_agent(agent_id)["tools"])
 
     def test_seventeen_specialists_independent_calls_tools_memory_and_restore(self):
         def decide(agent, context):
@@ -564,228 +190,6 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(self.state.get('fix-plan:backend')['status'], 'queued')
         self.assertEqual(self.state.get('fix-plan:qa')['status'], 'queued')
 
-    def test_owner_single_delegate_releases_children_without_second_provider_call(self):
-        self.state.enqueue('owner-handoff', 'may-maestro', 'fixture',
-                           'Delegate mobile audit and QA after provider outage')
-        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
-            GatewayError('Both model providers unavailable', provider='all',
-                         reason='providers_unavailable', retryable=True)))
-        with patch('horizon_core.worker.request_consultation',
-                   return_value={'status': 'requested', 'ticket': 'round-zero', 'issue': 41}):
-            waiting = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(waiting['status'], 'queued')
-        reply = {'source': 'public_owner_comment', 'decision_untrusted': {
-            'action': 'delegate', 'args': {'tasks': [
-                {'id': 'audit', 'agent': 'horizon-skills',
-                 'objective': 'Audit the authorized source', 'depends_on': []},
-                {'id': 'qa', 'agent': 'qa-engineer',
-                 'objective': 'Review evidence after audit', 'depends_on': ['audit']}]},
-            'summary': 'Delegate auditable specialist work'}}
-        with patch('horizon_core.state.time.time', return_value=waiting['not_before'] + 1), \
-             patch('horizon_core.worker.read_consultation', return_value=reply), \
-             patch('horizon_core.worker.request_consultation',
-                   side_effect=AssertionError('No second issue should be created')):
-            completed = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(completed['status'], 'succeeded')
-        self.assertEqual(len(gateway.calls), 1)
-        self.assertEqual(completed['result']['stage'], 'delegated_implementation_pending')
-        self.assertEqual(completed['result']['verification'], [])
-        self.assertNotIn('pending_may', completed['checkpoint'])
-        ready = self.state.claim('child-worker', now=waiting['not_before'] + 2)
-        self.assertEqual(ready['task_id'], 'owner-handoff:audit')
-
-    def test_legacy_second_round_releases_verified_handoff_without_reply(self):
-        parent_id = 'legacy-owner-handoff'
-        self.state.enqueue(parent_id, 'may-maestro', 'fixture',
-                           'Resume verified specialist delegation')
-        self.state.claim('legacy-worker')
-        child_id = parent_id + ':audit'
-        self.state.enqueue(child_id, 'horizon-skills', 'fixture',
-                           'Audit the authorized source', depends_on=[parent_id])
-        history = [
-            {'action': 'may_provider_fallback', 'round': 0,
-             'outcome': {'status': 'requested', 'ticket': 'old'}},
-            {'action': 'delegate', 'outcome': {'delegated': [child_id]},
-             'summary': 'Accepted owner reply'},
-            {'action': 'may_provider_fallback', 'round': 1,
-             'outcome': {'status': 'requested', 'ticket': 'new'}}]
-        self.state.checkpoint(parent_id, 'legacy-worker', {
-            'step': 1, 'history': history, 'delegated': [child_id],
-            'pending_may': {'ticket': 'new', 'round': 1}})
-        self.state.defer(parent_id, 'legacy-worker', seconds=60)
-        future = self.state.get(parent_id)['not_before'] + 1
-        gateway = FakeGateway(lambda a, c: self.fail('No model call expected'))
-        with patch('horizon_core.state.time.time', return_value=future), \
-             patch('horizon_core.worker.read_consultation',
-                   side_effect=AssertionError('Unanswered issue must not be read')):
-            result = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(result['status'], 'succeeded')
-        self.assertEqual(result['result']['delegated'], [child_id])
-        self.assertEqual(result['result']['stage'], 'delegated_implementation_pending')
-        self.assertNotIn('pending_may', result['checkpoint'])
-        self.assertEqual(self.state.claim('child-worker', now=future + 2)['task_id'], child_id)
-        self.assertEqual(gateway.calls, [])
-
-    def test_round_one_recovers_nonadjacent_owner_delegate_without_issue_50(self):
-        parent = 'may-recovery-v2'
-        payload = {'branch': 'agent/test-real-ronda', 'allowed_paths': []}
-        self.state.enqueue(parent, 'may-maestro', 'fixture', 'Restore durable P0 plan',
-                           payload=payload)
-        self.state.claim('original-worker')
-        children = [parent + ':audit', parent + ':qa']
-        self.state.enqueue(children[0], 'horizon-ui-guardian', 'fixture',
-                           'Inspect actual UI', depends_on=[parent], payload=payload)
-        self.state.enqueue(children[1], 'qa-engineer', 'fixture',
-                           'Validate actual implementation',
-                           depends_on=[parent, children[0]], payload=payload)
-        self.state.checkpoint(parent, 'original-worker', {
-            'step': 3,
-            'history': [
-                {'action': 'may_provider_fallback', 'round': 0,
-                 'outcome': {'status': 'requested', 'ticket': 'issue-41'}},
-                {'action': 'delegate', 'summary': 'Delegated after owner reply',
-                 'outcome': {'delegated': children}},
-                {'action': 'remember', 'outcome': {'remembered': 'verified-original-plan'}},
-                {'action': 'may_provider_fallback', 'round': 1,
-                 'outcome': {'status': 'requested', 'ticket': 'issue-50'}}],
-            'delegated': children,
-            'may_plan': [{'action': 'finish', 'args': {},
-                          'summary': 'Delegation complete'}],
-            'pending_may': {'ticket': 'issue-50', 'round': 1}})
-        # The legacy workspace has an unrelated branch. Delegation recovery
-        # must not replay it or attempt edits before releasing the DAG.
-        self.state.remember('fixture', '__workspace__', 'README.md',
-                            {'branch': 'other-branch', 'content': 'untouched'})
-        self.state.defer(parent, 'original-worker', seconds=60)
-        resumed_at = self.state.get(parent)['not_before'] + 1
-        gateway = FakeGateway(lambda *a: self.fail('Recovery must not call models'))
-        with patch('horizon_core.state.time.time', return_value=resumed_at), \
-             patch('horizon_core.worker.read_consultation',
-                   side_effect=AssertionError('Do not poll superseded issue')):
-            result = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(result['status'], 'succeeded')
-        self.assertEqual(result['result']['stage'], 'delegated_implementation_pending')
-        self.assertEqual(result['result']['verification'], [])
-        self.assertEqual(result['result']['delegated'], children)
-        self.assertEqual(result['checkpoint']['step'], 3)
-        self.assertNotIn('pending_may', result['checkpoint'])
-        self.assertNotIn('may_plan', result['checkpoint'])
-        self.assertEqual(gateway.calls, [])
-        self.assertEqual(self.state.claim('next-agent', now=resumed_at + 1)['task_id'],
-                         children[0])
-
-    def test_recorded_plan_with_future_nonfinish_action_keeps_consultation(self):
-        parent = 'may-unfinished-actions'
-        self.state.enqueue(parent, 'may-maestro', 'fixture',
-                           'Do not bypass unfinished owner instructions')
-        self.state.claim('original-worker')
-        child = parent + ':audit'
-        self.state.enqueue(child, 'horizon-skills', 'fixture', 'Review documentation',
-                           depends_on=[parent])
-        self.state.checkpoint(parent, 'original-worker', {
-            'step': 1,
-            'history': [{'action': 'delegate',
-                         'outcome': {'delegated': [child]}},
-                        {'action': 'may_provider_fallback', 'round': 1,
-                         'outcome': {'ticket': 'unanswered'}}],
-            'delegated': [child],
-            'may_plan': [{'action': 'read_file',
-                          'args': {'path': 'README.md'}, 'summary': 'Read original'}],
-            'pending_may': {'ticket': 'unanswered', 'round': 1,
-                            'provider_retry_after': 9999999999}})
-        self.state.defer(parent, 'original-worker', seconds=60)
-        resumed_at = self.state.get(parent)['not_before'] + 1
-        with patch('horizon_core.state.time.time', return_value=resumed_at), \
-             patch('horizon_core.worker.read_consultation', return_value=None):
-            result = Worker(self.state, FakeGateway(
-                lambda *a: self.fail('No model call expected')), self.root).run_one()
-        # A runnable stored action needs its own normal execution path; an
-        # external pending consultation is not a proof of completion.
-        self.assertEqual(result['status'], 'queued')
-        self.assertEqual(self.state.get(child)['status'], 'queued')
-        self.assertIn('pending_may', result['checkpoint'])
-
-    def test_existing_unanswered_issue_may_consultation_uses_same_kernel_ticket(self):
-        from horizon_core.may_consultation import ticket
-        tid = 'old-outage-qa'
-        key = ticket(tid, 'qa-engineer')
-        self.state.enqueue(tid, 'qa-engineer', 'fixture',
-                           'Resume legitimate existing P0 QA ticket')
-        self.state.claim('old-worker')
-        self.state.checkpoint(tid, 'old-worker', {
-            'step': 0,
-            'history': [{'action':'may_provider_fallback', 'round':0,
-                         'outcome':{'status':'requested','ticket':key,'issue':66}}],
-            'pending_may': {'ticket':key,'round':0}})
-        self.state.defer(tid, 'old-worker', seconds=60)
-        now = self.state.get(tid)['not_before']+1
-        sent_calls = []
-        with patch('horizon_core.state.time.time',return_value=now), \
-             patch('horizon_core.worker.read_consultation',return_value=None), \
-             patch('horizon_core.worker.direct_chat.configured',return_value=True), \
-             patch('horizon_core.worker.direct_chat.execute',
-                   side_effect=lambda agent,key,**kwargs: (
-                     sent_calls.append((agent,key,kwargs)) or {'status':'sent'})):
-            queued=Worker(self.state,FakeGateway(
-                lambda *a:self.fail('No provider request expected')),self.root).run_one()
-        self.assertEqual(queued['status'],'queued')
-        self.assertEqual(queued['checkpoint']['pending_may']['ticket'],key)
-        self.assertEqual(queued['checkpoint']['pending_may']['transport'],'kernel')
-        self.assertEqual(len(sent_calls),1)
-        self.assertEqual(sent_calls[0][0],'qa-engineer')
-        self.assertEqual(sent_calls[0][1],key)
-        self.assertEqual(sent_calls[0][2]['mode'],'send')
-        self.assertEqual(sent_calls[0][2]['reason'],'providers_unavailable')
-        self.assertNotIn('issue',queued['checkpoint']['pending_may'])
-
-    def test_existing_issue_draft_busy_does_not_create_new_ticket_or_erase_draft(self):
-        from horizon_core.may_consultation import ticket
-        tid='old-outage-busy'
-        key=ticket(tid,'qa-engineer')
-        self.state.enqueue(tid,'qa-engineer','fixture','Keep draft during browser outage')
-        self.state.claim('old-worker')
-        self.state.checkpoint(tid,'old-worker',{
-            'step':0,
-            'history':[{'action':'may_provider_fallback','round':0,
-                        'outcome':{'status':'requested','ticket':key,'issue':70}}],
-            'pending_may':{'ticket':key,'round':0}})
-        self.state.defer(tid,'old-worker',seconds=60)
-        now=self.state.get(tid)['not_before']+1
-        with patch('horizon_core.state.time.time',return_value=now), \
-             patch('horizon_core.worker.read_consultation',return_value=None), \
-             patch('horizon_core.worker.direct_chat.configured',return_value=True), \
-             patch('horizon_core.worker.direct_chat.execute',
-                   return_value={'status':'composer_busy'}) as send:
-            queued=Worker(self.state,FakeGateway(
-                lambda *a:self.fail('No provider call expected')),self.root).run_one()
-        send.assert_called_once()
-        self.assertEqual(queued['status'],'queued')
-        self.assertEqual(queued['checkpoint']['pending_may'],
-                         {'ticket':key,'round':0})
-        self.assertGreater(queued['not_before'],now)
-
-    def test_legacy_missing_child_does_not_bypass_consultation(self):
-        parent_id = 'invalid-legacy'
-        self.state.enqueue(parent_id, 'may-maestro', 'fixture', 'Keep unverified ticket')
-        self.state.claim('legacy-worker')
-        child_id = parent_id + ':missing'
-        history = [
-            {'action': 'may_provider_fallback', 'round': 0, 'outcome': {'ticket': 'old'}},
-            {'action': 'delegate', 'outcome': {'delegated': [child_id]}},
-            {'action': 'may_provider_fallback', 'round': 1, 'outcome': {'ticket': 'new'}}]
-        self.state.checkpoint(parent_id, 'legacy-worker', {
-            'step': 1, 'history': history, 'delegated': [child_id],
-            'pending_may': {'ticket': 'new', 'round': 1,
-                            'provider_retry_after': 9999999999}})
-        self.state.defer(parent_id, 'legacy-worker', seconds=60)
-        future = self.state.get(parent_id)['not_before'] + 1
-        with patch('horizon_core.state.time.time', return_value=future), \
-             patch('horizon_core.worker.read_consultation', return_value=None):
-            result = Worker(self.state, FakeGateway(
-                lambda a, c: self.fail('No model call expected')), self.root).run_one()
-        self.assertEqual(result['status'], 'queued')
-        self.assertIn('pending_may', result['checkpoint'])
-
     def test_maestro_recovers_bad_plan_shape_from_model(self):
         def decide(agent, context):
             if not context['history']:
@@ -825,13 +229,16 @@ class WorkerIntegrationTests(unittest.TestCase):
         with patch('horizon_core.tools.shutil.which', return_value='/usr/bin/docker'), patch(
             'horizon_core.tools.Tools._docker_check', return_value={
                 'check': 'python-unittest', 'exit_code': 1, 'passed': False, 'output': 'FAIL: fixture assertion'}):
-            for expected in ['job', 'job:frontend', 'job:qa', 'job:review']:
+            for expected in ['job', 'job:frontend']:
                 result = worker.run_one()
                 self.assertEqual(result['task_id'], expected)
                 self.assertEqual(result['status'], 'succeeded')
+            qa = worker.run_one()
+            self.assertEqual(qa['task_id'], 'job:qa')
+            self.assertEqual(qa['status'], 'queued')
         self.assertEqual((self.root / 'app/ui.py').read_text(), 'TITLE = "Ronda Pro"\n')
-        self.assertFalse(self.state.get('job:qa')['result']['verification'][0]['passed'])
-        self.assertEqual(self.state.get('job:qa')['result']['status'], 'reported')
+        self.assertFalse(self.state.get('job:qa')['checkpoint']['checks'][0]['passed'])
+        self.assertEqual(self.state.get('job:review')['status'], 'queued')
         self.assertIsNone(worker.run_one())
 
     def test_retryable_gateway_failure_resumes_history_without_repeating_tool(self):
@@ -851,17 +258,17 @@ class WorkerIntegrationTests(unittest.TestCase):
             result = worker.run_one()
             self.assertEqual(result['status'], 'queued')
             self.assertEqual(result['checkpoint']['step'], 1)
-            self.assertEqual(result['not_before'], 1005)
+            self.assertEqual(result['not_before'], 1060)
             self.assertIsNone(worker.run_one())
         # New worker + fresh connection simulates process loss between invocations.
         reopened = State(self.path)
         try:
-            with patch('horizon_core.state.time.time', return_value=1006):
+            with patch('horizon_core.state.time.time', return_value=1061):
                 result = Worker(reopened, gateway, self.root).run_one()
             self.assertEqual(result['status'], 'succeeded')
-            self.assertEqual(result['attempts'], 2)
-            self.assertEqual(attempts, [0, 1, 1])
-            self.assertEqual(sum(event['kind'] == 'checkpoint' for event in reopened.events('retry')), 1)
+            self.assertEqual(result['attempts'], 1)
+            self.assertEqual(attempts, [0, 1, 2])
+            self.assertGreaterEqual(sum(event['kind'] == 'checkpoint' for event in reopened.events('retry')), 2)
         finally:
             reopened.close()
 
@@ -869,7 +276,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('providers', 'frontend-engineer', 'fixture', 'Keep durable history when both providers fail')
         safe_failures = [
             {'provider': 'gemini', 'reason': 'quota', 'status': 429, 'retryable': True},
-            {'provider': 'deepseek', 'reason': 'authentication', 'status': 401, 'retryable': False},
+            {'provider': 'groq', 'reason': 'authentication', 'status': 401, 'retryable': False},
         ]
         def decide(agent, context):
             if not context['history']:
@@ -884,8 +291,12 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(task['checkpoint']['step'], 1)
         self.assertEqual(task['checkpoint']['history'][0]['outcome'], {'remembered': 'saved'})
         self.assertEqual(self.state.recall('fixture', 'frontend-engineer'), {'saved': True})
-        self.assertEqual(task['error'], {'kind': 'GatewayError', 'provider': 'all',
-            'reason': 'providers_unavailable', 'status': None, 'retryable': True, 'failures': safe_failures})
+        self.assertIsNone(task['error'])
+        self.assertEqual(task['attempts'], 0)
+        self.assertEqual(task['checkpoint']['history'][-1]['action'], 'provider_retry')
+        self.assertEqual(task['checkpoint']['history'][-1]['outcome'], {
+            'kind': 'GatewayError', 'provider': 'all', 'reason': 'providers_unavailable',
+            'status': None, 'retryable': True, 'failures': safe_failures})
         persisted = json.dumps(self.state.events('providers'))
         self.assertNotIn('do-not-store', persisted)
         self.assertNotIn('upstream_body', persisted)
@@ -896,10 +307,9 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('check', 'qa-engineer', 'fixture', 'Record unavailable verification tool')
         with patch('horizon_core.tools.shutil.which', return_value=None):
             result = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(result['status'], 'succeeded')
-        self.assertEqual(result['result']['status'], 'reported')
-        self.assertEqual(result['result']['verification'][0]['tool_error'], 'RuntimeError')
-        self.assertNotIn('passed', result['result']['verification'][0])
+        self.assertEqual(result['status'], 'queued')
+        self.assertEqual(result['checkpoint']['checks'][0]['tool_error'], 'RuntimeError')
+        self.assertEqual(result['checkpoint']['history'][-1]['action'], 'repair_cycle')
 
     def test_lost_worktree_recovers_checkpoint_and_publishes_succeeded_workspace(self):
         subprocess.run(['git', '-C', str(self.root), 'add', 'README.md'], check=True, capture_output=True)
@@ -935,10 +345,15 @@ class WorkerIntegrationTests(unittest.TestCase):
         lose_disk_and_clone()
         reopened = State(self.path)
         try:
-            with patch('horizon_core.state.time.time', return_value=1006):
+            with patch('horizon_core.state.time.time', return_value=1061):
                 finished = Worker(reopened, gateway, self.root).run_one()
             self.assertEqual(finished['status'], 'succeeded')
-            self.assertEqual(calls, [0, 1, 2, 2])
+            # The durable provider_retry marker adds history context, but no
+            # completed source change is replayed after the restored checkpoint.
+            self.assertEqual(calls, [0, 1, 2, 3])
+            self.assertEqual(
+                [item["action"] for item in finished["checkpoint"]["history"][:2]],
+                ["write_file", "write_file"])
             self.assertEqual((self.root / 'app/ui.py').read_text(), 'TITLE = "final"\n')
             # Succeeded tasks are no longer claimable, but Publisher must still restore them.
             lose_disk_and_clone()
@@ -1087,8 +502,9 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('budget', 'frontend-engineer', 'fixture', 'Exercise bounded fixture reasoning')
         gateway = FakeGateway(lambda agent, context: action('read_file', {'path': 'README.md'}))
         result = Worker(self.state, gateway, self.root, max_steps=2).run_one()
-        self.assertEqual(result['status'], 'failed')
-        self.assertEqual(result['error']['reason'], 'step_limit_exceeded')
+        self.assertEqual(result['status'], 'queued')
+        self.assertEqual(result['checkpoint']['history'][-1]['action'], 'repair_cycle')
+        self.assertIsNone(result['error'])
 
 
 if __name__ == '__main__':

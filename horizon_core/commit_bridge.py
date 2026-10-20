@@ -271,7 +271,7 @@ def summarize(request_id, tasks, publication=None):
         model = result.get('model') or {}
         model = model if isinstance(model, dict) else {}
         provider = model.get('provider')
-        provider = provider if provider in ('gemini', 'deepseek') else None
+        provider = provider if provider in ('gemini', 'groq') else None
         identifier = model.get('model')
         identifier = identifier if (isinstance(identifier, str) and
                                    re.fullmatch(r'[A-Za-z0-9_.-]{1,90}', identifier)) else None
@@ -485,34 +485,8 @@ def main(argv=None):
                           'error': {'kind': type(error).__name__},
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
             publish_result(api, path.stem, report)
-            # Dispatch a verified May review as a durable ticket via the SAME
-            # GitHub/ChatGPT channel used by specialist consultations. The
-            # existing hourly Horizon Central automation posts it to the chat.
-            # An issue is only queued, never proof that chat delivery occurred.
-            from .delivery_chat import queue_review
-            try:
-                review_delivery = queue_review(report, api)
-            except (GitHubStateError, ValueError, OSError) as error:
-                review_delivery = "delivery_queue_unavailable"
-                print(json.dumps({"review_delivery_error": type(error).__name__,
-                                  "request_id": path.stem}))
-            print(json.dumps({"request_id": path.stem, "review_delivery": review_delivery}))
-            # Queue events, not model-authored narratives, feed the ONE shared
-            # ChatGPT agent conversation through its existing hourly watchdog.
-            from .attendance import (attendance_snapshot, publish_attendance,
-                                     team_snapshot, publish_team_attendance)
-            try:
-                presence = attendance_snapshot(state, path.stem)
-                if presence is not None:
-                    published_presence = publish_attendance(api, presence)
-                    print(json.dumps({"attendance": published_presence,
-                                      "request_id": path.stem}))
-                publish_team_attendance(api, team_snapshot(state))
-            except (GitHubStateError, ValueError, OSError) as error:
-                # Never stop product delivery solely because chat presence is
-                # unavailable. A subsequent run reconstructs it from SQLite.
-                print(json.dumps({"attendance_error": type(error).__name__,
-                                  "request_id": path.stem}))
+            # Reports remain durable in GitHub. No automatic ChatGPT/May
+            # consultation, chat presence, tickets or external handoff.
             # Event-driven owner alert follows durable result publication, not
             # the five-minute recovery schedule or the ChatGPT task cadence.
             from .notify import notify
