@@ -253,6 +253,72 @@ class State:
         except (ValueError, TypeError):
             return None
 
+    @staticmethod
+    def _legacy_visual_audit_eligible(row):
+        """Only recover a known pre-fix deadlock, never a failed edited UI."""
+        if (row is None or row['status'] != 'failed'
+                or row['agent'] not in ('horizon-ui-guardian', 'ui-ux-designer',
+                                       'frontend-engineer', 'mobile-app-builder')
+                or row['attempts'] >= row['max_attempts']):
+            return False
+        error, checkpoint, payload = (row.get('error') or {},
+                                      row.get('checkpoint') or {},
+                                      row.get('payload') or {})
+        if not all(isinstance(x, dict) for x in (error, checkpoint, payload)):
+            return False
+        if (error.get('reason') != 'visual_evidence_missing'
+                or error.get('detail') != 'browser_check_not_verified'
+                or payload.get('visual_review_required') is True
+                or checkpoint.get('visual_audit_recovery_used')):
+            return False
+        history = checkpoint.get('history') or []
+        if not isinstance(history, list) or not history:
+            return False
+        from .visual_contract import has_source_edits
+        if has_source_edits(history):
+            return False
+        return (
+            sum(isinstance(item, dict) and item.get('action') == 'visual_evidence_required'
+                for item in history) >= 3
+            and any(isinstance(item, dict) and item.get('action') == 'run_check'
+                    and isinstance(item.get('outcome'), dict)
+                    and item['outcome'].get('check') == 'browser-playwright'
+                    and item['outcome'].get('passed') is False
+                    for item in history))
+
+    def recover_legacy_visual_audits(self, now=None):
+        """One-time bounded retry of read-only audits failed by the old rule."""
+        now = time.time() if now is None else now
+        with self._lock:
+            candidates = [row['task_id'] for raw in
+                          self.db.execute("SELECT * FROM tasks WHERE status='failed'")
+                          for row in [self._decode(raw)]
+                          if self._legacy_visual_audit_eligible(row)]
+        if not candidates:
+            return []
+        recovered = []
+        with self._tx():
+            for task_id in candidates:
+                row = self._decode(self.db.execute(
+                    "SELECT * FROM tasks WHERE task_id=?", (task_id,)).fetchone())
+                if not self._legacy_visual_audit_eligible(row):
+                    continue
+                checkpoint = dict(row['checkpoint'])
+                checkpoint['visual_audit_recovery_used'] = True
+                counts = dict(checkpoint.get('failure_counts') or {})
+                counts.pop('missing_visual_evidence', None)
+                counts.pop('check:browser-playwright', None)
+                checkpoint['failure_counts'] = counts
+                self.db.execute(
+                    "UPDATE tasks SET status='queued',not_before=?,checkpoint=?,error=NULL,"
+                    "lease_owner=NULL,lease_until=NULL WHERE task_id=? AND status='failed'",
+                    (now, _json(checkpoint), task_id))
+                self._event(task_id, 'legacy_visual_audit_recovered',
+                            {'prior_reason':'visual_evidence_missing',
+                             'visual_qa_verified':False}, now)
+                recovered.append(task_id)
+        return recovered
+
     def recover_provider_outages(self, now=None):
         """Unstick only failed retryable provider tasks and their dependents.
 
