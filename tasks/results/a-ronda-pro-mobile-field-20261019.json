@@ -26,7 +26,8 @@
     "failed_checks": [],
     "qa_missing_evidence": [
       "chat-a-ronda-pro-mobile-field-20261019:mobile-functional-qa"
-    ]
+    ],
+    "qa_missing_for_publication": false
   },
   "request_id": "a-ronda-pro-mobile-field-20261019",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/a-ronda-pro-mobile-field-20261019.json",
