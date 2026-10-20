@@ -254,14 +254,21 @@ def read_consultation(task_id, *, api=None, agent=None, round_index=0):
         for comment in comments:
             if not isinstance(comment, dict):
                 continue
-            if comment.get("user", {}).get("login", "").lower() != "danielnep":
+            actor = comment.get("user", {}).get("login", "").lower()
+            owner = actor == "danielnep"
+            # The dedicated in-repository Actions relay uses the scoped GitHub
+            # workflow token and is authenticated as github-actions[bot].
+            # This is NOT general permission for models or unknown commenters.
+            trusted_relay = (actor == "github-actions[bot]" and agent is not None)
+            if not owner and not trusted_relay:
                 continue
             if agent is not None and not (comment.get("body") or "").startswith(REPLY_MARKER + "\n"):
                 continue
             parsed = _valid_reply(comment.get("body"))
             if parsed is not None:
                 latest = {"issue": row["number"], **parsed,
-                          "source": "public_owner_comment", "agent": agent}
+                          "source": "public_owner_comment" if owner else "scoped_actions_relay",
+                          "agent": agent}
         if len(comments) < 100:
             return latest
     raise RuntimeError("Consultation comment pagination cap reached")
