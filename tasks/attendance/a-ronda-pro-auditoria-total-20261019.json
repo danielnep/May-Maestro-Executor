@@ -308,6 +308,20 @@
       "id": 1025,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T06:32:05Z",
+      "id": 1030,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T06:32:08Z",
+      "id": 1031,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
     }
   ],
   "request_id": "a-ronda-pro-auditoria-total-20261019",
