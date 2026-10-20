@@ -550,6 +550,9 @@ class Worker:
                 if may_decisions:
                     checkpoint['may_plan'] = may_decisions
                 self.state.checkpoint(task_id, self.worker_id, checkpoint)
+                # A verified model/tool progress step retires the previous
+                # outage wait. A later failure may request new help if needed.
+                recovery_pending = None
                 violations = sorted(key for key, count in failure_counts.items() if count >= 3)
                 if violations:
                     # Durable terminal diagnostic; no fourth identical request. Normal
