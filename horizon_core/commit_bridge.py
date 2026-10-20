@@ -247,8 +247,16 @@ def summarize(request_id, tasks, publication=None):
     missing_qa_checks = [row['task_id'] for row in qa_reports if not row['verification']]
     # Pending/failed work cannot be quality-approved even when no QA checks
     # exist yet. An empty verification list is absence of evidence, not a pass.
+    # A published deliverable cannot be marked QA-approved merely because
+    # nobody assigned an independent QA specialist to inspect it.
+    published_preview = (publication or {}).get('pages_preview') or {}
+    missing_publication_qa = bool(
+        (publication or {}).get('published') is True
+        and isinstance(published_preview, dict)
+        and published_preview.get('status') in ('verified', 'already_current')
+        and not qa_reports)
     quality_ok = (status == 'reported_complete' and not bad_checks
-                  and not missing_qa_checks)
+                  and not missing_qa_checks and not missing_publication_qa)
     if status == 'reported_complete' and not quality_ok:
         status = 'needs_attention'
     delivery = publication or {'published': False, 'reason': 'No publication attempted'}
@@ -258,7 +266,8 @@ def summarize(request_id, tasks, publication=None):
     return {'request_id': request_id, 'status': status, 'tasks': reports, 'publication': delivery,
             'may_review': may_review,
             'quality': {'approved': quality_ok, 'failed_checks': bad_checks,
-                        'qa_missing_evidence': missing_qa_checks},
+                        'qa_missing_evidence': missing_qa_checks,
+            'qa_missing_for_publication': missing_publication_qa},
             'source': 'https://github.com/' + REPOSITORY + '/blob/main/tasks/chat/' + request_id + '.json',
             'delivery_mode': 'read_result_in_chat',
             'note': 'Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.'}

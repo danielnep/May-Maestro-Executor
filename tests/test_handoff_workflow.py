@@ -25,6 +25,15 @@ class HandoffWorkflowRegressionTests(unittest.TestCase):
         self.assertIn("run: python -m horizon_core.handoff --dispatch", handoff_step)
         self.assertNotIn("if: success()", handoff_step)
 
+    def test_controller_workflow_has_no_duplicate_triggers_or_regressions(self):
+        workflow = (ROOT / ".github/workflows/chat-requests.yml").read_text(encoding="utf-8")
+        paths = workflow.split("    paths:", 1)[1].split("  workflow_dispatch:", 1)[0]
+        watched = [line.strip() for line in paths.splitlines()
+                   if line.strip().startswith("- '")]
+        self.assertEqual(len(watched), len(set(watched)))
+        tests = re.findall(r"(?m)^          python -m unittest discover -s tests -p (\S+) -v$", workflow)
+        self.assertEqual(len(tests), len(set(tests)))
+
     def test_marker_written_before_returning_failure(self):
         controller = (ROOT / "horizon_core/commit_bridge.py").read_text(encoding="utf-8")
         self.assertLess(controller.index("write_marker(continuation)"),

@@ -24,7 +24,8 @@
   "quality": {
     "approved": false,
     "failed_checks": [],
-    "qa_missing_evidence": []
+    "qa_missing_evidence": [],
+    "qa_missing_for_publication": false
   },
   "request_id": "a-ronda-pro-auditoria-total-20261019",
   "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/a-ronda-pro-auditoria-total-20261019.json",
