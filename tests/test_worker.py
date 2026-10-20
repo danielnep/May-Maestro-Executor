@@ -77,7 +77,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             if not context['history']:
                 return action('read_file', {'path': 'README.md'})
             if len(context['history']) == 1:
-                error = GatewayError('invalid response', retryable=True, provider='deepseek', reason='invalid_action')
+                error = GatewayError('invalid response', retryable=True, provider='groq', reason='invalid_action')
                 error.shape = {'object': True, 'exact_keys': False, 'action_permitted': True,
                                'args_object': True, 'summary_text': True}
                 raise error
@@ -146,7 +146,7 @@ class WorkerIntegrationTests(unittest.TestCase):
 
     def test_three_distinct_may_decisions_can_replace_unavailable_models(self):
         self.state.enqueue('triple-fallback', 'qa-engineer', 'fixture',
-                           'Use May when Gemini and DeepSeek are both down')
+                           'Use May when Gemini and Groq are both down')
         gateway = FakeGateway(lambda agent, context: (_ for _ in ()).throw(
             GatewayError('providers gone', provider='all',
                          reason='providers_unavailable', retryable=True)))
@@ -869,7 +869,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('providers', 'frontend-engineer', 'fixture', 'Keep durable history when both providers fail')
         safe_failures = [
             {'provider': 'gemini', 'reason': 'quota', 'status': 429, 'retryable': True},
-            {'provider': 'deepseek', 'reason': 'authentication', 'status': 401, 'retryable': False},
+            {'provider': 'groq', 'reason': 'authentication', 'status': 401, 'retryable': False},
         ]
         def decide(agent, context):
             if not context['history']:
