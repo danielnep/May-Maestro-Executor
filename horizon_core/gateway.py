@@ -380,7 +380,14 @@ class ModelGateway:
                     and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
                     and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
                 raise
-            report = self.gemini.inspect_image(dict(agent, model=backup), data, question)
+            try:
+                report = self.gemini.inspect_image(dict(agent, model=backup), data, question)
+            except GatewayError as other:
+                raise GatewayError(
+                    "Both authorized Gemini visual routes unavailable; retain screenshot evidence",
+                    retryable=error.retryable or other.retryable, provider="gemini",
+                    reason="vision_unavailable",
+                    failures=[error.as_dict(), other.as_dict()]) from None
             report["metadata"].update(fallback_from="gemini", fallback_reason=error.as_dict(),
                                       free_tier_model=True)
             return report
