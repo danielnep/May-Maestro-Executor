@@ -47,6 +47,29 @@ class Worker:
         self.sandbox_client = sandbox_client
         self.worker_id = uuid.uuid4().hex
 
+    def _repair_cycle(self, task_id, step, history, checks, delegated,
+                      failure_counts, reason, detail=None):
+        """Do not abandon a repair after identical failures.
+
+        A scheduled run resumes the original task and full checkpoint. Repeated
+        attempts are spaced, not performed as a tight/costly API loop.
+        """
+        count = max(3, failure_counts.get(reason, 3))
+        wait = min(1800, 60 * (2 ** min(count - 3, 5)))
+        history.append({'action': 'repair_cycle', 'outcome': {
+            'reason': reason, 'detail': detail or reason,
+            'repeated_failures': count,
+            'instruction': 'Reinspect current source, baseline and the last failed '
+                           'check. Diagnose the cause; implement a changed approach '
+                           'before repeating the same check. Retest and preserve all '
+                           'working features. Never report completion without proof.'}})
+        self.state.checkpoint(task_id, self.worker_id, {
+            'step': step, 'history': history, 'checks': checks,
+            'delegated': delegated, 'failure_counts': failure_counts})
+        self.state.defer(task_id, self.worker_id, seconds=wait)
+        self.persist()
+        return self.state.get(task_id)
+
     def persist(self):
         try:
             self._persist()
@@ -344,11 +367,10 @@ class Worker:
                     self.state.checkpoint(task_id, self.worker_id, {'step': step, 'history': history,
                         'checks': checks, 'delegated': delegated, 'failure_counts': failure_counts})
                     if failure_counts['protocol_error'] >= 3:
-                        self.state.fail(task_id, self.worker_id, {
-                            'kind': 'RepeatedProtocolError', 'reason': 'retry_limit_exceeded',
-                            'action': 'protocol_error', 'max_identical_failures': 3}, retryable=False)
-                        self.persist()
-                        return self.state.get(task_id)
+                        return self._repair_cycle(
+                            task_id, step, history, checks, delegated,
+                            failure_counts, 'protocol_error',
+                            'Invalid model action protocol; request a different valid JSON action')
                     self.persist()
                     continue
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
@@ -381,12 +403,11 @@ class Worker:
                                 {'step': step, 'history': history, 'checks': checks,
                                  'delegated': delegated, 'failure_counts': failure_counts})
                             if failure_counts['missing_visual_evidence'] >= 3:
-                                self.state.fail(task_id, self.worker_id,
-                                    {'reason': 'visual_evidence_missing', 'detail': visual['reason'],
-                                     'max_identical_failures': 3}, retryable=False)
+                                return self._repair_cycle(
+                                    task_id, step, history, checks, delegated,
+                                    failure_counts, 'missing_visual_evidence',
+                                    visual['reason'])
                             self.persist()
-                            if failure_counts['missing_visual_evidence'] >= 3:
-                                return self.state.get(task_id)
                             continue
                     # A completed May plan must not leave stale pending work in
                     # the durable checkpoint after its last validated action.
@@ -513,14 +534,10 @@ class Worker:
                 recovery_pending = None
                 violations = sorted(key for key, count in failure_counts.items() if count >= 3)
                 if violations:
-                    # Durable terminal diagnostic; no fourth identical request. Normal
-                    # project incident reporter continues to notify the owner.
-                    self.state.fail(task_id, self.worker_id, {
-                        'kind': 'RepeatedUncorrectedFailure',
-                        'reason': 'retry_limit_exceeded',
-                        'signatures': violations, 'max_identical_failures': 3}, retryable=False)
-                    self.persist()
-                    return self.state.get(task_id)
+                    return self._repair_cycle(
+                        task_id, step, history, checks, delegated,
+                        failure_counts, violations[0],
+                        'Repeated failure: ' + ', '.join(violations[:4]))
                 if (agent['id'] == 'may-maestro' and name == 'delegate'
                         and isinstance(outcome, dict) and outcome.get('delegated')
                         and not may_decisions):
@@ -537,10 +554,10 @@ class Worker:
                     self.state.yield_task(task_id, self.worker_id)
                     self.persist()
                     return self.state.get(task_id)
-            self.state.fail(task_id, self.worker_id, {'kind': 'StepBudgetExceeded',
-                'reason': 'step_limit_exceeded', 'steps': step, 'limit': self.max_steps}, retryable=False)
-            self.persist()
-            return self.state.get(task_id)
+            # An explicitly configured step ceiling pauses rather than destroys a task.
+            return self._repair_cycle(
+                task_id, step, history, checks, delegated, failure_counts,
+                'operator_step_ceiling', 'Configured step ceiling reached; adjust before resuming')
         except PersistenceError:
             raise
         except Exception as error:
@@ -553,8 +570,19 @@ class Worker:
                     {key: failure.get(key) for key in ('provider', 'reason', 'status', 'retryable')}
                     for failure in error.failures if isinstance(failure, dict)
                 ]
-            # Provider outages remain retryable in the durable local queue.
-            # They must never create a ChatGPT ticket or wait for May.
-            self.state.fail(task_id, self.worker_id, details, retryable=retryable)
+            if isinstance(error, GatewayError) and (
+                    retryable or error.reason in ('providers_unavailable', 'configuration',
+                                                   'authentication', 'quota', 'transport')):
+                # Keep the complete task for the next scheduled worker, including
+                # after repeated provider outages. No external escalation by default.
+                history.append({'action': 'provider_retry', 'outcome': details})
+                self.state.checkpoint(task_id, self.worker_id, {
+                    'step': step, 'history': history, 'checks': checks,
+                    'delegated': delegated, 'failure_counts': failure_counts})
+                count = sum(row.get('action') == 'provider_retry' for row in history)
+                self.state.defer(task_id, self.worker_id,
+                    seconds=min(3600, 60 * (2 ** min(count - 1, 6))))
+            else:
+                self.state.fail(task_id, self.worker_id, details, retryable=retryable)
             self.persist()
             return self.state.get(task_id)
