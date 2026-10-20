@@ -162,7 +162,7 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
             {'action': 'finish', 'args': {}, 'summary': 'Finish after read'}
         ]
         api.comments[1] = [{'user': {'login': 'danielnep'},
-                            'body': REPLY_MARKER + '\\n' + json.dumps({'actions': actions})}]
+                            'body': REPLY_MARKER + '\n' + json.dumps({'actions': actions})}]
         result = read_consultation(self.task['task_id'], agent='may-maestro', api=api)
         self.assertEqual(result['decisions_untrusted'], actions)
         self.assertNotIn('decision_untrusted', result)
@@ -177,7 +177,7 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
                                              'summary': 'write', 'extra': True}]},
                           {'actions': []}):
             api.comments[1] = [{'user': {'login': 'danielnep'},
-                                'body': REPLY_MARKER + '\\n' + json.dumps(candidate)}]
+                                'body': REPLY_MARKER + '\n' + json.dumps(candidate)}]
             result = read_consultation(self.task['task_id'], agent='may-maestro', api=api)
             self.assertNotIn('decisions_untrusted', result)
             self.assertNotIn('decision_untrusted', result)
@@ -189,7 +189,7 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
             {'id': 'task-' + str(i), 'agent': 'qa-engineer',
              'objective': 'Independent verification ' + 'a' * 160,
              'depends_on': []} for i in range(17)]}, 'summary': 'Delegation'}
-        body = REPLY_MARKER + '\\n' + json.dumps(action)
+        body = REPLY_MARKER + '\n' + json.dumps(action)
         self.assertGreater(len(body), 3000)
         api.comments[1] = [{'user': {'login': 'danielnep'}, 'body': body}]
         result = read_consultation(self.task['task_id'], agent='may-maestro', api=api)
