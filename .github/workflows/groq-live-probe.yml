@@ -1,0 +1,26 @@
+name: Horizon - prova da Groq no GitHub
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/agents-groq-github-20261020
+    paths:
+      - horizon_core/groq_live_probe.py
+      - horizon_core/gateway.py
+      - .github/workflows/groq-live-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  groq-live:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Consultar catalogo e gerar acao JSON com GPT-OSS
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.API_IA_GROQ }}
+          GROQ_MODEL: openai/gpt-oss-120b
+        run: python3 -m horizon_core.groq_live_probe
