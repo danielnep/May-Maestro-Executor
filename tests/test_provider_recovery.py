@@ -37,11 +37,23 @@ class ProviderRecoveryTests(unittest.TestCase):
             s.db.execute("UPDATE tasks SET status='failed',error=? WHERE task_id='unrelated'",
                          ('{"reason":"permission_denied","retryable":false}',))
         value=s.recover_provider_outages(now=1234)
-        self.assertEqual(value,{'requeued_provider_failures':1,'unblocked_dependents':2})
+        # A requeued parent is NOT succeeded. Dependent tasks cannot be
+        # released merely because the provider fallback became available.
+        self.assertEqual(value, {'requeued_provider_failures': 1,
+                                 'unblocked_dependents': 0})
         self.assertEqual([s.get(id)['status'] for id in ('arch','parser','frontend','unrelated')],
-                         ['queued','queued','queued','failed'])
+                         ['queued','blocked','blocked','failed'])
         self.assertEqual(s.recover_provider_outages(now=1235),
                          {'requeued_provider_failures':0,'unblocked_dependents':0})
+        with s._tx():
+            s.db.execute("UPDATE tasks SET status='succeeded' WHERE task_id='arch'")
+        self.assertEqual(s.recover_provider_outages(now=1236)['unblocked_dependents'], 1)
+        self.assertEqual(s.get('parser')['status'], 'queued')
+        self.assertEqual(s.get('frontend')['status'], 'blocked')
+        with s._tx():
+            s.db.execute("UPDATE tasks SET status='succeeded' WHERE task_id='parser'")
+        self.assertEqual(s.recover_provider_outages(now=1237)['unblocked_dependents'], 1)
+        self.assertEqual(s.get('frontend')['status'], 'queued')
 
     def test_exhausted_legacy_failure_does_not_requeue(self):
         s=self.state
