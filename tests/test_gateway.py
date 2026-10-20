@@ -166,7 +166,8 @@ class GroqRoutingTests(unittest.TestCase):
         for agent_id in AGENT_IDS:
             agent = load_agent(agent_id)
             concise = agent["_groq_instructions"]
-            self.assertIn(agent["name"], concise)
+            self.assertIn("Shared mandatory engineering rules", concise)
+            self.assertIn("Never ask the external ChatGPT", concise)
             self.assertLess(len(concise.encode("utf-8")), 12500)
             self.assertNotIn("consult_may", agent["tools"])
 
