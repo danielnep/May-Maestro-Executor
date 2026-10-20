@@ -321,6 +321,36 @@ class State:
                             {"reason": "kernel_live_review_required"}, now)
             return True
 
+    def approve_kernel_review(self, task_id, ticket, scenarios, now=None):
+        """Record owner-authenticated review without faking unit/browser tests."""
+        if (not isinstance(task_id, str) or not isinstance(ticket, str)
+                or type(scenarios) is not int or not 2 <= scenarios <= 20):
+            raise ValueError("Invalid KERNEL review receipt")
+        now = time.time() if now is None else now
+        with self._lock:
+            row = self.get(task_id)
+            if not row or row["status"] != "queued" or not row["project"].startswith("chat:"):
+                return False
+            checkpoint = row.get("checkpoint") or {}
+            review = checkpoint.get("kernel_review")
+            if (not isinstance(review, dict)
+                    or review.get("ticket") != ticket
+                    or review.get("review_status") != "awaiting_may_visual_review"
+                    or review.get("approved_by_owner") is True):
+                return False
+            new = dict(checkpoint)
+            approved = dict(review)
+            approved["approved_by_owner"] = True
+            approved["verified_scenarios"] = scenarios
+            new["kernel_review"] = approved
+            with self._tx():
+                self.db.execute(
+                    "UPDATE tasks SET checkpoint=?,not_before=? WHERE task_id=? AND status='queued'",
+                    (_json(new), now, task_id))
+                self._event(task_id, "kernel_live_owner_review_approved",
+                            {"scenarios": scenarios}, now)
+            return True
+
     def recover_provider_outages(self, now=None):
         """Unstick only failed retryable provider tasks and their dependents.
 
