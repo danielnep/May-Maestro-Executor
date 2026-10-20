@@ -175,6 +175,33 @@ class Worker:
             tools = Tools(self.root, agent, task['payload'].get('allowed_paths', []), task['payload'].get('branch'),
                           **tool_options)
             previous = task.get('checkpoint') or {}
+            waiting_review = previous.get('kernel_review')
+            if isinstance(waiting_review, dict):
+                if waiting_review.get('approved_by_owner') is True:
+                    from .publication_policy import workspace_fingerprint
+                    if (not isinstance(waiting_review.get('workspace_digest'), str)
+                            or workspace_fingerprint(tools.snapshot_files())
+                                != waiting_review['workspace_digest']):
+                        self.state.fail(task_id, self.worker_id,
+                            {'reason': 'kernel_review_workspace_changed',
+                             'retryable': False}, retryable=False)
+                    else:
+                        checks = list(previous.get('checks') or [])
+                        checks.append({'check': 'kernel-live-owner-review',
+                            'passed': True, 'tests_run': waiting_review['verified_scenarios'],
+                            'review_source': 'authenticated_owner_comment',
+                            'simulated': False})
+                        self.state.complete(task_id, self.worker_id, {
+                            'agent': agent['id'], 'summary': previous.get('kernel_finish_summary', ''),
+                            'verification': checks, 'delegated': previous.get('delegated', []),
+                            'model': {'provider':'none', 'mode':'kernel_owner_review_resume'},
+                            'status': 'reported', 'steps': previous.get('step', 0),
+                            'stage': 'verified_kernel_owner_review'})
+                    self.persist()
+                    return self.state.get(task_id)
+                self.state.defer(task_id, self.worker_id, seconds=900)
+                self.persist()
+                return self.state.get(task_id)
             deferred_request = previous.get('deferred_may_request')
             if deferred_request:
                 # Retry this exact consultation without another model call.
@@ -467,9 +494,12 @@ class Worker:
                                             'summary': 'Await May live visual and functional review',
                                             'outcome': {'check': 'kernel-live',
                                                         'status': live_review.get('review_status')}})
+                        from .publication_policy import workspace_fingerprint
+                        live_review['workspace_digest'] = workspace_fingerprint(tools.snapshot_files())
                         checkpoint = {'step': step, 'history': history, 'checks': checks,
                                       'delegated': delegated, 'failure_counts': failure_counts,
-                                      'kernel_review': live_review}
+                                      'kernel_review': live_review,
+                                      'kernel_finish_summary': action['summary']}
                         if live_review.get('approved_by_owner') is not True:
                             self.state.checkpoint(task_id, self.worker_id, checkpoint)
                             self.state.defer(task_id, self.worker_id, seconds=900)
