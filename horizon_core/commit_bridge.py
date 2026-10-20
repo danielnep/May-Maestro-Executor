@@ -237,6 +237,18 @@ def summarize(request_id, tasks, publication=None):
                         'attempts': task.get('attempts', 0), 'summary': str(result.get('summary', ''))[:12000],
                         'verification': checks,
                         'model_used': {'provider': provider, 'model': identifier} if provider else None})
+    # Public metadata only: live viewer links stay inside encrypted checkpoints
+    # and the direct, authenticated May conversation.
+    live_review_tickets = []
+    for item in tasks:
+        pending = (item.get('checkpoint') or {}).get('kernel_review') or {}
+        if (isinstance(pending, dict)
+                and pending.get('review_status') == 'awaiting_may_visual_review'
+                and pending.get('approved_by_owner') is not True
+                and re.fullmatch(r'[0-9a-f]{20}', str(pending.get('ticket', '')))):
+            live_review_tickets.append({'task_id': item['task_id'],
+                                        'ticket': pending['ticket'],
+                                        'chat_delivery': pending.get('chat_delivery', 'unknown')})
     # A model's finish is not a verified delivery: failed or absent QA evidence
     # must remain actionable regardless of all specialists saying 'succeeded'.
     qa_reports = [row for row in reports if row['agent'] == 'qa-engineer']
@@ -265,6 +277,7 @@ def summarize(request_id, tasks, publication=None):
     may_review = build_may_review_handoff(request_id, status, quality_ok, delivery)
     return {'request_id': request_id, 'status': status, 'tasks': reports, 'publication': delivery,
             'may_review': may_review,
+            'kernel_review_tickets': live_review_tickets,
             'quality': {'approved': quality_ok, 'failed_checks': bad_checks,
                         'qa_missing_evidence': missing_qa_checks,
             'qa_missing_for_publication': missing_publication_qa},
