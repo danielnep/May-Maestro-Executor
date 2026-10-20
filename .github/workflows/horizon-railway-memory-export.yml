@@ -1,0 +1,90 @@
+name: Horizon - export encrypted memory for Railway
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/horizon-railway-memory-export.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-sealed:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Load only required cryptography
+        run: python -m pip install cryptography==46.0.3
+      - name: Seal verified existing checkpoint to Railway PUBLIC RSA key
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          HORIZON_SQLITE_ENCRYPTION_KEY: ${{ secrets.HORIZON_SQLITE_ENCRYPTION_KEY }}
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import base64,hashlib,json,os,urllib.request
+          from pathlib import Path
+          from cryptography.hazmat.primitives import hashes,serialization
+          from cryptography.hazmat.primitives.asymmetric import padding
+          from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+          from horizon_core.github_sqlite_state import GitHubSQLiteState
+          url='https://horizonsolucoes.com/api/internal/horizon-checkpoint-public-key'
+          with urllib.request.urlopen(urllib.request.Request(
+              url,headers={'User-Agent':'Horizon-Checkpoint-Sealed-Export/2'}),timeout=20) as response:
+              recipient=json.load(response)
+          if recipient.get('schema')!='horizon.checkpoint.public-key.v1':
+              raise RuntimeError('Unexpected Railway recipient schema')
+          public_pem=recipient['public_key_pem'].encode()
+          fingerprint=hashlib.sha256(public_pem).hexdigest()
+          if recipient.get('fingerprint')!=fingerprint:
+              raise RuntimeError('Railway public key fingerprint mismatch')
+          pub=serialization.load_pem_public_key(public_pem)
+          if getattr(pub,'key_size',0)!=3072:
+              raise RuntimeError('Unsupported Railway recipient key')
+          store=GitHubSQLiteState()
+          try:
+              if store.db.execute('PRAGMA quick_check').fetchone()[0]!='ok':
+                  raise RuntimeError('Existing checkpoint invalid')
+              count=store.db.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]
+              snapshot=Path(store.path).read_bytes()
+              source_sha=store.remote.sha
+          finally:
+              store.close()
+          if not isinstance(source_sha,str) or len(source_sha)!=40:
+              raise RuntimeError('Missing GitHub content version')
+          if len(snapshot)>20_000_000 or not snapshot.startswith(b'SQLite format 3\x00'):
+              raise RuntimeError('Unexpected checkpoint payload')
+          dek=os.urandom(32);nonce=os.urandom(12)
+          aad=('horizon.checkpoint.envelope.v2:'+source_sha).encode()
+          encrypted=AESGCM(dek).encrypt(nonce,snapshot,aad)
+          wrapped=pub.encrypt(dek,padding.OAEP(
+              mgf=padding.MGF1(hashes.SHA256()),algorithm=hashes.SHA256(),label=None))
+          data={'schema':'horizon.checkpoint.envelope.v2',
+                'source_sha':source_sha,'records':count,
+                'nonce':base64.b64encode(nonce).decode(),
+                'wrapped_key':base64.b64encode(wrapped).decode(),
+                'ciphertext':base64.b64encode(encrypted).decode(),
+                'aad':base64.b64encode(aad).decode(),
+                'public_key_fingerprint':fingerprint}
+          target=Path('sealed-handoff')
+          target.mkdir(exist_ok=True)
+          (target/'state.envelope.json').write_text(json.dumps(data))
+          print('HORIZON_CHECKPOINT_SEALED=true')
+          print('HORIZON_RECORDS='+str(count))
+          print('HORIZON_SOURCE_SHA='+source_sha)
+          print('HORIZON_RECIPIENT_MATCH=true')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: horizon-railway-state-sealed-v2
+          path: sealed-handoff/state.envelope.json
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
