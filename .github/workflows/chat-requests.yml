@@ -149,8 +149,8 @@ jobs:
           # Explicit owner attestation received 2026-10-19; NOT a billing API proof.
           GEMINI_FREE_TIER_CONFIRMED: 'true'
           GEMINI_FREE_FALLBACK_MODEL: gemini-3.5-flash-lite
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY || secrets.API_IA_GROQ }}
+          GROQ_MODEL: openai/gpt-oss-120b
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           HORIZON_STATE_BACKEND: github-sqlite
