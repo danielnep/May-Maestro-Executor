@@ -162,6 +162,14 @@ class GroqRoutingTests(unittest.TestCase):
                 self.assertNotIn("private", json.dumps(result))
         self.assertEqual(gateway.calls, 17)
 
+    def test_groq_context_preserves_specialist_within_free_tpm(self):
+        for agent_id in AGENT_IDS:
+            agent = load_agent(agent_id)
+            concise = agent["_groq_instructions"]
+            self.assertIn(agent["name"], concise)
+            self.assertLess(len(concise.encode("utf-8")), 12500)
+            self.assertNotIn("consult_may", agent["tools"])
+
     def test_existing_railway_key_alias_is_accepted_if_in_same_process(self):
         env = {"API_IA_GROQ": "another-synthetic-key"}
         result = GroqGateway(env, self.opener).complete(load_agent("backend-engineer"), self.messages)
