@@ -433,6 +433,18 @@ def main(argv=None):
                           'error': {'kind': type(error).__name__},
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
             publish_result(api, path.stem, report)
+            # Dispatch a verified May review as a durable ticket via the SAME
+            # GitHub/ChatGPT channel used by specialist consultations. The
+            # existing hourly Horizon Central automation posts it to the chat.
+            # An issue is only queued, never proof that chat delivery occurred.
+            from .delivery_chat import queue_review
+            try:
+                review_delivery = queue_review(report, api)
+            except (GitHubStateError, ValueError, OSError) as error:
+                review_delivery = "delivery_queue_unavailable"
+                print(json.dumps({"review_delivery_error": type(error).__name__,
+                                  "request_id": path.stem}))
+            print(json.dumps({"request_id": path.stem, "review_delivery": review_delivery}))
             # Queue events, not model-authored narratives, feed the ONE shared
             # ChatGPT agent conversation through its existing hourly watchdog.
             from .attendance import (attendance_snapshot, publish_attendance,
