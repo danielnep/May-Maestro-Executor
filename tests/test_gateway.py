@@ -225,13 +225,14 @@ class GroqRoutingTests(unittest.TestCase):
             self.assertEqual(resumed.groq.calls, 0)
         self.assertNotIn("synthetic-groq", json.dumps(state.recall("__runtime__", "gateway")))
 
-    def test_high_reasoning_only_set_for_gpt_oss(self):
+    def test_explicit_high_reasoning_on_both_model_families(self):
         agent = dict(load_agent("backend-engineer"), _reasoning_level="high")
         GroqGateway(self.env, self.opener).complete(agent, self.messages)
         self.assertEqual(json.loads(self.requests[-1].data)["reasoning_effort"], "high")
         GroqGateway(self.env, self.opener).complete(
             dict(load_agent("mobile-app-builder"), _reasoning_level="high"), self.messages)
-        self.assertNotIn("reasoning_effort", json.loads(self.requests[-1].data))
+        self.assertEqual(json.loads(self.requests[-1].data)["reasoning_effort"], "high")
+        self.assertEqual(json.loads(self.requests[-1].data)["reasoning_format"], "hidden")
 
     def test_invalid_action_is_blocked(self):
         def fake(req, timeout):
