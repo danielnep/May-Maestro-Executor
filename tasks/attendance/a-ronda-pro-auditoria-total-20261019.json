@@ -3,20 +3,6 @@
   "events": [
     {
       "agent": "ui-ux-designer",
-      "at": "2026-10-20T07:30:29Z",
-      "id": 1072,
-      "ref": "08f40c5b70a8",
-      "status": "retomou"
-    },
-    {
-      "agent": "ui-ux-designer",
-      "at": "2026-10-20T07:30:32Z",
-      "id": 1073,
-      "ref": "08f40c5b70a8",
-      "status": "aguardando"
-    },
-    {
-      "agent": "ui-ux-designer",
       "at": "2026-10-20T07:37:59Z",
       "id": 1078,
       "ref": "08f40c5b70a8",
@@ -1118,6 +1104,20 @@
       "agent": "ui-ux-designer",
       "at": "2026-10-20T17:02:25Z",
       "id": 1294,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T17:09:27Z",
+      "id": 1295,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T17:09:32Z",
+      "id": 1296,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
     }
