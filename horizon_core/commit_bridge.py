@@ -460,7 +460,7 @@ def wake_owner_kernel_review(state, event):
             or not isinstance(comment.get("body"), str)):
         return []
     m = re.fullmatch(
-        r"MAY_KERNEL_REVIEW_V1\\nTICKET: ([0-9a-f]{20})\\nSCENARIOS: ([0-9]{1,2})\\nRESULT: approved\\s*",
+        r"MAY_KERNEL_REVIEW_V1\nTICKET: ([0-9a-f]{20})\nSCENARIOS: ([0-9]{1,2})\nRESULT: approved\s*",
         comment["body"])
     if not m or issue["title"] != "[May live review] " + m.group(1):
         return []
