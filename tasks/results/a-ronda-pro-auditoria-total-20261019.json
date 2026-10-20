@@ -44,9 +44,9 @@
     },
     {
       "agent": "horizon-ui-guardian",
-      "attempts": 0,
+      "attempts": 1,
       "model_used": null,
-      "status": "queued",
+      "status": "failed",
       "summary": "",
       "task_id": "chat-a-ronda-pro-auditoria-total-20261019:audit-ui",
       "verification": []
@@ -64,7 +64,7 @@
       "agent": "frontend-engineer",
       "attempts": 0,
       "model_used": null,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-a-ronda-pro-auditoria-total-20261019:frontend-source-fixes",
       "verification": []
@@ -73,7 +73,7 @@
       "agent": "mobile-app-builder",
       "attempts": 0,
       "model_used": null,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-a-ronda-pro-auditoria-total-20261019:native-field-check",
       "verification": []
@@ -82,7 +82,7 @@
       "agent": "qa-engineer",
       "attempts": 0,
       "model_used": null,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-a-ronda-pro-auditoria-total-20261019:ronda-cross-qa",
       "verification": []
@@ -91,7 +91,7 @@
       "agent": "corregedoria-may",
       "attempts": 0,
       "model_used": null,
-      "status": "queued",
+      "status": "blocked",
       "summary": "",
       "task_id": "chat-a-ronda-pro-auditoria-total-20261019:corregedoria-final",
       "verification": []
