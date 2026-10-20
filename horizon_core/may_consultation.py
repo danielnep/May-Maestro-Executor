@@ -28,7 +28,8 @@ PUBLIC_PREVIEW_BY_PROJECT = {
     "ronda-pro": "https://danielnep.github.io/app-hondas-maxvel/",
 }
 MAX_QUESTION = 1400
-MAX_ADVICE = 3000
+MAX_ADVICE = 12000
+MAX_ACTIONS_PER_REPLY = 5
 CONSULTATIONS_PER_WINDOW = 4
 CONSULTATION_WINDOW_SECONDS = 3600
 SAFE_QUESTION = re.compile(r"^[\w \t.,:;!?()[\]{}+=/#\-À-ÿ\n]*$", re.UNICODE)
@@ -172,7 +173,8 @@ def request_consultation(task, reason, *, api=None, question=None, round_index=0
         "reason: " + reason,
         "round: " + str(round_index),
         "data_class: public_technical_only",
-        "response_contract: MAY_CONSULT_REPLY_V2 followed by JSON tool action OR a short diagnosis",
+        "response_contract: MAY_CONSULT_REPLY_V2 followed by one JSON tool action",
+        'or {"actions":[1..5 JSON tool actions]}; diagnosis only if no safe action exists',
         "",
         "Technical question:",
         public_question,
@@ -213,11 +215,22 @@ def _valid_reply(body):
         decision = json.loads(payload)
     except (ValueError, TypeError):
         decision = None
-    if isinstance(decision, dict) and set(decision) == {"action", "args", "summary"}:
-        # Do NOT execute here: the worker validates the action against the
-        # actual specialist capability/allowlist at execution time.
-        if isinstance(decision["action"], str) and isinstance(decision["args"], dict) and isinstance(decision["summary"], str):
-            return {"decision_untrusted": decision, "advice_untrusted": ""}
+    def well_formed(action):
+        return (isinstance(action, dict)
+                and set(action) == {"action", "args", "summary"}
+                and isinstance(action["action"], str)
+                and isinstance(action["args"], dict)
+                and isinstance(action["summary"], str))
+
+    # Shape only: the worker validates specialist tool and path permissions.
+    if well_formed(decision):
+        return {"decision_untrusted": decision, "advice_untrusted": ""}
+    if isinstance(decision, dict) and set(decision) == {"actions"}:
+        actions = decision["actions"]
+        if (isinstance(actions, list)
+                and 1 <= len(actions) <= MAX_ACTIONS_PER_REPLY
+                and all(well_formed(action) for action in actions)):
+            return {"decisions_untrusted": actions, "advice_untrusted": ""}
     return {"advice_untrusted": payload}
 
 
