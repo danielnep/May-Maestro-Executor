@@ -266,6 +266,20 @@
       "id": 1003,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T06:02:14Z",
+      "id": 1006,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T06:02:44Z",
+      "id": 1013,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
     }
   ],
   "request_id": "a-ronda-pro-auditoria-total-20261019",
@@ -290,7 +304,7 @@
       "attempts": 0,
       "ref": "08f40c5b70a8",
       "status": "aguardando",
-      "step": 0
+      "step": 1
     },
     {
       "agent": "frontend-engineer",
