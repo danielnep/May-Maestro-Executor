@@ -24,7 +24,9 @@
   "quality": {
     "approved": false,
     "failed_checks": [],
-    "qa_missing_evidence": [],
+    "qa_missing_evidence": [
+      "chat-a-ronda-pro-auditoria-total-20261019:ronda-cross-qa"
+    ],
     "qa_missing_for_publication": false
   },
   "request_id": "a-ronda-pro-auditoria-total-20261019",
@@ -33,11 +35,65 @@
   "tasks": [
     {
       "agent": "may-maestro",
+      "attempts": 1,
+      "model_used": null,
+      "status": "succeeded",
+      "summary": "P0 do Ronda Pro: orquestracao delegada sob escopo autorizado. Implementacao, testes, branch e entrega ainda pendentes.",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019",
+      "verification": []
+    },
+    {
+      "agent": "horizon-ui-guardian",
       "attempts": 0,
       "model_used": null,
       "status": "queued",
       "summary": "",
-      "task_id": "chat-a-ronda-pro-auditoria-total-20261019",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:audit-ui",
+      "verification": []
+    },
+    {
+      "agent": "ui-ux-designer",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:audit-ux",
+      "verification": []
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:frontend-source-fixes",
+      "verification": []
+    },
+    {
+      "agent": "mobile-app-builder",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:native-field-check",
+      "verification": []
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:ronda-cross-qa",
+      "verification": []
+    },
+    {
+      "agent": "corregedoria-may",
+      "attempts": 0,
+      "model_used": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-a-ronda-pro-auditoria-total-20261019:corregedoria-final",
       "verification": []
     }
   ]
