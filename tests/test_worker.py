@@ -348,7 +348,12 @@ class WorkerIntegrationTests(unittest.TestCase):
             with patch('horizon_core.state.time.time', return_value=1061):
                 finished = Worker(reopened, gateway, self.root).run_one()
             self.assertEqual(finished['status'], 'succeeded')
-            self.assertEqual(calls, [0, 1, 2, 2])
+            # The durable provider_retry marker adds history context, but no
+            # completed source change is replayed after the restored checkpoint.
+            self.assertEqual(calls, [0, 1, 2, 3])
+            self.assertEqual(
+                [item["action"] for item in finished["checkpoint"]["history"][:2]],
+                ["write_file", "write_file"])
             self.assertEqual((self.root / 'app/ui.py').read_text(), 'TITLE = "final"\n')
             # Succeeded tasks are no longer claimable, but Publisher must still restore them.
             lose_disk_and_clone()
