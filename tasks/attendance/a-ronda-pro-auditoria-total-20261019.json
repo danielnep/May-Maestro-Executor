@@ -3,20 +3,6 @@
   "events": [
     {
       "agent": "may-maestro",
-      "at": "2026-10-20T03:44:17Z",
-      "id": 922,
-      "ref": "3acc93a22b09",
-      "status": "retomou"
-    },
-    {
-      "agent": "may-maestro",
-      "at": "2026-10-20T03:44:19Z",
-      "id": 923,
-      "ref": "3acc93a22b09",
-      "status": "aguardando"
-    },
-    {
-      "agent": "may-maestro",
       "at": "2026-10-20T03:54:24Z",
       "id": 926,
       "ref": "3acc93a22b09",
@@ -1118,6 +1104,20 @@
       "agent": "ui-ux-designer",
       "at": "2026-10-20T14:28:21Z",
       "id": 1252,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T14:35:24Z",
+      "id": 1253,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T14:35:30Z",
+      "id": 1254,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
     }
