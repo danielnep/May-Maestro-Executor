@@ -22,6 +22,7 @@ class GroqMinuteBudgetTests(unittest.TestCase):
         self.assertFalse(hasattr(self.budget, "daily_requests"))
         self.assertEqual(SAFE_REQUESTS, 24)
         self.assertEqual(SAFE_TOKENS, 7200)
+        self.assertGreater(8000 - SAFE_TOKENS, 0)  # Provider burst headroom
 
     def test_durable_reservation_blocks_second_call_in_same_second(self):
         receipt, wait, output = self.budget.reserve("openai/gpt-oss-120b", self.messages, 900)
