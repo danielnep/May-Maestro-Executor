@@ -304,7 +304,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(waiting['checkpoint']['pending_may']['ticket'], 'same-ticket')
         self.assertEqual(len(gateway.calls), 2)
         retry_after = waiting['checkpoint']['pending_may']['provider_retry_after']
-        self.assertGreaterEqual(retry_after, waiting['not_before']-1)
+        self.assertGreater(retry_after, waiting['not_before'])
         with patch('horizon_core.state.time.time', return_value=waiting['not_before']-1), \
              patch('horizon_core.worker.request_consultation',
                    side_effect=AssertionError('no new consultation')), \
@@ -316,10 +316,47 @@ class WorkerIntegrationTests(unittest.TestCase):
              patch('horizon_core.worker.read_consultation', return_value=None), \
              patch('horizon_core.worker.request_consultation',
                    side_effect=AssertionError('must keep old issue')):
+            polled = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(polled['status'], 'queued')
+        self.assertEqual(polled['checkpoint']['pending_may']['ticket'], 'same-ticket')
+        # Checking May's ticket before the 15min model retry must not hit APIs.
+        self.assertEqual(len(gateway.calls), 2)
+        self.assertEqual(polled['checkpoint']['pending_may']['provider_retry_after'], retry_after)
+        with patch('horizon_core.state.time.time', return_value=retry_after+1), \
+             patch('horizon_core.worker.read_consultation', return_value=None), \
+             patch('horizon_core.worker.request_consultation',
+                   side_effect=AssertionError('still the same original issue')):
             again = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(again['status'], 'queued')
         self.assertEqual(again['checkpoint']['pending_may']['ticket'], 'same-ticket')
         self.assertEqual(len(gateway.calls), 3)
+
+    def test_may_answer_unblocks_before_next_provider_retry(self):
+        self.state.enqueue('outage-may-rescue', 'may-maestro', 'fixture',
+                           'Use a valid May instruction even while providers remain down')
+        gateway = FakeGateway(lambda a, c: (_ for _ in ()).throw(
+            GatewayError('providers gone', provider='all',
+                         reason='providers_unavailable', retryable=True)))
+        with patch('horizon_core.worker.request_consultation',
+                   return_value={'status': 'requested', 'ticket': 'original-owner-issue', 'issue': 47}):
+            initial = Worker(self.state, gateway, self.root).run_one()
+        with patch('horizon_core.state.time.time', return_value=initial['not_before']+1), \
+             patch('horizon_core.worker.read_consultation', return_value=None):
+            waiting = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(len(gateway.calls), 2)
+        self.assertGreater(waiting['checkpoint']['pending_may']['provider_retry_after'],
+                           waiting['not_before'])
+        owner_action = {'decision_untrusted': {
+            'action': 'finish', 'args': {}, 'summary': 'Owner action consumed from original issue'},
+            'source': 'public_owner_comment'}
+        with patch('horizon_core.state.time.time', return_value=waiting['not_before']+1), \
+             patch('horizon_core.worker.read_consultation', return_value=owner_action), \
+             patch('horizon_core.worker.request_consultation',
+                   side_effect=AssertionError('must not create more tickets')):
+            completed = Worker(self.state, gateway, self.root).run_one()
+        self.assertEqual(completed['status'], 'succeeded')
+        self.assertEqual(len(gateway.calls), 2)
+        self.assertNotIn('pending_may', completed['checkpoint'])
 
     def test_consultation_cooldown_keeps_question_until_sent_without_extra_llm(self):
         self.state.enqueue('cooldown-specialist', 'qa-engineer', 'fixture',
