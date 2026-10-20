@@ -86,6 +86,12 @@ O runner padrão de um repositório público não cobra minutos de execução; n
 
 Os especialistas Mobile, UI Guardian e DevOps podem analisar e implementar arquivos dentro do escopo; este primeiro motor ainda não fornece build Android/Gradle, navegação interativa ou screenshots com visão multimodal. Não anunciar APK, revisão visual ou deploy comprovados até integrar e testar esses adaptadores. Testes Python não substituem testes desses recursos.
 
+## Recuperação da consulta May e diagnóstico de falhas (20/10/2026)
+
+A resposta pública da May é transporte de decisões, não prova de implementação. Se um `may-maestro` já registrou um `delegate` no checkpoint SQLite e todas as subtarefas correspondentes existem com o mesmo projeto, permissões e dependência do pai, o worker finaliza somente a orquestração. Ele recupera recibos mesmo quando o histórico contém eventos intermediários e existe uma segunda consulta sem resposta (ex.: Issues #41 e #50); não publica um novo ticket nem precisa gastar outra chamada Gemini/DeepSeek. Se restam ações além de `finish`, falta recibo ou existe dependência inconsistente, o pai continua pendente e o histórico é preservado.
+
+O controlador exporta `tasks/results/<id>.json` com `tasks[].blocker` sanitizado: `awaiting_may_consultation` identifica ticket/rodada pendente, `task_failed` traz somente código/razão estritamente limitados e `task_blocked` identifica dependências com falha. Nunca publica corpo de erro, tokens, respostas de modelo ou dados de clientes. O evento `may_delegation_released` no log do worker é emitido após persistência, contando a delegação validada, e marca explicitamente `qa_verified=false`. A falha do especialista deve ser diagnosticada em seu próprio resultado, sem reiniciá-lo nem desbloquear à força as dependências.
+
 ## Fallback coletivo e qualidade
 
 `ModelGateway` serve aos 17 agentes. Qualquer falha Gemini é registrada por provedor/motivo/status e redireciona a decisão ao DeepSeek, preservando a identidade, o objetivo e o estado. Um circuit breaker compartilhado evita repetir a chamada Gemini em cada especialista durante a indisponibilidade; o cooldown é salvo no estado e a próxima ação após a janela tenta Gemini novamente. O DeepSeek pode operar mesmo que Gemini ainda não tenha modelo ou atestação configurados. Se ambos falham, a tarefa conserva o checkpoint e volta à fila; falha de provedor não é teste aprovado. O gateway não repete ferramentas já executadas.
