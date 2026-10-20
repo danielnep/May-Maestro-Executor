@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import base64
 import hashlib
 import os
+import re
 import tempfile
 from pathlib import Path
 
@@ -21,6 +22,13 @@ STATE_BRANCH = "agent-state/runtime"
 class GitHubSQLiteState(State):
     def __init__(self, *, api=None):
         self.workdir = tempfile.TemporaryDirectory(prefix="horizon-sqlite-")
+        branch = os.getenv("HORIZON_STATE_BRANCH", STATE_BRANCH)
+        # Railway uses its OWN encrypted GitHub branch after verified
+        # one-time import. Never silently read or overwrite the old branch.
+        if branch != STATE_BRANCH and not re.fullmatch(
+                r"agent-state/railway-[a-z0-9-]{2,36}", branch):
+            raise RuntimeError("Invalid checkpoint branch")
+        self.state_branch = branch
         if api is not None:
             self.remote = api
         else:
@@ -32,7 +40,7 @@ class GitHubSQLiteState(State):
             key = base64.urlsafe_b64encode(hashlib.sha256(
                 ("horizon-github-sqlite-v1:" + material).encode()).digest())
             self.remote = GitHubState(
-                REPOSITORY, branch=STATE_BRANCH, compressed=True, encryption_key=key)
+                REPOSITORY, branch=branch, compressed=True, encryption_key=key)
         self.restored_legacy = False
         dbfile = Path(self.workdir.name) / "state.sqlite3"
         try:

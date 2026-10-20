@@ -2,6 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from horizon_core.github_sqlite_state import GitHubSQLiteState
 from horizon_core.state import State
@@ -15,6 +16,30 @@ class GitHubSQLiteTests(unittest.TestCase):
         state = State(self.orig)
         state.enqueue("original", "may-maestro", "sample", "Preserve an existing checkpoint")
         state.close()
+
+    def test_railway_branch_is_explicit_and_old_default_remains(self):
+        class FakeRemote:
+            restored_legacy = False
+            def __init__(self, *args, **kwargs):
+                self.branch=kwargs.get("branch")
+            def pull(self, dest):
+                Path(dest).write_bytes(self_source)
+                return True
+        self_source=self.orig.read_bytes()
+        with patch.dict("os.environ", {"HORIZON_SQLITE_ENCRYPTION_KEY":"synthetic-checkpoint-test-secret"}):
+          with patch("horizon_core.github_sqlite_state.GitHubState", FakeRemote):
+             with patch.dict("os.environ", {"HORIZON_STATE_BRANCH":"agent-state/railway-staging"}):
+                 state=GitHubSQLiteState()
+                 self.assertEqual(state.state_branch,"agent-state/railway-staging")
+                 self.assertEqual(state.remote.branch,"agent-state/railway-staging")
+                 state.close()
+             with patch.dict("os.environ", {"HORIZON_STATE_BRANCH":""}):
+                 with self.assertRaisesRegex(RuntimeError,"Invalid checkpoint branch"):
+                     GitHubSQLiteState()
+             with patch.dict("os.environ", {"HORIZON_STATE_BRANCH":"agent-state/runtime"}):
+                 state=GitHubSQLiteState()
+                 self.assertEqual(state.remote.branch,"agent-state/runtime")
+                 state.close()
 
     def test_empty_branch_fails_closed(self):
         class Missing:
