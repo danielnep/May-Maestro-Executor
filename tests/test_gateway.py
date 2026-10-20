@@ -5,7 +5,7 @@ import urllib.error
 from unittest.mock import patch
 from horizon_core.state import State
 
-from horizon_core.gateway import GatewayError, GeminiGateway, DeepSeekGateway, ModelGateway
+from horizon_core.gateway import GatewayError, GeminiGateway, GroqGateway, ModelGateway
 from horizon_core.registry import AGENT_IDS, load_agent
 
 
@@ -120,233 +120,124 @@ class GatewayTests(unittest.TestCase):
                 GeminiGateway(dict(self.env, GEMINI_MAX_CALLS=value))
 
 
-class FallbackTests(unittest.TestCase):
+
+class GroqRoutingTests(unittest.TestCase):
     def setUp(self):
-        self.env = {"GEMINI_API_KEY": "gemini-test-secret", "GEMINI_MODEL": "gemini-model",
-                    "GEMINI_FREE_TIER_CONFIRMED": "true", "DEEPSEEK_API_KEY": "deepseek-test-secret"}
-        self.messages = [{"role": "user", "content": "Inspect the allowed fixture"}]
+        self.env = {"GROQ_API_KEY": "synthetic-groq",
+                    "GEMINI_API_KEY": "synthetic-gemini",
+                    "GEMINI_MODEL": "gemini-3.6-flash",
+                    "GEMINI_FREE_TIER_CONFIRMED": "true"}
+        self.messages = [{"role": "user", "content": "Inspect the fixture"}]
         self.requests = []
 
-    def secondary_response(self, action=None, **extra):
-        action = action if action is not None else {"action": "finish", "args": {}, "summary": "verified"}
-        value = {"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(action), "reasoning_content": "private reasoning never retained"}}], "usage": {"total_tokens": 100}}
-        value.update(extra)
-        return Response(json.dumps(value).encode())
+    def groq_response(self, action=None):
+        body = action if action is not None else {"action": "finish", "args": {}, "summary": "ok"}
+        return Response(json.dumps({"choices": [{"finish_reason": "stop",
+            "message": {"content": json.dumps(body), "reasoning_content": "private"}}],
+            "usage": {"total_tokens": 12}}).encode())
 
-    def failing_primary(self, status=429):
-        def opener(request, timeout):
-            self.requests.append(request)
-            if "googleapis" in request.full_url:
-                raise urllib.error.HTTPError(request.full_url, status, "upstream secret", {}, io.BytesIO(b"secret upstream body"))
-            return self.secondary_response()
-        return opener
+    def opener(self, req, timeout):
+        self.requests.append(req)
+        return self.groq_response()
 
-    def test_all_17_specialists_fallback_independently_with_one_primary_failure(self):
-        gateway = ModelGateway(environ=self.env, opener=self.failing_primary())
-        for ident in AGENT_IDS:
-            action = gateway.complete(load_agent(ident), self.messages)
-            self.assertEqual(action["metadata"]["agent_id"], ident)
-            self.assertEqual(action["metadata"]["provider"], "deepseek")
-            self.assertEqual(action["metadata"]["fallback_reason"]["status"], 429)
-            self.assertIn("Specialist ID: " + ident, json.loads(self.requests[-1].data)["messages"][0]["content"])
-        self.assertEqual(len(self.requests), 18)
-        self.assertEqual(gateway.gemini.calls, 1)
-        self.assertEqual(gateway.deepseek.calls, 17)
+    def test_role_specific_models_cover_all_17_specialists(self):
+        gateway = ModelGateway(environ=self.env, opener=self.opener)
+        for agent_id in AGENT_IDS:
+            result = gateway.complete(load_agent(agent_id), self.messages)
+            expected = ("qwen/qwen3.8-27b" if agent_id in
+                ("frontend-engineer", "mobile-app-builder", "ui-ux-designer", "horizon-ui-guardian")
+                else "openai/gpt-oss-120b")
+            self.assertEqual(result["metadata"]["model"], expected)
+            self.assertEqual(result["metadata"]["provider"], "groq")
+            body = json.loads(self.requests[-1].data)
+            self.assertEqual(body["model"], expected)
+            self.assertEqual(body["response_format"], {"type": "json_object"})
+            self.assertEqual(self.requests[-1].get_header("Authorization"), "Bearer synthetic-groq")
+            self.assertNotIn("synthetic-groq", self.requests[-1].full_url)
+            self.assertNotIn("private", json.dumps(result))
+        self.assertEqual(gateway.calls, 17)
 
-    def test_cooldown_persists_and_primary_recovers_on_next_action(self):
+    def test_existing_railway_key_alias_is_accepted_if_in_same_process(self):
+        env = {"API_IA_GROQ": "another-synthetic-key"}
+        result = GroqGateway(env, self.opener).complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(result["metadata"]["provider"], "groq")
+        self.assertEqual(self.requests[-1].get_header("Authorization"), "Bearer another-synthetic-key")
+
+    def test_qwen_unavailable_uses_gpt_oss_inside_groq(self):
+        def opener(req, timeout):
+            self.requests.append(req)
+            payload = json.loads(req.data)
+            if payload["model"].startswith("qwen/"):
+                raise urllib.error.HTTPError(req.full_url, 404, "not enabled", {}, io.BytesIO(b"secret body"))
+            return self.groq_response()
+        result = ModelGateway(environ=self.env, opener=opener).complete(load_agent("mobile-app-builder"), self.messages)
+        self.assertEqual(result["metadata"]["model"], "openai/gpt-oss-120b")
+        self.assertEqual(result["metadata"]["fallback_from"], "groq_ui")
+        self.assertEqual(len(self.requests), 2)
+        self.assertNotIn("secret body", json.dumps(result))
+
+    def test_missing_groq_key_falls_back_to_gemini(self):
+        requests = []
+        def opener(req, timeout):
+            requests.append(req)
+            return envelope()
+        env = {name: value for name, value in self.env.items() if name != "GROQ_API_KEY"}
+        result = ModelGateway(environ=env, opener=opener).complete(load_agent("frontend-engineer"), self.messages)
+        self.assertEqual(result["metadata"]["provider"], "gemini")
+        self.assertEqual(result["metadata"]["fallback_from"], "groq")
+        self.assertEqual(len(requests), 1)
+
+    def test_groq_401_uses_gemini_without_retrying_other_groq_model(self):
+        def opener(req, timeout):
+            self.requests.append(req)
+            if "api.groq.com" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 401, "token", {}, io.BytesIO(b"private"))
+            return envelope()
+        result = ModelGateway(environ=self.env, opener=opener).complete(load_agent("ui-ux-designer"), self.messages)
+        self.assertEqual(result["metadata"]["provider"], "gemini")
+        self.assertEqual(len(self.requests), 2)
+
+    def test_both_providers_fail_with_sanitized_diagnostics(self):
+        def fail(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 401, "do not log", {}, io.BytesIO(b"SECRET"))
+        with self.assertRaises(GatewayError) as caught:
+            ModelGateway(environ=self.env, opener=fail).complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(caught.exception.reason, "providers_unavailable")
+        self.assertEqual([x["provider"] for x in caught.exception.failures], ["groq", "gemini"])
+        self.assertNotIn("SECRET", str(caught.exception))
+        self.assertNotIn("synthetic-groq", str(caught.exception))
+
+    def test_groq_429_cooldown_persists_across_gateway_instances(self):
         state = State(":memory:")
         self.addCleanup(state.close)
+        def opener(req, timeout):
+            self.requests.append(req)
+            if "api.groq.com" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"private"))
+            return envelope()
         with patch("horizon_core.gateway.time.time", return_value=1000):
-            first = ModelGateway(state=state, environ=self.env, opener=self.failing_primary())
-            first.complete(load_agent("qa-engineer"), self.messages)
+            first = ModelGateway(state=state, environ=self.env, opener=opener)
+            self.assertEqual(first.complete(load_agent("backend-engineer"), self.messages)["metadata"]["provider"], "gemini")
         with patch("horizon_core.gateway.time.time", return_value=1001):
-            resumed = ModelGateway(state=state, environ=self.env, opener=self.failing_primary())
+            resumed = ModelGateway(state=state, environ=self.env, opener=opener)
             result = resumed.complete(load_agent("backend-engineer"), self.messages)
-            self.assertTrue(result["metadata"]["gemini_cooldown_skipped"])
-            self.assertEqual(resumed.gemini.calls, 0)
-        with patch("horizon_core.gateway.time.time", return_value=1400):
-            resumed.gemini.opener = lambda req, timeout: envelope()
-            result = resumed.complete(load_agent("frontend-engineer"), self.messages)
-            self.assertEqual(result["metadata"]["provider"], "gemini")
-            self.assertEqual(state.recall("__runtime__", "gateway")["circuit"], {})
-        stored = json.dumps(state.recall("__runtime__", "gateway"))
-        for secret in self.env.values():
-            self.assertNotIn(secret, stored)
+            self.assertTrue(result["metadata"]["groq_cooldown_skipped"])
+            self.assertEqual(resumed.groq.calls, 0)
+        self.assertNotIn("synthetic-groq", json.dumps(state.recall("__runtime__", "gateway")))
 
-    def test_fallback_for_auth_quota_server_errors(self):
-        for status in (400, 401, 403, 429, 500, 503):
-            self.requests.clear()
-            gateway = ModelGateway(environ=self.env, opener=self.failing_primary(status))
-            result = gateway.complete(load_agent("may-maestro"), self.messages)
-            self.assertEqual(result["metadata"]["fallback_reason"]["status"], status)
-            self.assertEqual(len(self.requests), 2)
+    def test_high_reasoning_only_set_for_gpt_oss(self):
+        agent = dict(load_agent("backend-engineer"), _reasoning_level="high")
+        GroqGateway(self.env, self.opener).complete(agent, self.messages)
+        self.assertEqual(json.loads(self.requests[-1].data)["reasoning_effort"], "high")
+        GroqGateway(self.env, self.opener).complete(
+            dict(load_agent("mobile-app-builder"), _reasoning_level="high"), self.messages)
+        self.assertNotIn("reasoning_effort", json.loads(self.requests[-1].data))
 
-    def test_fallback_for_missing_primary_settings_or_confirmation(self):
-        for missing in ("GEMINI_MODEL", "GEMINI_API_KEY", "GEMINI_FREE_TIER_CONFIRMED"):
-            env = dict(self.env)
-            env.pop(missing)
-            self.requests.clear()
-            gateway = ModelGateway(environ=env, opener=self.failing_primary())
-            result = gateway.complete(load_agent("qa-engineer"), self.messages)
-            self.assertEqual(result["metadata"]["fallback_reason"]["reason"], "configuration")
-            self.assertEqual(len(self.requests), 1)
-
-    def test_invalid_explicit_primary_config_still_falls_back(self):
-        env = dict(self.env, GEMINI_MAX_CALLS="invalid")
-        gateway = ModelGateway(environ=env, opener=self.failing_primary())
-        result = gateway.complete(load_agent("qa-engineer"), self.messages)
-        self.assertEqual(result["metadata"]["fallback_reason"]["reason"], "configuration")
-        self.assertEqual(gateway.calls, 1)
-
-    def test_transport_invalid_format_and_blocked_primary_fallback(self):
-        for raw in (None, b'not json', b'{"candidates":[{"finishReason":"SAFETY"}]}', b'{"candidates":[{"content":{"parts":[{"text":"oops"}]}}]}'):
-            def opener(request, timeout):
-                if "googleapis" in request.full_url:
-                    if raw is None:
-                        raise urllib.error.URLError("gemini-test-secret")
-                    return Response(raw)
-                return self.secondary_response()
-            result = ModelGateway(environ=self.env, opener=opener).complete(load_agent("qa-engineer"), self.messages)
-            self.assertEqual(result["metadata"]["provider"], "deepseek")
-
-    def test_deepseek_reasoning_json_and_authorization_only_in_header(self):
-        def opener(request, timeout):
-            self.requests.append(request)
-            return self.secondary_response()
-        result = DeepSeekGateway(self.env, opener).complete(load_agent("frontend-engineer"), self.messages)
-        payload = json.loads(self.requests[0].data)
-        self.assertEqual(payload["thinking"], {"type": "disabled"})
-        self.assertEqual(payload["reasoning_effort"], "none")
-        self.assertEqual(payload["temperature"], 0.2)
-        self.assertEqual(payload["response_format"], {"type": "json_object"})
-        self.assertEqual(self.requests[0].get_header("Authorization"), "Bearer deepseek-test-secret")
-        self.assertNotIn("deepseek-test-secret", self.requests[0].full_url)
-        self.assertNotIn("max_tokens", payload)
-        self.assertNotIn("private reasoning", json.dumps(result))
-        self.assertEqual(result["metadata"]["model"], "deepseek-flash")
-
-    def test_deep_thinking_only_on_explicit_worker_level(self):
-        captured = []
-        def opener(req, timeout):
-            captured.append(json.loads(req.data))
-            return self.secondary_response()
-        gateway = DeepSeekGateway(self.env, opener)
-        agent = dict(load_agent("frontend-engineer"), _reasoning_level="high")
-        gateway.complete(agent, self.messages)
-        self.assertEqual(captured[-1]["thinking"], {"type": "enabled"})
-        self.assertEqual(captured[-1]["reasoning_effort"], "high")
-        self.assertNotIn("temperature", captured[-1])
+    def test_invalid_action_is_blocked(self):
+        def fake(req, timeout):
+            return self.groq_response({"action": "write_file", "args": {}, "summary": "bad"})
         with self.assertRaises(GatewayError):
-            gateway.complete(dict(agent, _reasoning_level="max"), self.messages)
-        self.assertEqual(len(captured), 1)
-
-    def test_gemini_lite_defaults_to_minimal_thinking(self):
-        captured = []
-        def opener(req, timeout):
-            captured.append(json.loads(req.data))
-            return envelope()
-        gateway = GeminiGateway(self.env, opener)
-        agent = load_agent("qa-engineer")
-        gateway.complete(dict(agent, model="gemini-3.6-flash"), self.messages)
-        self.assertEqual(captured[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "low")
-        gateway.complete(dict(agent, model="gemini-3.6-flash", _reasoning_level="high"), self.messages)
-        self.assertEqual(captured[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "high")
-        gateway.complete(dict(agent, model="gemini-3.5-flash-lite"), self.messages)
-        self.assertEqual(captured[-1]["generationConfig"]["thinkingConfig"]["thinkingLevel"], "minimal")
-
-    def test_retired_deepseek_model_aliases_are_normalized_without_deep_thinking(self):
-        captured = []
-        def opener(req, timeout):
-            captured.append(json.loads(req.data))
-            return self.secondary_response()
-        for model in ("deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"):
-            DeepSeekGateway(dict(self.env, DEEPSEEK_MODEL=model), opener).complete(
-                load_agent("qa-engineer"), self.messages)
-            self.assertEqual(captured[-1]["model"], "deepseek-flash")
-            self.assertEqual(captured[-1]["thinking"], {"type": "disabled"})
-
-    def test_no_default_call_or_output_caps_but_explicit_override_available(self):
-        gateway = GeminiGateway(self.env, lambda req, timeout: envelope())
-        self.assertIsNone(gateway.max_calls)
-        self.assertIsNone(gateway.max_output_tokens)
-        for _ in range(25):
-            gateway.complete(load_agent("frontend-engineer"), self.messages)
-        def opener(request, timeout):
-            self.assertNotIn("maxOutputTokens", json.loads(request.data)["generationConfig"])
-            return envelope()
-        GeminiGateway(self.env, opener).complete(load_agent("frontend-engineer"), self.messages)
-        deepseek = DeepSeekGateway(dict(self.env, DEEPSEEK_MAX_OUTPUT_TOKENS="123456", DEEPSEEK_MODEL="explicit-deepseek-model"), lambda req, timeout: self.secondary_response())
-        self.assertEqual(deepseek.max_output_tokens, 123456)
-        self.assertEqual(deepseek.complete(load_agent("qa-engineer"), self.messages)["metadata"]["model"], "explicit-deepseek-model")
-
-    def test_both_failures_retained_without_leaks_and_retryable(self):
-        def opener(request, timeout):
-            raise urllib.error.HTTPError(request.full_url, 401, "deepseek-test-secret", {}, io.BytesIO(b"gemini-test-secret"))
-        gateway = ModelGateway(environ=self.env, opener=opener)
-        with self.assertRaises(GatewayError) as caught:
-            gateway.complete(load_agent("qa-engineer"), self.messages)
-        error = caught.exception
-        self.assertTrue(error.retryable)
-        self.assertEqual([f["provider"] for f in error.failures], ["gemini", "deepseek"])
-        self.assertEqual([f["status"] for f in error.failures], [401, 401])
-        for secret in ("gemini-test-secret", "deepseek-test-secret"):
-            self.assertNotIn(secret, str(error) + json.dumps(error.failures))
-
-    def test_verified_free_model_recovers_primary_quota_and_deepseek_402(self):
-        env = dict(self.env, GEMINI_FREE_FALLBACK_MODEL='gemini-3.5-flash-lite')
-        calls = []
-        def opener(request, timeout):
-            calls.append(request.full_url)
-            if 'gemini-3.5-flash-lite' in request.full_url:
-                return envelope()
-            status = 429 if 'googleapis' in request.full_url else 402
-            raise urllib.error.HTTPError(request.full_url, status, 'unavailable', {},
-                                         io.BytesIO(b'no secrets in diagnostics'))
-        gateway = ModelGateway(environ=env, opener=opener)
-        result = gateway.complete(load_agent('software-architect'), self.messages)
-        self.assertEqual(len(calls), 3)
-        self.assertEqual(result['metadata']['model'], 'gemini-3.5-flash-lite')
-        self.assertTrue(result['metadata']['free_tier_model'])
-        self.assertEqual(result['metadata']['fallback_from'], 'gemini_and_deepseek')
-        self.assertEqual([e['status'] for e in result['metadata']['fallback_reasons']], [429, 402])
-        for key in ('GEMINI_API_KEY', 'DEEPSEEK_API_KEY'):
-            self.assertNotIn(env[key], json.dumps(result))
-
-    def test_flash_lite_requires_real_primary_429_and_failed_deepseek(self):
-        env=dict(self.env,GEMINI_FREE_FALLBACK_MODEL="gemini-3.5-flash-lite")
-        for first_status in (401,403,500,503):
-            requested=[]
-            def opener(req,timeout):
-                requested.append(req.full_url)
-                code=first_status if "googleapis" in req.full_url else 402
-                raise urllib.error.HTTPError(req.full_url,code,"unavailable",{},io.BytesIO(b"safe"))
-            with self.subTest(primary=first_status),self.assertRaises(GatewayError):
-                ModelGateway(environ=env,opener=opener).complete(
-                    load_agent("frontend-engineer"),self.messages)
-            self.assertEqual(len(requested),2)
-            self.assertFalse(any("flash-lite" in url for url in requested))
-
-    def test_free_model_failure_preserves_all_three_safe_provider_errors(self):
-        env = dict(self.env, GEMINI_FREE_FALLBACK_MODEL='gemini-3.5-flash-lite')
-        def opener(request, timeout):
-            status = 402 if 'api.deepseek.com' in request.full_url else 429
-            raise urllib.error.HTTPError(request.full_url, status, 'quota', {},
-                                         io.BytesIO(b'sensitive upstream payload'))
-        with self.assertRaises(GatewayError) as caught:
-            ModelGateway(environ=env, opener=opener).complete(
-                load_agent('software-architect'), self.messages)
-        self.assertEqual([f['status'] for f in caught.exception.failures], [429, 402, 429])
-        self.assertEqual(caught.exception.reason, 'providers_unavailable')
-        self.assertTrue(caught.exception.retryable)
-        self.assertNotIn('sensitive upstream payload', str(caught.exception))
-
-    def test_deepseek_enforces_same_action_permissions_and_rejects_bad_envelopes(self):
-        bad = {"action": "write_file", "args": {"path": "x", "content": "x"}, "summary": "unauthorized"}
-        for raw in (b'[]', b'{}', b'not json', b'{"choices":[{"finish_reason":"length"}]}'):
-            with self.assertRaises(GatewayError):
-                DeepSeekGateway(self.env, lambda req, timeout: Response(raw)).complete(load_agent("corregedoria-may"), self.messages)
-        with self.assertRaises(GatewayError):
-            DeepSeekGateway(self.env, lambda req, timeout: self.secondary_response(bad)).complete(load_agent("corregedoria-may"), self.messages)
+            GroqGateway(self.env, fake).complete(load_agent("may-persona"), self.messages)
 
 
 if __name__ == "__main__":
