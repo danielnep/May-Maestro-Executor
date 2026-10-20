@@ -2,20 +2,6 @@
   "chat": "Horizon | Central dos Agentes",
   "events": [
     {
-      "agent": "frontend-engineer",
-      "at": "2026-10-20T05:25:59Z",
-      "id": 996,
-      "ref": "cbf18d747dc6",
-      "status": "bloqueado"
-    },
-    {
-      "agent": "mobile-app-builder",
-      "at": "2026-10-20T05:25:59Z",
-      "id": 997,
-      "ref": "58d40897c9a8",
-      "status": "bloqueado"
-    },
-    {
       "agent": "qa-engineer",
       "at": "2026-10-20T05:25:59Z",
       "id": 998,
@@ -1118,6 +1104,20 @@
       "agent": "ui-ux-designer",
       "at": "2026-10-20T15:19:31Z",
       "id": 1266,
+      "ref": "08f40c5b70a8",
+      "status": "aguardando"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T15:26:42Z",
+      "id": 1267,
+      "ref": "08f40c5b70a8",
+      "status": "retomou"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "at": "2026-10-20T15:26:47Z",
+      "id": 1268,
       "ref": "08f40c5b70a8",
       "status": "aguardando"
     }
