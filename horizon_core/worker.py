@@ -379,6 +379,37 @@ class Worker:
                     raise ValueError('Specialist capability denied')
                 if name == 'finish':
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
+                    # A passing test never cancels a different still-failing test.
+                    # Read the latest actual result of each check after the last
+                    # source edit. A model's finish request cannot override it.
+                    latest_checks = {}
+                    for item in history:
+                        if item.get('action') == 'run_check':
+                            outcome = item.get('outcome') or {}
+                            if isinstance(outcome, dict):
+                                latest_checks[outcome.get('check') or 'unknown'] = outcome
+                    unresolved = sorted(key for key, check in latest_checks.items()
+                                        if check.get('passed') is not True
+                                        or check.get('tool_error'))
+                    if unresolved:
+                        step += 1
+                        failure_counts['unverified_checks'] = failure_counts.get('unverified_checks', 0) + 1
+                        history.append({'action': 'verification_required',
+                            'outcome': {'checks': unresolved[:5],
+                            'instruction': 'Do not finish. Investigate the failing test, '
+                                           'change the underlying source or environment, '
+                                           'then rerun the same test until it passes.'}})
+                        self.state.checkpoint(task_id, self.worker_id, {
+                            'step': step, 'history': history, 'checks': checks,
+                            'delegated': delegated, 'failure_counts': failure_counts})
+                        if failure_counts['unverified_checks'] >= 3:
+                            return self._repair_cycle(
+                                task_id, step, history, checks, delegated,
+                                failure_counts, 'unverified_checks',
+                                'Unresolved checks: ' + ', '.join(unresolved[:4]))
+                        self.persist()
+                        continue
+                    failure_counts.pop('unverified_checks', None)
                     if requires_visual_review(task):
                         visual = visual_review_status(history)
                         if visual['reason'] == 'browser_check_missing_after_edit':
