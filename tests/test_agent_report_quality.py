@@ -24,6 +24,17 @@ class ReportQualityTests(unittest.TestCase):
         self.assertEqual(report["status"],"reported_complete")
         self.assertTrue(report["quality"]["approved"])
 
+    def test_published_delivery_requires_independent_qa(self):
+        publication={"published":True,"target_repo":"danielnep/app-hondas-maxvel",
+          "branch":"agent/review","commit":"a"*40,
+          "pages_preview":{"status":"verified","branch":"agent/review",
+            "page_url":"https://danielnep.github.io/app-hondas-maxvel/"}}
+        report=summarize("fixture",[self.task([],agent="may-maestro")],publication)
+        self.assertFalse(report["quality"]["approved"])
+        self.assertTrue(report["quality"]["qa_missing_for_publication"])
+        self.assertEqual(report["status"],"needs_attention")
+        self.assertEqual(report["may_review"]["status"],"quality_blocked")
+
     def test_model_identity_requires_real_result_metadata_and_is_sanitized(self):
         valid=self.task([{"check":"node-test","passed":True,"exit_code":0,"tests_run":1}])
         valid["result"]["model"]={"provider":"gemini","model":"gemini-3.8-flash",
