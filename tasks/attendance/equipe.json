@@ -58,9 +58,9 @@
       "agent": "ui-ux-designer",
       "blocked": 0,
       "finished": 1,
-      "queued": 0,
-      "running": 1,
-      "status": "executando",
+      "queued": 1,
+      "running": 0,
+      "status": "aguardando",
       "task_ref": "08f40c5b70a8"
     },
     {
