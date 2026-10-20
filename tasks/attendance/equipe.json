@@ -2,12 +2,12 @@
   "agents": [
     {
       "agent": "may-maestro",
-      "blocked": 1,
+      "blocked": 2,
       "finished": 6,
       "queued": 0,
-      "running": 1,
-      "status": "executando",
-      "task_ref": "ab746bc96407"
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": "3acc93a22b09"
     },
     {
       "agent": "horizon-project-studio",
@@ -29,12 +29,12 @@
     },
     {
       "agent": "frontend-engineer",
-      "blocked": 1,
+      "blocked": 2,
       "finished": 3,
-      "queued": 1,
+      "queued": 0,
       "running": 0,
-      "status": "na_fila",
-      "task_ref": "14cd4fbc3ad4"
+      "status": "ocioso",
+      "task_ref": "cbf18d747dc6"
     },
     {
       "agent": "backend-engineer",
@@ -47,12 +47,12 @@
     },
     {
       "agent": "mobile-app-builder",
-      "blocked": 1,
+      "blocked": 2,
       "finished": 0,
-      "queued": 1,
+      "queued": 0,
       "running": 0,
-      "status": "na_fila",
-      "task_ref": "f51694b7e191"
+      "status": "ocioso",
+      "task_ref": "58d40897c9a8"
     },
     {
       "agent": "ui-ux-designer",
@@ -65,12 +65,12 @@
     },
     {
       "agent": "horizon-ui-guardian",
-      "blocked": 1,
+      "blocked": 2,
       "finished": 0,
-      "queued": 1,
+      "queued": 0,
       "running": 0,
-      "status": "na_fila",
-      "task_ref": "dca9862e0316"
+      "status": "ocioso",
+      "task_ref": "175fcce0a3f4"
     },
     {
       "agent": "database-engineer",
@@ -92,12 +92,12 @@
     },
     {
       "agent": "qa-engineer",
-      "blocked": 1,
+      "blocked": 2,
       "finished": 10,
-      "queued": 1,
+      "queued": 0,
       "running": 0,
-      "status": "na_fila",
-      "task_ref": "61f642a63f49"
+      "status": "ocioso",
+      "task_ref": "a79a05c39981"
     },
     {
       "agent": "security-engineer",
@@ -137,12 +137,12 @@
     },
     {
       "agent": "corregedoria-may",
-      "blocked": 1,
+      "blocked": 2,
       "finished": 2,
-      "queued": 1,
+      "queued": 0,
       "running": 0,
-      "status": "na_fila",
-      "task_ref": "da87d4d69785"
+      "status": "ocioso",
+      "task_ref": "68616972be0c"
     },
     {
       "agent": "may-persona",
