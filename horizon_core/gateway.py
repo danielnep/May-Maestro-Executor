@@ -79,7 +79,7 @@ def _prompt(agent):
     prompt = ("Specialist ID: " + agent["id"] + "\n" + agent["instructions"]
               + "\nAllowed actions: " + json.dumps(agent["tools"])
               + '\nTool args contracts: list_files {filter?,limit?}; read_file {path,search? OR start_line?,end_line?}; '
-              + 'write_file {path,content,expected_sha256?}; run_check {name:"python-unittest"|"browser-playwright"|"node-test"|"android-gradle",project_dir?:"relative/subdir"}; '
+              + 'write_file {path,content,expected_sha256?}; run_check {name:"python-unittest"|"node-test"|"android-gradle",project_dir?:"relative/subdir"}; '
               + 'remember {key,value}; finish {}; '
               + 'search_web {query}; fetch_public {url}; inspect_image {index:0,question}; '
               + 'delegate {tasks:[{id,agent,objective,depends_on:[earlier local id]}]}; consult_may {question:"bounded public technical question"}. '
