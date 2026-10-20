@@ -191,7 +191,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             {'action': 'remember', 'args': {'key': 'read', 'value': True}, 'summary': 'Remember proof'},
             {'action': 'finish', 'args': {}, 'summary': 'May batch finished after evidence'}
         ]
-        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \\
+        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \
              patch('horizon_core.worker.read_consultation',
                    return_value={'decisions_untrusted': actions, 'source': 'public_owner_comment'}):
             sliced = Worker(self.state, gateway, self.root, slice_seconds=0.000000001).run_one()
@@ -199,7 +199,7 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual(sliced['checkpoint']['may_plan'], actions[1:])
         self.assertNotIn('pending_may', sliced['checkpoint'])
         self.assertEqual(len(gateway.calls), 1)
-        with patch('horizon_core.state.time.time', return_value=sliced['not_before'] + 1), \\
+        with patch('horizon_core.state.time.time', return_value=sliced['not_before'] + 1), \
              patch('horizon_core.worker.read_consultation',
                    side_effect=AssertionError('already consumed reply')):
             finished = Worker(self.state, gateway, self.root).run_one()
@@ -222,7 +222,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Read'},
             {'action': 'delete_file', 'args': {'path': 'README.md'}, 'summary': 'Not permitted'}
         ]
-        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \\
+        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \
              patch('horizon_core.worker.read_consultation',
                    return_value={'decisions_untrusted': decisions}):
             denied = Worker(self.state, gateway, self.root).run_one()
@@ -240,9 +240,9 @@ class WorkerIntegrationTests(unittest.TestCase):
         with patch('horizon_core.worker.request_consultation',
                    return_value={'status': 'requested', 'ticket': 'pending-action', 'issue': 46}):
             queued = Worker(self.state, gateway, self.root).run_one()
-        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \\
+        with patch('horizon_core.state.time.time', return_value=queued['not_before'] + 1), \
              patch('horizon_core.worker.read_consultation',
-                   return_value={'advice_untrusted': 'Check AI quota first'}), \\
+                   return_value={'advice_untrusted': 'Check AI quota first'}), \
              patch('horizon_core.worker.request_consultation',
                    side_effect=AssertionError('never open another ticket')):
             waiting = Worker(self.state, gateway, self.root).run_one()
