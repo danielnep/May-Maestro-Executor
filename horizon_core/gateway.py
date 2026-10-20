@@ -9,7 +9,7 @@ import urllib.request
 
 GROQ_UI_AGENTS = frozenset({"frontend-engineer","mobile-app-builder","ui-ux-designer","horizon-ui-guardian"})
 DEFAULT_GROQ_UI_MODEL = "qwen/qwen3.8-27b"
-DEFAULT_GROQ_CODE_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GROQ_CODE_MODEL = "openai/gpt-oss-120b"
 ACTIONS = {"read_file", "list_files", "write_file", "run_check", "remember", "finish", "delegate", "search_web", "fetch_public", "inspect_image"}
 
 
