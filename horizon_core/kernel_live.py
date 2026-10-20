@@ -3,6 +3,7 @@
 Only public GitHub Pages of owner-authorized source repositories. Session IDs
 and links come from the current KERNEL API. No Playwright or Chrome CDP.
 """
+import hashlib
 import json
 import os
 import re
@@ -72,7 +73,11 @@ def prepare_live_review(task, *, environ=None, opener=None):
             or not isinstance(session_id, str)
             or not re.fullmatch("[a-z0-9]{10,40}", session_id)):
         raise KernelReviewError("kernel_live_view_invalid")
+    review_ticket = hashlib.sha256(
+        ("kernel-live-v1|" + task["task_id"] + "|" + session_id).encode("utf-8")
+    ).hexdigest()[:20]
     return {"check": "kernel-live", "passed": False,
+            "ticket": review_ticket,
             "review_status": "awaiting_may_visual_review",
             "browser_live_view_url": link, "session_id": session_id,
             "target_url": target, "tests_run": 0, "reviewed_by_may": False}
