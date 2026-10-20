@@ -153,6 +153,48 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
         self.assertEqual(got["agent"], "may-maestro")
         self.assertIsNone(read_consultation(self.task["task_id"], agent="qa-engineer", api=api))
 
+    def test_bounded_multi_action_reply_can_be_consumed_as_one_consultation(self):
+        api = FakeIssues()
+        request_consultation(self.task, 'providers_unavailable', api=api)
+        actions = [
+            {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Read file'},
+            {'action': 'remember', 'args': {'key': 'read', 'value': True}, 'summary': 'Record evidence'},
+            {'action': 'finish', 'args': {}, 'summary': 'Finish after read'}
+        ]
+        api.comments[1] = [{'user': {'login': 'danielnep'},
+                            'body': REPLY_MARKER + '\\n' + json.dumps({'actions': actions})}]
+        result = read_consultation(self.task['task_id'], agent='may-maestro', api=api)
+        self.assertEqual(result['decisions_untrusted'], actions)
+        self.assertNotIn('decision_untrusted', result)
+        self.assertIn('actions', api.comments[1][0]['body'])
+
+    def test_reject_oversize_or_malformed_multi_action_plan(self):
+        api = FakeIssues()
+        request_consultation(self.task, 'providers_unavailable', api=api)
+        step = {'action': 'read_file', 'args': {'path': 'README.md'}, 'summary': 'Read'}
+        for candidate in ({'actions': [step] * 6},
+                          {'actions': [step, {'action': 'write_file', 'args': {},
+                                             'summary': 'write', 'extra': True}]},
+                          {'actions': []}):
+            api.comments[1] = [{'user': {'login': 'danielnep'},
+                                'body': REPLY_MARKER + '\\n' + json.dumps(candidate)}]
+            result = read_consultation(self.task['task_id'], agent='may-maestro', api=api)
+            self.assertNotIn('decisions_untrusted', result)
+            self.assertNotIn('decision_untrusted', result)
+
+    def test_long_authorized_plan_not_truncated_at_old_three_k_limit(self):
+        api = FakeIssues()
+        request_consultation(self.task, 'providers_unavailable', api=api)
+        action = {'action': 'delegate', 'args': {'tasks': [
+            {'id': 'task-' + str(i), 'agent': 'qa-engineer',
+             'objective': 'Independent verification ' + 'a' * 160,
+             'depends_on': []} for i in range(17)]}, 'summary': 'Delegation'}
+        body = REPLY_MARKER + '\\n' + json.dumps(action)
+        self.assertGreater(len(body), 3000)
+        api.comments[1] = [{'user': {'login': 'danielnep'}, 'body': body}]
+        result = read_consultation(self.task['task_id'], agent='may-maestro', api=api)
+        self.assertEqual(result['decision_untrusted'], action)
+
     def test_reply_as_diagnosis_and_invalid_schema_not_executable(self):
         api = FakeIssues()
         request_consultation(self.task, "providers_unavailable", api=api)
