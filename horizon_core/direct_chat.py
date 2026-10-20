@@ -29,55 +29,52 @@ MAX_TIMEOUT = 53
 # This is a fixed, operator-approved conversation and never a ChatGPT API.
 _BROWSER_CODE = r"""
 const request = JSON.parse(REQUEST_JSON);
-if (request.url !== "https://chatgpt.com/c/6ad68dab-1178-83e9-a409-7c7014281b68") {
+if (request.url !== "https://chatgpt.com/c/6ad68dab-1178-83e9-a409-7c7014281b68")
   throw new Error("Central URL not approved");
-}
-const central = page;
-const current = central.url().split("?")[0];
-if (current !== request.url) {
-  if (current !== "about:blank" || !["prepare", "read"].includes(request.stage))
-    return {status: "conversation_unavailable"};
-  await central.goto(request.url, {waitUntil: "domcontentloaded"});
-}
-try {
-  await central.getByRole("textbox", {name: "Ask ChatGPT"})
-    .waitFor({state: "visible", timeout: 20000});
-} catch (_) {
-  return {status: "not_authenticated"};
-}
-const region = central.getByRole("region", {name: "Conversation"});
-try {
-  await region.waitFor({state: "visible", timeout: 20000});
-} catch (_) {
-  return {status: "conversation_unavailable"};
-}
-const input = central.getByRole("textbox", {name: "Ask ChatGPT"});
+// Reuse only already-open tabs of the one chat. Never create or navigate tabs.
+const candidates = context.pages().filter(p => p.url().split("?")[0] === request.url);
+if (!candidates.length) return {status: "conversation_unavailable"};
 const marker = "TICKET: " + request.ticket;
-const reply = await region.evaluate((root, marker) => {
-  const headings = Array.from(root.querySelectorAll("h4")).filter(
-    h => ["You said:", "ChatGPT said:"].includes((h.textContent || "").trim()));
-  for (let i = headings.length - 1; i >= 0; i--) {
-    const item = headings[i];
-    if ((item.textContent || "").trim() !== "You said:"
-        || !(item.parentElement?.innerText || "").includes(marker)) continue;
-    const following = headings[i + 1];
-    if (!following || (following.textContent || "").trim() !== "ChatGPT said:")
-      return {status: "sent"};
-    const text = (following.parentElement?.innerText || "")
-      .replace(/^ChatGPT said:\s*/, "").trim().slice(0, 3000);
-    return text ? {status: "answered", answer: text} : {status: "sent"};
-  }
-  return null;
-}, marker);
-if (reply) return reply;
+let sent = false, busy = false, empty = null, matches = 0, checked = 0;
+for (const central of candidates) {
+  const input = central.getByRole("textbox", {name: "Ask ChatGPT"});
+  const region = central.getByRole("region", {name: "Conversation"});
+  if (await input.count() !== 1 || await region.count() !== 1) continue;
+  checked++;
+  const reply = await region.evaluate((root, marker) => {
+    const headings = Array.from(root.querySelectorAll("h4")).filter(
+      h => ["You said:", "ChatGPT said:"].includes((h.textContent || "").trim()));
+    for (let i = headings.length - 1; i >= 0; i--) {
+      const item = headings[i];
+      if ((item.textContent || "").trim() !== "You said:"
+          || !(item.parentElement?.innerText || "").includes(marker)) continue;
+      const next = headings[i + 1];
+      if (!next || (next.textContent || "").trim() !== "ChatGPT said:")
+        return {status: "sent"};
+      const answer = (next.parentElement?.innerText || "")
+        .replace(/^ChatGPT said:\s*/, "").trim().slice(0, 3000);
+      return answer ? {status: "answered", answer} : {status: "sent"};
+    }
+    return null;
+  }, marker);
+  if (reply?.status === "answered") return reply;
+  if (reply?.status === "sent") sent = true;
+  const draft = (await input.innerText()).trim();
+  if (draft) busy = true;
+  if (draft === request.prompt.trim() && draft) matches++;
+  if (!draft && !empty) empty = {central, input};
+}
+if (sent) return {status: "sent"};
+if (!checked) return {status: "not_authenticated"};
 if (request.stage === "read") return {status: "not_found"};
-const draft = (await input.innerText()).trim();
 if (request.stage === "draft")
-  return {status: draft === request.prompt.trim() ? "draft_ready" : "draft_mismatch"};
+  return {status: matches === 1 ? "draft_ready" : "draft_mismatch"};
 if (request.stage !== "prepare") return {status: "conversation_unavailable"};
-if (draft) return {status: "composer_busy"};
-await central.bringToFront();
-const box = await input.boundingBox();
+// An unfinished draft in ANY open Central tab blocks all new submissions.
+if (busy) return {status: "composer_busy"};
+if (!empty) return {status: "composer_unavailable"};
+await empty.central.bringToFront();
+const box = await empty.input.boundingBox();
 if (!box || box.width < 10 || box.height < 10)
   return {status: "composer_unavailable"};
 return {status: "ready", box: {
@@ -151,7 +148,7 @@ def _status(payload, agent, key):
         return {"status": "delivery_unknown", "ticket": key, "agent": agent}
     status = payload.get("status")
     allowed = {"not_authenticated", "conversation_unavailable", "composer_busy",
-               "composer_unavailable", "not_found", "send_unconfirmed",
+               "composer_unavailable", "transport_unavailable", "not_found", "send_unconfirmed",
                "pending_interleaved", "sent", "answered"}
     if status not in allowed:
         return {"status": "delivery_unknown", "ticket": key, "agent": agent}
@@ -183,13 +180,17 @@ def execute(agent, key, question="", reason="specialist_question", *,
         result = _kernel_post("/playwright/execute", body, secret, call, expect_json=True)
         return result.get("result") if (isinstance(result, dict)
                 and result.get("success") is True) else None
+    touched = False
     try:
         initial = inspect("read" if mode == "read" else "prepare")
-        if mode == "read" or not isinstance(initial, dict) or initial.get("status") != "ready":
+        if not isinstance(initial, dict):
+            return _status({"status": "transport_unavailable"}, agent, key)
+        if mode == "read" or initial.get("status") != "ready":
             return _status(initial, agent, key)
         box = initial.get("box") or {}
         if not isinstance(box.get("x"), int) or not isinstance(box.get("y"), int):
             return _status(None, agent, key)
+        touched = True
         _kernel_post("/computer/click_mouse", {"x": box["x"], "y": box["y"]},
                      secret, call)
         _kernel_post("/computer/type_text", {"text": prompt}, secret, call)
@@ -208,7 +209,7 @@ def execute(agent, key, question="", reason="specialist_question", *,
             raise DirectChatError("kernel_http_" + str(exc.code)) from None
     except (urllib.error.URLError, OSError, ValueError, TypeError, TimeoutError):
         pass
-    return _status(None, agent, key)
+    return _status(None if touched else {"status": "transport_unavailable"}, agent, key)
 
 def execute_local(agent, key, question="", reason="specialist_question", *,
                   mode="send", runner=None):
@@ -231,7 +232,10 @@ const {spawnSync} = require('node:child_process');
                                                 {timeout:7000});
   const contexts = browser.contexts();
   if (contexts.length !== 1) throw Error('Unrecognized browser context');
-  const context = contexts[0], page = await context.newPage();
+  const context = contexts[0];
+  const page = context.pages().find(p=>p.url().split('?')[0] === 
+    'https://chatgpt.com/c/6ad68dab-1178-83e9-a409-7c7014281b68');
+  if (!page) throw Error('central_tab_unavailable');
   const inspect = async(stage) => {
     if (stage === 'prepare') return await (async()=>{ BROWSER_PREPARE })();
     if (stage === 'draft') return await (async()=>{ BROWSER_DRAFT })();
@@ -275,8 +279,7 @@ const {spawnSync} = require('node:child_process');
       }
     }
   } finally {
-    await page.close();
-    // Leave Chrome and the reusable authenticated profile running.
+    // Preserve every existing ChatGPT tab, composer and authenticated profile.
   }
   process.stdout.write(JSON.stringify(outcome)+'\n',()=>process.exit(0));
 })().catch(()=>{
