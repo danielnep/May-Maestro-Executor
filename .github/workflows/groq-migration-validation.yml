@@ -1,9 +1,5 @@
 name: Horizon - Groq Migration Validation
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/groq-migration-validation.yml'
   pull_request:
     branches: [main]
     paths:
