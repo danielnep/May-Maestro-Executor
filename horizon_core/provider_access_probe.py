@@ -6,7 +6,7 @@ from urllib.request import Request, urlopen
 
 MODELS_URL = "https://api.groq.com/openai/v1/models"
 UI_MODEL = "qwen/qwen3.8-27b"
-CODE_MODEL = "openai/gpt-oss-120b"
+CODE_MODEL = "llama-3.3-70b-versatile"
 
 
 def check_groq(environ=None, opener=None):
