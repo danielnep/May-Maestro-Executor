@@ -104,6 +104,62 @@ class Worker:
             result.append(task_id)
         return {'delegated': result, 'note': 'Enqueued; not yet implemented or verified'}
 
+    def _finish_delegation(self, task, agent_id, step, history, checks,
+                           delegated, failure_counts, summary, *, checkpoint_written=False):
+        """Finish only Maestro's orchestration, never the delegated specialists' work."""
+        checkpoint = {'step': step, 'history': history, 'checks': checks,
+                      'delegated': delegated, 'failure_counts': failure_counts}
+        if not checkpoint_written:
+            self.state.checkpoint(task['task_id'], self.worker_id, checkpoint)
+        self.state.complete(task['task_id'], self.worker_id, {
+            'agent': agent_id, 'summary': summary,
+            'verification': checks, 'delegated': delegated,
+            'model': {'provider': 'none', 'mode': 'delegation_handoff'},
+            'status': 'reported', 'stage': 'delegated_implementation_pending',
+            'steps': step,
+        })
+        self.persist()
+        return self.state.get(task['task_id'])
+
+    def _recover_delegated_maestro(self, task, previous, pending):
+        """Retire a superseded provider ticket only after durable delegation proof.
+
+        Old V2 checkpoints may already have delegated children before opening a
+        second outage consultation. They must not wait on that unrelated reply
+        forever. Keep the public Issue untouched and verify the child DAG first.
+        """
+        if (task['agent'] != 'may-maestro' or not isinstance(pending, dict)
+                or pending.get('transport') == 'kernel'
+                or not isinstance(pending.get('round'), int)
+                or pending['round'] < 1 or previous.get('may_plan')):
+            return None
+        history = previous.get('history') or []
+        delegated = previous.get('delegated') or []
+        if len(history) < 3 or not delegated:
+            return None
+        latest, handoff = history[-1], history[-2]
+        if (latest.get('action') != 'may_provider_fallback'
+                or latest.get('round') != pending['round']
+                or latest.get('outcome', {}).get('ticket') != pending.get('ticket')
+                or handoff.get('action') != 'delegate'
+                or handoff.get('outcome', {}).get('delegated') != delegated
+                or not any(entry.get('action') == 'may_provider_fallback'
+                           and isinstance(entry.get('round'), int)
+                           and entry['round'] < pending['round']
+                           for entry in history[:-2])):
+            return None
+        if any(not isinstance(child, str) or not child.startswith(task['task_id'] + ':')
+               or not (row := self.state.get(child))
+               or task['task_id'] not in row['depends_on']
+               for child in delegated):
+            return None
+        return self._finish_delegation(
+            task, task['agent'], previous.get('step', 0), history,
+            previous.get('checks', []), delegated,
+            previous.get('failure_counts', {}),
+            'Maestro delegation resumed from a verified checkpoint; '
+            'specialist execution and QA remain pending.')
+
     def run_one(self):
         task = self.state.claim(self.worker_id, lease_seconds=1800)
         if task is None:
@@ -169,6 +225,9 @@ class Worker:
             pending_may = previous.get('pending_may')
             recovery_pending = None
             if pending_may:
+                recovered = self._recover_delegated_maestro(task, previous, pending_may)
+                if recovered is not None:
+                    return recovered
                 # Older checkpoints use a plain hash (round zero).
                 pending_round = pending_may.get('round', 0) if isinstance(pending_may, dict) else 0
                 is_direct = (isinstance(pending_may, dict)
@@ -563,6 +622,17 @@ class Worker:
                         'signatures': violations, 'max_identical_failures': 3}, retryable=False)
                     self.persist()
                     return self.state.get(task_id)
+                if (agent['id'] == 'may-maestro' and name == 'delegate'
+                        and isinstance(outcome, dict) and outcome.get('delegated')
+                        and not may_decisions):
+                    # A validated handoff is enough to release the children. A
+                    # second LLM call to say "finish" must not block their DAG.
+                    return self._finish_delegation(
+                        task, agent['id'], step, history, checks, delegated,
+                        failure_counts,
+                        'Specialist tasks delegated; implementation, tests and '
+                        'publication remain pending.',
+                        checkpoint_written=True)
                 self.persist()
                 if time.monotonic() - started >= self.slice_seconds:
                     self.state.yield_task(task_id, self.worker_id)
