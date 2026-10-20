@@ -233,9 +233,11 @@ def summarize(request_id, tasks, publication=None):
         identifier = model.get('model')
         identifier = identifier if (isinstance(identifier, str) and
                                    re.fullmatch(r'[A-Za-z0-9_.-]{1,90}', identifier)) else None
+        stage = result.get('stage')
         reports.append({'task_id': task['task_id'], 'agent': task['agent'], 'status': task['status'],
                         'attempts': task.get('attempts', 0), 'summary': str(result.get('summary', ''))[:12000],
                         'verification': checks,
+                        'stage': stage if stage in ('audit_only_verified', 'audit_only_unverified') else None,
                         'model_used': {'provider': provider, 'model': identifier} if provider else None})
     # A model's finish is not a verified delivery: failed or absent QA evidence
     # must remain actionable regardless of all specialists saying 'succeeded'.
@@ -255,8 +257,11 @@ def summarize(request_id, tasks, publication=None):
         and isinstance(published_preview, dict)
         and published_preview.get('status') in ('verified', 'already_current')
         and not qa_reports)
+    visual_unverified = [row['task_id'] for row in reports
+                         if row.get('stage') == 'audit_only_unverified']
     quality_ok = (status == 'reported_complete' and not bad_checks
-                  and not missing_qa_checks and not missing_publication_qa)
+                  and not missing_qa_checks and not missing_publication_qa
+                  and not visual_unverified)
     if status == 'reported_complete' and not quality_ok:
         status = 'needs_attention'
     delivery = publication or {'published': False, 'reason': 'No publication attempted'}
@@ -267,7 +272,8 @@ def summarize(request_id, tasks, publication=None):
             'may_review': may_review,
             'quality': {'approved': quality_ok, 'failed_checks': bad_checks,
                         'qa_missing_evidence': missing_qa_checks,
-            'qa_missing_for_publication': missing_publication_qa},
+            'qa_missing_for_publication': missing_publication_qa,
+            'visual_audits_unverified': visual_unverified},
             'source': 'https://github.com/' + REPOSITORY + '/blob/main/tasks/chat/' + request_id + '.json',
             'delivery_mode': 'read_result_in_chat',
             'note': 'Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.'}
@@ -411,6 +417,15 @@ def main(argv=None):
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
+    # One-time reconciliation is restricted to old read-only visual audits.
+    # It never reopens edited work, erases failed checks or grants approval.
+    if backend == 'github-sqlite':
+        visual_recovered = state.recover_legacy_visual_audits()
+        if visual_recovered:
+            print(json.dumps({'legacy_visual_audits_requeued': visual_recovered}))
+            dependents = state.recover_provider_outages()
+            if any(dependents.values()):
+                print(json.dumps({'dependency_recovery': dependents}))
     api = GitHubState(REPOSITORY)
     processed = rejected = 0
     started = time.monotonic()
