@@ -193,7 +193,7 @@ class Tools:
 
     def run_check(self, args):
         name = args.get('name')
-        if name not in ('python-unittest', 'browser-playwright', 'node-test', 'android-gradle'):
+        if name not in ('python-unittest', 'node-test', 'android-gradle'):
             raise ValueError('Only approved isolated checks are available')
         project_dir = args.get('project_dir', '.')
         project_root = self._project_root(project_dir)
@@ -202,7 +202,7 @@ class Tools:
         started = time.time()
         execution_id = uuid.uuid4().hex
         scoped = Tools(project_root, self.agent, sandbox_client=self.sandbox_client)
-        if name in ('browser-playwright', 'node-test'):
+        if name == 'node-test':
             from .web_checks import run_web_check
             raw = run_web_check(project_root, scoped, name,
                 evidence_dir=self._evidence_directory('web-evidence'))
