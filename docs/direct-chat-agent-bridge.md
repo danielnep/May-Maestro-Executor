@@ -11,9 +11,17 @@ real. Sem GitHub Actions, GitHub Issue, plugin do ChatGPT nem nova conversa.
 - O canal direto usa horizon_core/direct_chat.py para enviar e ler por ticket
   na conversa única. Não é a API OpenAI e não carrega credenciais ChatGPT.
 - Python gerencia autorização, identidade, cooldown, persistência e respostas.
-  KERNEL automatiza a página autenticada: seu executor HTTP usa Playwright.
-  Na própria VM do navegador, Python inicia Node/Playwright-Core via CDP
-  loopback. **O teste original usou Playwright; não declarar o contrário.**
+  **Playwright somente lê** a conversa e localiza o campo de mensagem; não
+  chama `fill()` nem `click()` para enviar.
+- Fora da VM, o envio usa a API oficial **KERNEL Computer Action**:
+  `click_mouse`, `type_text`, verificação de rascunho e `press_key`.
+  Na própria VM, Node/Playwright-Core usa CDP local **apenas para inspeção**,
+  enquanto `xdotool` realiza mouse/teclado gráfico. O texto multiline local
+  usa Shift+Enter; antes do Enter final o rascunho inteiro é comparado.
+- **Histórico preservado:** o teste de 20/10 usou originalmente Playwright
+  também para digitar/enviar. Não é prova de envio real pelo método novo;
+  testes de regressão simulados confirmam apenas o contrato até nova prova
+  autorizada na sessão autenticada.
 - O GitHub Actions Worker continua necessário para executar aplicações,
   coordenar dependências, manter workspace e checkpoints. Ele não é obrigatório
   para transportar mensagens diretas ao ChatGPT.
@@ -41,11 +49,12 @@ quando a sessão de 72h for renovada com o mesmo nome.
 
     python -m horizon_core.chat_direct_cli --agent qa-engineer --task-id qa-123 --question "What public README should QA read first?" --public-approved
 
-O processo Python chama por HTTPS o KERNEL. O executor serializado
-horizon-central usa aba própria e texto JSON, nunca executa código gerado pelo
-modelo, não sobrescreve rascunhos de outras abas e procura ticket prévio
-antes de enviar. A resposta é associada à pergunta, não à última mensagem
-arbitrária do chat.
+O processo Python chama por HTTPS a inspeção de leitura do KERNEL e os
+controles oficiais de computador na sessão nomeada. O executor serializado
+`horizon-central` confere o chat, recusa composer ocupado, localiza o campo
+e confirma a digitação antes de pressionar Enter. Erro após interação gráfica
+é entrega incerta, não autorização para reenviar. O marcador do ticket
+vincula a resposta ao pedido, nunca apenas à última mensagem arbitrária.
 
 ## Rotas do Worker e prova
 
