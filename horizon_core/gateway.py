@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from .groq_minute_budget import GroqMinuteBudget
 
 GROQ_UI_AGENTS = frozenset({"frontend-engineer","mobile-app-builder","ui-ux-designer","horizon-ui-guardian"})
 DEFAULT_GROQ_UI_MODEL = "qwen/qwen3.8-27b"
@@ -25,6 +26,8 @@ class GatewayError(RuntimeError):
 
     def as_dict(self):
         result = {"provider": self.provider, "reason": self.reason, "status": self.status, "retryable": self.retryable}
+        if hasattr(self, "retry_after_seconds"):
+            result["retry_after_seconds"] = self.retry_after_seconds
         if hasattr(self, 'shape'):
             result['shape'] = self.shape
         return result
@@ -215,6 +218,13 @@ class GroqGateway(_HTTPGateway):
     provider = "groq"
     prefix = "GROQ"
 
+    def __init__(self, environ=None, opener=None, state=None, persist=None):
+        super().__init__(environ, opener)
+        self.minute_budget = GroqMinuteBudget(state=state, persist=persist)
+
+    def set_persist(self, persist):
+        self.minute_budget.persist = persist
+
     def model_for(self, agent):
         if agent.get("groq_model"):
             return agent["groq_model"]
@@ -241,14 +251,37 @@ class GroqGateway(_HTTPGateway):
             payload["reasoning_effort"] = "high" if level == "high" else (
                 "medium" if model.startswith("openai/gpt-oss-") else "low")
             payload["reasoning_format"] = "hidden"
-        if self.max_output_tokens is not None:
-            payload["max_tokens"] = self.max_output_tokens
+        # Reserve capacity BEFORE inference, shared by all 17 specialists.
+        max_requested = self.max_output_tokens or 1536
+        receipt = None
+        for attempt in range(2):
+            reservation, wait, output_cap = self.minute_budget.reserve(
+                model, payload["messages"], max_requested)
+            if isinstance(reservation, dict):
+                raise self._error("Groq prompt exceeds the safe free minute TPM budget",
+                                  "oversized_prompt")
+            if reservation is not None:
+                receipt = reservation
+                payload["max_tokens"] = output_cap
+                break
+            if attempt == 0 and wait <= 20:
+                time.sleep(wait + 0.05)
+                continue
+            error = self._error("Groq minute budget busy; defer this agent safely",
+                                "rate_limited_local", True)
+            error.retry_after_seconds = max(1, int(wait + 1))
+            raise error
+        if receipt is None:
+            raise self._error("Groq minute budget reservation unavailable",
+                              "rate_limited_local", True)
         request = urllib.request.Request(
             "https://api.groq.com/openai/v1/chat/completions",
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
             method="POST")
         result = self._request(request)
+        used = result.get("usage", {}).get("total_tokens") if isinstance(result, dict) else None
+        self.minute_budget.actual_usage(model, receipt, used)
         try:
             choice = result["choices"][0]
             if choice.get("finish_reason") != "stop":
@@ -274,7 +307,9 @@ class ModelGateway:
         self._init_errors = {}
         for name, implementation in (("groq", GroqGateway), ("gemini", GeminiGateway)):
             try:
-                setattr(self, name, implementation(self.environ, opener))
+                instance = (implementation(self.environ, opener, state=state)
+                            if name == "groq" else implementation(self.environ, opener))
+                setattr(self, name, instance)
             except GatewayError as exc:
                 exc.provider = name
                 self._init_errors[name] = exc
@@ -282,6 +317,10 @@ class ModelGateway:
         self.cooldown_seconds = _positive(self.environ, "GROQ_COOLDOWN_SECONDS", 300)
         self._circuit = {}
         self._load_circuit()
+
+    def set_persist(self, persist):
+        if self.groq is not None:
+            self.groq.set_persist(persist)
 
     @property
     def calls(self):
@@ -330,6 +369,8 @@ class ModelGateway:
                 self._save_circuit({})
                 return action
             except GatewayError as error:
+                if error.reason == "rate_limited_local":
+                    raise
                 failures.append(error.as_dict())
                 # Model retirement/preview unavailability: switch to the
                 # other allowed Groq model, preserving both minute quotas.
