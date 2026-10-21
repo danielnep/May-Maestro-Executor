@@ -422,6 +422,23 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertEqual(result['publication']['patch_files'][0]['path'], 'src/ui.js')
 
 
+    def test_direct_result_is_durable_without_github_commit(self):
+        from horizon_core.commit_bridge import publish_direct_result
+        with tempfile.TemporaryDirectory() as base:
+            report={'request_id':'task-proof','status':'waiting',
+                    'tasks':[], 'quality':{'approved':False}}
+            result=publish_direct_result(base,'task-proof',report)
+            self.assertTrue(result['written'])
+            stored=Path(base)/'results'/'task-proof.json'
+            self.assertEqual(json.loads(stored.read_text()),report)
+            self.assertEqual(stored.stat().st_mode & 0o077,0)
+            report['status']='completed'
+            publish_direct_result(base,'task-proof',report)
+            self.assertEqual(json.loads(stored.read_text())['status'],'completed')
+            self.assertEqual(list((Path(base)/'results').glob('*.tmp')),[])
+            with self.assertRaises(ValueError):
+                publish_direct_result(base,'../escape',report)
+
     def test_supervisor_gate_avoids_replaying_settled_or_delayed_tasks(self):
         from horizon_core.commit_bridge import supervisor_gate
         self.assertEqual(supervisor_gate(self.state,self.validated,now=100),'new')
