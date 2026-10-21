@@ -449,6 +449,18 @@ def supervisor_gate(state, validated, now=None):
     return "waiting"
 
 
+def owner_reset(state, backend, reset_id):
+    """Apply each requested reset exactly once; never reject later valid work."""
+    if not reset_id:
+        return None
+    if backend != 'github-sqlite':
+        raise RuntimeError("Owner reset requires canonical encrypted GitHub SQLite")
+    reset = state.reset_queue_once(reset_id)
+    if reset["applied"] and state.tasks():
+        raise RuntimeError("Queue not empty immediately after owner reset")
+    return reset
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Versioned ChatGPT requests -> private specialist queue')
     parser.add_argument('--root', default='.')
@@ -475,14 +487,9 @@ def main(argv=None):
         raise RuntimeError('Unsupported state backend; refusing implicit fallback')
     # One-time reset is applied to the durable, encrypted SQLite snapshot
     # BEFORE any old task can be automatically recovered or delegated.
-    reset_id = os.environ.get("HORIZON_QUEUE_RESET_ID")
-    if reset_id:
-        if backend != 'github-sqlite':
-            raise RuntimeError("Owner reset requires canonical encrypted GitHub SQLite")
-        reset = state.reset_queue_once(reset_id)
+    reset = owner_reset(state, backend, os.environ.get("HORIZON_QUEUE_RESET_ID"))
+    if reset is not None:
         print(json.dumps({"queue_reset": reset}), flush=True)
-        if state.tasks():
-            raise RuntimeError("Queue not empty after owner reset")
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
