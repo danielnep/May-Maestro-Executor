@@ -115,6 +115,9 @@ class _HTTPGateway:
         if self.max_calls is not None and self.calls >= self.max_calls:
             raise self._error("Gateway call budget exhausted by explicit operator override", "operator_limit", True)
         self.calls += 1
+        # Match the explicit client identification used by provider SDKs.
+        request.add_header("User-Agent", "Horizon-Agent-Executor/1")
+        request.add_header("Accept", "application/json")
         self._last_rate_headers = {}
         try:
             with self.opener(request, timeout=self.timeout) as response:
