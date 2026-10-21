@@ -1,0 +1,15 @@
+{
+  "owner": "danielnep",
+  "repository": "danielnep/app-hondas-maxvel",
+  "task_id": "ctl-mvhmrrry-1cb4b165",
+  "agent": "may-maestro",
+  "project": "ronda-pro",
+  "objective": "Revisar ui do ronda pro, aprimorar elegancia, qualidade da ui e ux e organizacao dos elementoa para mobile.",
+  "priority": "P2",
+  "delivery_type": "existing_product",
+  "payload": {
+    "allowed_paths": [
+      "src/**"
+    ]
+  }
+}
