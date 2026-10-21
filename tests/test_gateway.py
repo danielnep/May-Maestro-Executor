@@ -149,6 +149,9 @@ class GroqRoutingTests(unittest.TestCase):
             for agent_id in ('may-maestro', 'ui-ux-designer', 'frontend-engineer'):
                 outcome = gateway.complete(load_agent(agent_id), self.messages)
                 self.assertEqual(outcome['metadata']['provider'], 'groq')
+                self.assertEqual(outcome['metadata']['routing'], 'groq_only')
+                self.assertNotIn('fallback_from', outcome['metadata'])
+                self.assertNotIn('fallback_reasons', outcome['metadata'])
         self.assertEqual(gateway.gemini.calls, 0)
         self.assertEqual(len(self.requests), 3)
         self.assertTrue(all('api.groq.com' in request.full_url for request in self.requests))
