@@ -481,8 +481,10 @@ def main(argv=None):
             raise RuntimeError("Owner reset requires canonical encrypted GitHub SQLite")
         reset = state.reset_queue_once(reset_id)
         print(json.dumps({"queue_reset": reset}), flush=True)
-        if state.tasks():
-            raise RuntimeError("Queue not empty after owner reset")
+        # A completed reset generation is idempotent. New owner requests must
+        # survive subsequent cycles instead of crashing or being erased.
+        if reset["applied"] and state.tasks():
+            raise RuntimeError("Queue not empty immediately after owner reset")
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
