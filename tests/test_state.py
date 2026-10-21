@@ -167,5 +167,37 @@ class StateTests(unittest.TestCase):
             restored.close()
 
 
+    def test_supervisor_recovery_is_once_per_runtime_revision(self):
+        self.enqueue('root', max_attempts=1)
+        self.enqueue('child', depends_on=['root'])
+        self.state.claim('old', now=100)
+        self.state.checkpoint('root','old',{'step':7,'history':['retained']},now=101)
+        self.state.fail('root','old',{'kind':'RuntimeError'},retryable=False,now=102)
+        self.assertIsNone(self.state.claim('check',now=103))
+        self.assertEqual(self.state.get('child')['status'],'blocked')
+        sha='a'*40
+        self.assertEqual(self.state.supervisor_recover_on_runtime_upgrade(sha,now=104),['root'])
+        self.assertEqual(self.state.supervisor_recover_on_runtime_upgrade(sha,now=104),[])
+        self.assertEqual(self.state.get('root')['checkpoint']['step'],7)
+        self.assertEqual(self.state.recover_provider_outages(now=104)['unblocked_dependents'],1)
+        self.assertEqual(self.state.claim('new',now=105)['task_id'],'root')
+        self.state.fail('root','new',{'kind':'RuntimeError'},retryable=False,now=106)
+        self.assertEqual(self.state.supervisor_recover_on_runtime_upgrade(sha,now=107),[])
+        self.assertEqual(self.state.supervisor_recover_on_runtime_upgrade('b'*40,now=108),['root'])
+        self.assertEqual(len([x for x in self.state.events('root')
+                              if x['kind']=='supervisor_runtime_retry']),2)
+
+    def test_supervisor_never_retries_unproven_visual_or_permission_failures(self):
+        self.enqueue('visual')
+        self.enqueue('secure')
+        for task_id,reason in [('visual','visual_evidence_missing'),
+                               ('secure','manual_approval_required')]:
+            self.state.claim(task_id,now=100)
+            self.state.fail(task_id,task_id,{'reason':reason},retryable=False,now=101)
+        self.assertEqual(self.state.supervisor_recover_on_runtime_upgrade('c'*40,now=102),[])
+        self.assertEqual(self.state.get('visual')['status'],'failed')
+        self.assertEqual(self.state.get('secure')['status'],'failed')
+
+
 if __name__ == '__main__':
     unittest.main()
