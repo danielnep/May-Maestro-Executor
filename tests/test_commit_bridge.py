@@ -439,6 +439,36 @@ class CommitBridgeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 publish_direct_result(base,'../escape',report)
 
+    def test_waiting_snapshot_exposes_actual_retry_and_dependency_chain(self):
+        from horizon_core.commit_bridge import waiting_snapshot, summarize
+        task = self.validated['task']
+        self.state.enqueue(task['task_id'], task['agent'], task['project'],
+                           task['objective'], payload=task['payload'], not_before=200)
+        self.state.enqueue('specialist-ux', 'ui-ux-designer', task['project'],
+                           'Review existing UI', depends_on=[task['task_id']])
+        rows = self.state.tasks(project=task['project'])
+        observed = waiting_snapshot(rows, now=100)
+        self.assertEqual(observed['reason'], 'scheduled_retry')
+        self.assertEqual(observed['first_pending_task'], task['task_id'])
+        self.assertEqual(observed['next_retry_at'], '1970-01-01T00:03:20Z')
+        self.assertEqual(observed['stages'][1]['wait_reason'], 'waiting_for_dependencies')
+        self.assertEqual(observed['stages'][1]['blocked_by'], [task['task_id']])
+        self.assertNotIn('payload', observed['stages'][0])
+        self.assertEqual(waiting_snapshot(rows, now=201)['reason'], 'ready_for_worker')
+
+    def test_summarize_keeps_diagnostics_without_marking_qa_passed(self):
+        from horizon_core.commit_bridge import summarize
+        task = self.validated['task']
+        self.state.enqueue(task['task_id'], task['agent'], task['project'],
+                           task['objective'], payload=task['payload'])
+        self.state.enqueue('specialist-ux', 'ui-ux-designer', task['project'],
+                           'Revise UI', depends_on=[task['task_id']])
+        report = summarize(self.validated['id'], self.state.tasks(project=task['project']))
+        self.assertEqual(report['status'], 'pending')
+        self.assertEqual(report['supervision']['reason'], 'ready_for_worker')
+        self.assertEqual(report['tasks'][1]['wait_reason'], 'waiting_for_dependencies')
+        self.assertFalse(report['quality']['approved'])
+
     def test_supervisor_gate_avoids_replaying_settled_or_delayed_tasks(self):
         from horizon_core.commit_bridge import supervisor_gate
         self.assertEqual(supervisor_gate(self.state,self.validated,now=100),'new')
