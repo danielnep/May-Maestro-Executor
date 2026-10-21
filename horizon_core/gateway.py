@@ -458,9 +458,16 @@ class ModelGateway:
                 if "groq" in self._init_errors:
                     raise self._init_errors["groq"]
                 action = self.groq.complete(dict(agent, groq_model=model), messages)
-                action["metadata"].update(
-                    fallback_from="gemini", fallback_reasons=failures,
-                    groq_cooldown_skipped=False)
+                # Groq is the primary route under groq_only. Do not
+                # fabricate a Gemini fallback or Gemini failure in telemetry.
+                if groq_only:
+                    action["metadata"].update(
+                        routing="groq_only",
+                        groq_alternate_attempted=len(attempted) > 1)
+                else:
+                    action["metadata"].update(
+                        fallback_from="gemini", fallback_reasons=failures,
+                        groq_cooldown_skipped=False)
                 return action
             except GatewayError as error:
                 failures.append(error.as_dict())
