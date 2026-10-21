@@ -199,5 +199,38 @@ class StateTests(unittest.TestCase):
         self.assertEqual(self.state.get('secure')['status'],'failed')
 
 
+    def test_owner_reset_clears_all_tasks_and_runtime_memory_once(self):
+        self.enqueue('old-root')
+        self.enqueue('old-dependent', depends_on=['old-root'])
+        self.state.remember('ronda', 'backend', 'old', {'stale': True})
+        self.state.claim('owner', now=100)
+        self.state.checkpoint('old-root', 'owner', {'attempt': 1}, now=101)
+        self.assertGreater(len(self.state.events('old-root')), 0)
+        reset = 'owner-20261021-fresh-start'
+        self.assertEqual(self.state.reset_queue_once(reset),
+                         {'applied': True, 'removed': 2})
+        self.assertEqual(self.state.tasks(), [])
+        self.assertEqual(self.state.recall('ronda', 'backend'), {})
+        self.assertEqual(self.state.db.execute('SELECT COUNT(*) FROM events').fetchone()[0], 0)
+        self.assertEqual(
+            self.state.recall('__horizon__', '__owner__')['queue_reset_generation'],
+            reset)
+        self.enqueue('new-test')
+        self.assertEqual(self.state.reset_queue_once(reset),
+                         {'applied': False, 'removed': 0})
+        self.assertEqual([x['task_id'] for x in self.state.tasks()], ['new-test'])
+        self.assertEqual(self.state.reset_queue_once('owner-20261022-second-start'),
+                         {'applied': True, 'removed': 1})
+        self.assertEqual(self.state.tasks(), [])
+
+    def test_owner_reset_rejects_invalid_generation(self):
+        self.enqueue('old')
+        for identifier in ('', '../escape', 'short', 'CAPS', 'a'*81):
+            with self.subTest(identifier=identifier), self.assertRaises(ValueError):
+                self.state.reset_queue_once(identifier)
+        self.assertEqual(len(self.state.tasks()), 1)
+
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -473,6 +473,16 @@ def main(argv=None):
         state = RailwayPostgresState()
     else:
         raise RuntimeError('Unsupported state backend; refusing implicit fallback')
+    # One-time reset is applied to the durable, encrypted SQLite snapshot
+    # BEFORE any old task can be automatically recovered or delegated.
+    reset_id = os.environ.get("HORIZON_QUEUE_RESET_ID")
+    if reset_id:
+        if backend != 'github-sqlite':
+            raise RuntimeError("Owner reset requires canonical encrypted GitHub SQLite")
+        reset = state.reset_queue_once(reset_id)
+        print(json.dumps({"queue_reset": reset}), flush=True)
+        if state.tasks():
+            raise RuntimeError("Queue not empty after owner reset")
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
