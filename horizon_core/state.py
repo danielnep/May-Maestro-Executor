@@ -319,6 +319,60 @@ class State:
         return {"requeued_provider_failures": len(revived),
                 "unblocked_dependents": len(unblocked)}
 
+    def supervisor_recover_on_runtime_upgrade(self, sha, now=None):
+        """One bounded retry per executor revision; preserve checkpoints and evidence.
+
+        This is the active Railway supervisor's deterministic recovery layer.
+        It cannot fabricate visual proof, approve QA, or reset user approvals.
+        A new runtime revision is necessary before another retry can be made.
+        """
+        import re
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise ValueError("A verified executor SHA is required for supervised recovery")
+        now = time.time() if now is None else now
+        resumed = []
+        with self._tx():
+            rows = self.db.execute(
+                "SELECT * FROM tasks WHERE status='failed' ORDER BY priority DESC, seq"
+            ).fetchall()
+            for row in rows:
+                try:
+                    problem = json.loads(row["error"] or "{}")
+                except (ValueError, TypeError):
+                    problem = {}
+                if not isinstance(problem, dict):
+                    problem = {}
+                # Evidence/permission failures need fresh proof or operator action,
+                # not repeated AI calls with unchanged source and no browser.
+                if (problem.get("reason") in (
+                    "visual_evidence_missing", "manual_approval_required",
+                    "quality_blocked", "security_blocked"
+                ) or problem.get("kind") in ("PermissionError", "LeaseError")):
+                    continue
+                key = "runtime_retry:" + row["task_id"]
+                prior = self.db.execute(
+                    "SELECT value FROM memory WHERE project=? AND agent=? AND key=?",
+                    ("__horizon__", "__supervisor__", key)
+                ).fetchone()
+                if prior is not None and json.loads(prior["value"]) == sha:
+                    continue
+                # Exactly one new attempt per code revision. No unlimited retry loop.
+                self.db.execute(
+                    """UPDATE tasks SET status='queued', attempts=?,
+                    not_before=?, lease_owner=NULL, lease_until=NULL, error=NULL
+                    WHERE task_id=? AND status='failed'""",
+                    (max(0, row["max_attempts"] - 1), now, row["task_id"])
+                )
+                self._event(row["task_id"], "supervisor_runtime_retry",
+                            {"executor_sha": sha[:12], "previous_attempts": row["attempts"]}, now)
+                self.db.execute(
+                    """INSERT INTO memory(project,agent,key,value) VALUES(?,?,?,?)
+                    ON CONFLICT(project,agent,key) DO UPDATE SET value=excluded.value""",
+                    ("__horizon__", "__supervisor__", key, _json(sha))
+                )
+                resumed.append(row["task_id"])
+        return resumed
+
     def remember(self, project, agent, key, value):
         # Public encrypted GitHub snapshots are committed after real SQL changes.
         # Avoid producing a new checkpoint/commit for identical operational data.

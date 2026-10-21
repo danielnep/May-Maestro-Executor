@@ -37,7 +37,7 @@ class HandoffWorkflowRegressionTests(unittest.TestCase):
     def test_marker_written_before_returning_failure(self):
         controller = (ROOT / "horizon_core/commit_bridge.py").read_text(encoding="utf-8")
         self.assertLess(controller.index("write_marker(continuation)"),
-                        controller.index("return 1 if rejected else 0"))
+                        controller.index("return 0", controller.index("write_marker(continuation)")))
 
     def test_handoff_requires_checkpoint_marker(self):
         source = (ROOT / "horizon_core/handoff.py").read_text(encoding="utf-8")

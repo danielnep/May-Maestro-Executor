@@ -427,6 +427,28 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
         return summarize(validated['id'], scoped.tasks(), publication)
 
 
+def supervisor_gate(state, validated, now=None):
+    """Decide whether this request has any executable task, without model tokens.
+
+    Do not re-clone projects or republish settled tasks every three minutes.
+    Lease expiry is handled by the worker on its next claim.
+    """
+    now = time.time() if now is None else now
+    tasks = state.tasks(project=validated["task"]["project"])
+    if not tasks:
+        return "new"
+    by_id = {task["task_id"]: task for task in tasks}
+    for task in tasks:
+        if task["status"] == "running" and (task.get("lease_until") or 0) <= now:
+            return "expired_lease"
+        if task["status"] != "queued" or task.get("not_before", 0) > now:
+            continue
+        if all(by_id.get(dep, {}).get("status") == "succeeded"
+               for dep in task.get("depends_on", [])):
+            return "ready"
+    return "waiting"
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Versioned ChatGPT requests -> private specialist queue')
     parser.add_argument('--root', default='.')
@@ -454,8 +476,19 @@ def main(argv=None):
     recovered = state.recover_provider_outages()
     if any(recovered.values()):
         print(json.dumps({'provider_recovery': recovered}))
+    # Real supervision runs inside the one Railway Python executor, not in a
+    # second Node scheduler or a ChatGPT bridge.
+    executor_sha = os.environ.get("HORIZON_EXECUTOR_SHA", "")
+    if re.fullmatch(r"[a-f0-9]{40}", executor_sha):
+        resumed = state.supervisor_recover_on_runtime_upgrade(executor_sha)
+        if resumed:
+            print(json.dumps({"supervisor_recovery": len(resumed),
+                              "runtime": executor_sha[:12]}), flush=True)
+            unblocked = state.recover_provider_outages()
+            if any(unblocked.values()):
+                print(json.dumps({"provider_recovery": unblocked}), flush=True)
     api = GitHubState(REPOSITORY)
-    processed = rejected = 0
+    processed = rejected = deferred = 0
     started = time.monotonic()
     unprocessed = []
     try:
@@ -472,6 +505,10 @@ def main(argv=None):
                 if path.is_symlink() or not path.is_file() or path.stat().st_size > 128000:
                     raise ValueError('Request file is not a bounded regular JSON file')
                 validated = validate_request(json.loads(path.read_text(encoding='utf-8')), path.stem)
+                readiness = supervisor_gate(state, validated)
+                if readiness == "waiting":
+                    deferred += 1
+                    continue
                 remaining = args.session_seconds - (time.monotonic() - started)
                 if remaining <= 0:
                     # The next run must import requests we have not reached yet.
@@ -479,11 +516,17 @@ def main(argv=None):
                                    if IDENTIFIER.fullmatch(item.stem)]
                     break
                 report = process_request(state, validated, api=api, session_seconds=remaining)
+            except GitHubStateError:
+                # A remote checkpoint/commit failure is an infrastructure fault,
+                # not an invalid owner request. Stop rather than lose work.
+                raise
             except Exception as error:
                 rejected += 1
                 report = {'request_id': path.stem, 'status': 'blocked',
                           'error': {'kind': type(error).__name__},
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
+                print(json.dumps({"supervisor_rejection": path.stem,
+                                  "errorKind": type(error).__name__}), flush=True)
             publish_result(api, path.stem, report)
             # Reports remain durable in GitHub. No automatic ChatGPT/May
             # consultation, chat presence, tickets or external handoff.
@@ -505,8 +548,11 @@ def main(argv=None):
         continuation = sorted(set(waiting + unprocessed))
         write_marker(continuation)
         print(json.dumps({'processed': processed, 'rejected': rejected,
+                          'deferred': deferred,
                           'ready_for_continuation': len(continuation)}))
-        return 1 if rejected else 0
+        # Individual rejected request files are durable task errors, not a
+        # crashed Railway supervisor. Genuine infrastructure exceptions escape.
+        return 0
     finally:
         state.close()
 

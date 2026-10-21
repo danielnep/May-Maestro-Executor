@@ -405,5 +405,20 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertEqual(result['publication']['patch_files'][0]['path'], 'src/ui.js')
 
 
+    def test_supervisor_gate_avoids_replaying_settled_or_delayed_tasks(self):
+        from horizon_core.commit_bridge import supervisor_gate
+        self.assertEqual(supervisor_gate(self.state,self.validated,now=100),'new')
+        task=self.validated['task']
+        self.state.enqueue(task['task_id'],task['agent'],task['project'],task['objective'],
+                           payload=task['payload'],not_before=200)
+        self.assertEqual(supervisor_gate(self.state,self.validated,now=100),'waiting')
+        self.assertEqual(supervisor_gate(self.state,self.validated,now=201),'ready')
+        self.state.claim('test',now=201,lease_seconds=10)
+        self.assertEqual(supervisor_gate(self.state,self.validated,now=205),'waiting')
+        self.assertEqual(supervisor_gate(self.state,self.validated,now=212),'expired_lease')
+        self.state.complete(task['task_id'],'test',{'summary':'done'},now=205)
+        self.assertEqual(supervisor_gate(self.state,self.validated,now=212),'waiting')
+
+
 if __name__ == '__main__':
     unittest.main()
