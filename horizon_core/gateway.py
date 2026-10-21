@@ -419,7 +419,9 @@ class ModelGateway:
         now = time.time()
         failures = []
         next_wait = []
-        skipped_gemini = now < self._circuit.get("gemini_retry_after", 0)
+        # Owner-selectable Groq-only route skips exhausted Gemini entirely.
+        groq_only = self.environ.get("HORIZON_AI_ROUTE", "").lower() == "groq_only"
+        skipped_gemini = groq_only or now < self._circuit.get("gemini_retry_after", 0)
         if not skipped_gemini:
             try:
                 if "gemini" in self._init_errors:
@@ -434,7 +436,7 @@ class ModelGateway:
                                         "failure": error.as_dict()})
                 else:
                     self._save_circuit({})
-        else:
+        elif not groq_only:
             failures.append({"provider": "gemini", "reason": "cooldown",
                              "status": None, "retryable": True})
         # Preserve each agent's specialty when Gemini is unavailable:
@@ -472,7 +474,7 @@ class ModelGateway:
         gemini_failed_quota = any(row.get("provider") == "gemini"
                                   and row.get("reason") in ("quota", "cooldown")
                                   for row in failures)
-        if (backup == "gemini-3.5-flash-lite" and gemini_failed_quota
+        if (not groq_only and backup == "gemini-3.5-flash-lite" and gemini_failed_quota
                 and self.gemini is not None
                 and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
                 and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
