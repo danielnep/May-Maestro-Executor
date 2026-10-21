@@ -66,7 +66,9 @@ class Worker:
                            'working features. Never report completion without proof.'}})
         self.state.checkpoint(task_id, self.worker_id, {
             'step': step, 'history': history, 'checks': checks,
-            'delegated': delegated, 'failure_counts': failure_counts})
+            'delegated': delegated, 'failure_counts': failure_counts,
+            'defer_reason': 'repair_cycle', 'defer_seconds': wait,
+            'repair_reason': reason, 'deferred_at': time.time()})
         self.state.defer(task_id, self.worker_id, seconds=wait)
         self.persist()
         return self.state.get(task_id)
@@ -351,7 +353,9 @@ class Worker:
                             getattr(error, "retry_after_seconds", 60) + 0.99)))
                         self.state.checkpoint(task_id, self.worker_id,
                             {"step": step, "history": history, "checks": checks,
-                             "delegated": delegated, "failure_counts": failure_counts})
+                             "delegated": delegated, "failure_counts": failure_counts,
+                             "defer_reason": "groq_capacity_wait",
+                             "defer_seconds": seconds, "deferred_at": time.time()})
                         self.state.defer(task_id, self.worker_id, seconds=seconds)
                         self.persist()
                         return self.state.get(task_id)
@@ -611,12 +615,14 @@ class Worker:
                 # Keep the complete task for the next scheduled worker, including
                 # after repeated provider outages. No external escalation by default.
                 history.append({'action': 'provider_retry', 'outcome': details})
+                count = sum(row.get('action') == 'provider_retry' for row in history)
+                delay = min(3600, 60 * (2 ** min(count - 1, 6)))
                 self.state.checkpoint(task_id, self.worker_id, {
                     'step': step, 'history': history, 'checks': checks,
-                    'delegated': delegated, 'failure_counts': failure_counts})
-                count = sum(row.get('action') == 'provider_retry' for row in history)
-                self.state.defer(task_id, self.worker_id,
-                    seconds=min(3600, 60 * (2 ** min(count - 1, 6))))
+                    'delegated': delegated, 'failure_counts': failure_counts,
+                    'defer_reason': 'provider_retry', 'defer_seconds': delay,
+                    'deferred_at': time.time()})
+                self.state.defer(task_id, self.worker_id, seconds=delay)
             else:
                 self.state.fail(task_id, self.worker_id, details, retryable=retryable)
             self.persist()
