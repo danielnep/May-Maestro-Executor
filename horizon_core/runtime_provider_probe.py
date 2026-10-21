@@ -15,7 +15,9 @@ def check(environ=None, opener=None):
              'tools':['finish']}
     messages = [{'role':'user','content':'Return exactly {"action":"finish","args":{},"summary":"ok"}'}]
     reports = []
-    for route in ('primary', 'forced_fallback'):
+    routes = ('primary',) if env.get('HORIZON_AI_ROUTE') == 'groq_only' else (
+        'primary', 'forced_fallback')
+    for route in routes:
         def request(req, timeout):
             if route == 'forced_fallback' and 'generativelanguage.googleapis.com' in req.full_url:
                 raise urllib.error.HTTPError(req.full_url,503,'synthetic probe failure',{},None)
