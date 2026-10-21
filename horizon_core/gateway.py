@@ -1,4 +1,4 @@
-"""Groq specialist-model router with Gemini fallback; no deprecated provider calls."""
+"""Gemini-first specialist router with immediate Groq fallback; no deprecated provider calls."""
 import json
 import base64
 import os
@@ -106,7 +106,7 @@ class _HTTPGateway:
         self.calls = 0
         self.max_calls = _positive(self.environ, self.prefix + "_MAX_CALLS")
         self.max_output_tokens = _positive(self.environ, self.prefix + "_MAX_OUTPUT_TOKENS")
-        self.timeout = _positive(self.environ, self.prefix + "_HTTP_TIMEOUT_SECONDS", 600)
+        self.timeout = _positive(self.environ, self.prefix + "_HTTP_TIMEOUT_SECONDS", 20)
 
     def _error(self, message, reason, retryable=False, status=None):
         return GatewayError(message, retryable, provider=self.provider, reason=reason, status=status)
@@ -179,8 +179,13 @@ class GeminiGateway(_HTTPGateway):
     provider = "gemini"
     prefix = "GEMINI"
 
+    def _enabled(self):
+        # Explicit inference authorization is separate from a billing-tier claim.
+        return any(self.environ.get(name, "").lower() == "true" for name in
+                   ("GEMINI_REQUESTS_ENABLED", "GEMINI_FREE_TIER_CONFIRMED"))
+
     def inspect_image(self, agent, data, question):
-        if self.environ.get('GEMINI_FREE_TIER_CONFIRMED', '').lower() != 'true':
+        if not self._enabled():
             raise self._error('Gemini configuration is not enabled', 'configuration')
         model = agent.get('model') or self.environ.get('GEMINI_MODEL')
         key = self.environ.get(agent.get('api_key_env', 'GEMINI_API_KEY'))
@@ -203,8 +208,8 @@ class GeminiGateway(_HTTPGateway):
                 'actual_image_provided':True}
 
     def complete(self, agent, messages):
-        if self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() != "true":
-            raise self._error("Gemini free-tier confirmation is missing; no Gemini request sent", "configuration")
+        if not self._enabled():
+            raise self._error("Gemini requests are not enabled; no Gemini request sent", "configuration")
         model = agent.get("model") or self.environ.get("GEMINI_MODEL")
         if not isinstance(model, str) or not model.strip():
             raise self._error("GEMINI_MODEL or an explicit specialist model is required", "configuration")
@@ -331,7 +336,7 @@ class GroqGateway(_HTTPGateway):
 
 
 class ModelGateway:
-    """Preserve checkpoint safety while trying Groq, then Gemini."""
+    """Preserve checkpoint safety while trying Gemini, then Groq."""
 
     def __init__(self, state=None, environ=None, opener=None):
         self.state = state
