@@ -140,6 +140,19 @@ class GroqRoutingTests(unittest.TestCase):
         self.requests.append(req)
         return envelope() if "generativelanguage.googleapis.com" in req.full_url else self.groq_response()
 
+    def test_owner_groq_only_never_calls_gemini_even_with_valid_key(self):
+        env = dict(self.env, HORIZON_AI_ROUTE='groq_only')
+        gateway = ModelGateway(environ=env, opener=self.opener)
+        with patch("horizon_core.groq_minute_budget.GroqMinuteBudget.reserve",
+                   return_value=("synthetic", 0, 1536)), patch(
+                   "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
+            for agent_id in ('may-maestro', 'ui-ux-designer', 'frontend-engineer'):
+                outcome = gateway.complete(load_agent(agent_id), self.messages)
+                self.assertEqual(outcome['metadata']['provider'], 'groq')
+        self.assertEqual(gateway.gemini.calls, 0)
+        self.assertEqual(len(self.requests), 3)
+        self.assertTrue(all('api.groq.com' in request.full_url for request in self.requests))
+
     def test_gemini_primary_for_all_17_specialists(self):
         gateway = ModelGateway(environ=self.env, opener=self.opener)
         for agent_id in AGENT_IDS:
