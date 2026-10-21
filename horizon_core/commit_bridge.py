@@ -255,7 +255,63 @@ def task_blocker(task):
     return None
 
 
+def waiting_snapshot(tasks, now=None):
+    """Sanitized, non-mutating reason for every unfinished specialist stage.
+
+    Dependencies and retry deadlines are taken from the same SQLite snapshot as
+    the supervisor gate. No model text, token, raw traceback or private payload.
+    """
+    now = time.time() if now is None else now
+    by_id = {row['task_id']: row for row in tasks}
+    stages = []
+    for task in tasks:
+        status = task['status']
+        blocked_by = [dep for dep in task.get('depends_on', [])
+                      if by_id.get(dep, {}).get('status') != 'succeeded']
+        retry_at = task.get('not_before') or 0
+        checkpoint = task.get('checkpoint') or {}
+        defer_reason = checkpoint.get('defer_reason')
+        if not isinstance(defer_reason, str) or not re.fullmatch(r'[a-z_]{3,45}', defer_reason):
+            defer_reason = None
+        if status in ('succeeded', 'failed', 'blocked'):
+            reason = 'completed' if status == 'succeeded' else 'terminal_' + status
+        elif status == 'running':
+            reason = ('lease_expired' if (task.get('lease_until') or 0) <= now
+                      else 'being_executed')
+        elif blocked_by:
+            reason = 'waiting_for_dependencies'
+        elif retry_at > now:
+            reason = 'scheduled_retry'
+        else:
+            reason = 'ready_for_worker'
+        stage = {'task_id': task['task_id'], 'agent': task['agent'],
+                 'status': status, 'wait_reason': reason,
+                 'attempts': task.get('attempts', 0),
+                 'max_attempts': task.get('max_attempts', 0),
+                 'blocked_by': blocked_by[:17],
+                 'retry_reason': defer_reason,
+                 'next_retry_at': (time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(retry_at))
+                                   if status == 'queued' and retry_at > now else None),
+                 'checkpoint_step': checkpoint.get('step') if
+                     type(checkpoint.get('step')) is int else None}
+        stages.append(stage)
+    actionable = next((s for s in stages if s['wait_reason'] in
+                       ('ready_for_worker', 'lease_expired')), None)
+    first = actionable or next((s for s in stages if s['status'] not in
+                               ('succeeded',)), None)
+    return {'reason': first['wait_reason'] if first else 'all_stages_reported',
+            'first_pending_task': first['task_id'] if first else None,
+            'first_pending_agent': first['agent'] if first else None,
+            'blocked_by': first['blocked_by'] if first else [],
+            'retry_reason': first['retry_reason'] if first else None,
+            'next_retry_at': first['next_retry_at'] if first else None,
+            'checked_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(now)),
+            'stages': stages}
+
+
 def summarize(request_id, tasks, publication=None):
+    supervision = waiting_snapshot(tasks)
+    detailed = {row['task_id']: row for row in supervision['stages']}
     statuses = [task['status'] for task in tasks]
     status = 'pending' if any(value in ('queued', 'running') for value in statuses) else (
         'needs_attention' if any(value in ('failed', 'blocked') for value in statuses) else 'reported_complete')
@@ -275,7 +331,14 @@ def summarize(request_id, tasks, publication=None):
         identifier = model.get('model')
         identifier = identifier if (isinstance(identifier, str) and
                                    re.fullmatch(r'[A-Za-z0-9_.-]{1,90}', identifier)) else None
+        stage_wait = detailed[task['task_id']]
         reports.append({'task_id': task['task_id'], 'agent': task['agent'], 'status': task['status'],
+                        'wait_reason': stage_wait['wait_reason'],
+                        'retry_reason': stage_wait['retry_reason'],
+                        'next_retry_at': stage_wait['next_retry_at'],
+                        'blocked_by': stage_wait['blocked_by'],
+                        'checkpoint_step': stage_wait['checkpoint_step'],
+                        'max_attempts': stage_wait['max_attempts'],
                         'attempts': task.get('attempts', 0), 'summary': str(result.get('summary', ''))[:12000],
                         'verification': checks,
                         'blocker': task_blocker(task),
@@ -306,7 +369,9 @@ def summarize(request_id, tasks, publication=None):
     if status != 'pending' and delivery.get('awaiting_host_publication') is True:
         status = 'awaiting_host_publication'
     may_review = build_may_review_handoff(request_id, status, quality_ok, delivery)
-    return {'request_id': request_id, 'status': status, 'tasks': reports, 'publication': delivery,
+    return {'request_id': request_id, 'status': status, 'tasks': reports,
+            'supervision': {key: value for key, value in supervision.items() if key != 'stages'},
+            'publication': delivery,
             'may_review': may_review,
             'quality': {'approved': quality_ok, 'failed_checks': bad_checks,
                         'qa_missing_evidence': missing_qa_checks,
@@ -564,6 +629,24 @@ def main(argv=None):
                 validated = validate_request(json.loads(path.read_text(encoding='utf-8')), path.stem)
                 readiness = supervisor_gate(state, validated)
                 if readiness == "waiting":
+                    # A successful idle cycle MUST NOT conceal why specialists
+                    # were deferred. Refresh the Railway-local durable report
+                    # without cloning, model calls or touching task state.
+                    active_tasks = state.tasks(project=validated["task"]["project"])
+                    wait_report = summarize(validated['id'], active_tasks,
+                        state.recall(validated["task"]["project"], '__chat_controller__')
+                        .get('publication') or {})
+                    if args.direct_inbox:
+                        wait_report['source'] = 'railway:maestro/direct/' + path.stem
+                        publish_direct_result(args.direct_inbox, path.stem, wait_report)
+                    reason = wait_report['supervision']
+                    print(json.dumps({'supervisor_wait': path.stem,
+                        'reason': reason['reason'],
+                        'task_id': reason['first_pending_task'],
+                        'agent': reason['first_pending_agent'],
+                        'retry_reason': reason['retry_reason'],
+                        'next_retry_at': reason['next_retry_at'],
+                        'blocked_by': reason['blocked_by']}), flush=True)
                     deferred += 1
                     continue
                 remaining = args.session_seconds - (time.monotonic() - started)
