@@ -1,8 +1,0 @@
-{
-  "error": {
-    "kind": "ValueError"
-  },
-  "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
-  "request_id": "reservas-proof-v1",
-  "status": "blocked"
-}

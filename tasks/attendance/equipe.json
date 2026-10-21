@@ -2,111 +2,111 @@
   "agents": [
     {
       "agent": "may-maestro",
-      "blocked": 2,
-      "finished": 6,
+      "blocked": 0,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "3acc93a22b09"
+      "task_ref": null
     },
     {
       "agent": "horizon-project-studio",
       "blocked": 0,
-      "finished": 1,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "3b5adc3eb7d0"
+      "task_ref": null
     },
     {
       "agent": "software-architect",
       "blocked": 0,
-      "finished": 8,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "559f439b4bcb"
+      "task_ref": null
     },
     {
       "agent": "frontend-engineer",
-      "blocked": 2,
-      "finished": 3,
+      "blocked": 0,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "cbf18d747dc6"
+      "task_ref": null
     },
     {
       "agent": "backend-engineer",
       "blocked": 0,
-      "finished": 9,
-      "queued": 0,
-      "running": 0,
-      "status": "ocioso",
-      "task_ref": "4f1814b8b90d"
-    },
-    {
-      "agent": "mobile-app-builder",
-      "blocked": 2,
       "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "58d40897c9a8"
+      "task_ref": null
+    },
+    {
+      "agent": "mobile-app-builder",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": null
     },
     {
       "agent": "ui-ux-designer",
       "blocked": 0,
-      "finished": 1,
-      "queued": 1,
-      "running": 0,
-      "status": "aguardando",
-      "task_ref": "08f40c5b70a8"
-    },
-    {
-      "agent": "horizon-ui-guardian",
-      "blocked": 2,
       "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "175fcce0a3f4"
+      "task_ref": null
+    },
+    {
+      "agent": "horizon-ui-guardian",
+      "blocked": 0,
+      "finished": 0,
+      "queued": 0,
+      "running": 0,
+      "status": "ocioso",
+      "task_ref": null
     },
     {
       "agent": "database-engineer",
       "blocked": 0,
-      "finished": 1,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "fc7ab710806b"
+      "task_ref": null
     },
     {
       "agent": "integration-engineer",
       "blocked": 0,
-      "finished": 1,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "dea59a65bef3"
+      "task_ref": null
     },
     {
       "agent": "qa-engineer",
-      "blocked": 2,
-      "finished": 10,
+      "blocked": 0,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "a79a05c39981"
+      "task_ref": null
     },
     {
       "agent": "security-engineer",
       "blocked": 0,
-      "finished": 1,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "122a75c262aa"
+      "task_ref": null
     },
     {
       "agent": "devops-engineer",
@@ -137,12 +137,12 @@
     },
     {
       "agent": "corregedoria-may",
-      "blocked": 2,
-      "finished": 2,
+      "blocked": 0,
+      "finished": 0,
       "queued": 0,
       "running": 0,
       "status": "ocioso",
-      "task_ref": "68616972be0c"
+      "task_ref": null
     },
     {
       "agent": "may-persona",
@@ -156,5 +156,5 @@
   ],
   "chat": "Horizon | Central dos Agentes",
   "schema": "horizon.agent.roster.v1",
-  "source": "durable_state_tasks"
+  "source": "operator_zero_start_pending_runtime_confirmation"
 }
