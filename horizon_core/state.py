@@ -319,6 +319,37 @@ class State:
         return {"requeued_provider_failures": len(revived),
                 "unblocked_dependents": len(unblocked)}
 
+    def reset_queue_once(self, generation):
+        """Owner-authorized, atomic fresh start of the *operational* queue.
+
+        Clear active tasks, subordinate events and runtime memory once. Keep
+        versioned source, specialists, knowledge and prior GitHub commits.
+        A persisted marker prevents clearing any subsequent test task.
+        """
+        import re
+        if not isinstance(generation, str) or not re.fullmatch(
+                r"[a-z0-9][a-z0-9-]{7,79}", generation):
+            raise ValueError("Queue reset generation invalid")
+        with self._lock:
+            prior = self.db.execute(
+                "SELECT value FROM memory WHERE project=? AND agent=? AND key=?",
+                ("__horizon__", "__owner__", "queue_reset_generation")
+            ).fetchone()
+            if prior is not None and prior["value"] == _json(generation):
+                return {"applied": False, "removed": 0}
+            with self._tx():
+                count = self.db.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+                # Foreign keys are enforced, so delete child records first.
+                self.db.execute("DELETE FROM events")
+                self.db.execute("DELETE FROM tasks")
+                self.db.execute("DELETE FROM memory")
+                self.db.execute(
+                    "INSERT INTO memory(project,agent,key,value) VALUES(?,?,?,?)",
+                    ("__horizon__", "__owner__", "queue_reset_generation",
+                     _json(generation))
+                )
+            return {"applied": True, "removed": count}
+
     def supervisor_recover_on_runtime_upgrade(self, sha, now=None):
         """One bounded retry per executor revision; preserve checkpoints and evidence.
 
