@@ -427,6 +427,44 @@ def process_request(state, validated, *, api, session_seconds=1200, gateway_fact
         return summarize(validated['id'], scoped.tasks(), publication)
 
 
+def publish_direct_result(directory, request_id, report):
+    """Atomic local report in the same Railway durable directory as the inbox.
+
+    This route does not create GitHub tasks/results commits. Existing git
+    project code and encrypted checkpoint storage are independent of intake.
+    """
+    if not IDENTIFIER.fullmatch(request_id):
+        raise ValueError('Invalid direct result identifier')
+    import tempfile
+    output = Path(directory).resolve() / 'results'
+    output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    raw = (json.dumps(report, ensure_ascii=False, sort_keys=True,
+                      indent=2, allow_nan=False) + '\n').encode('utf-8')
+    if len(raw) > 2 * 1024 * 1024:
+        raise RuntimeError('Direct result exceeds durable limit')
+    target = output / (request_id + '.json')
+    pending = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=output, prefix='.report-',
+                                         suffix='.tmp', delete=False) as handle:
+            pending = Path(handle.name)
+            os.chmod(pending, 0o600)
+            handle.write(raw)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(pending, target)
+        pending = None
+        fd = os.open(output, os.O_DIRECTORY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+    return {'written': True, 'path': str(target)}
+
+
 def supervisor_gate(state, validated, now=None):
     """Decide whether this request has any executable task, without model tokens.
 
@@ -464,6 +502,7 @@ def owner_reset(state, backend, reset_id):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Versioned ChatGPT requests -> private specialist queue')
     parser.add_argument('--root', default='.')
+    parser.add_argument('--direct-inbox', type=Path, default=None)
     parser.add_argument('--session-seconds', type=int, default=1800)
     args = parser.parse_args(argv)
     if args.session_seconds < 1:
@@ -509,7 +548,8 @@ def main(argv=None):
     started = time.monotonic()
     unprocessed = []
     try:
-        directory = Path(args.root).resolve() / 'tasks' / 'chat'
+        directory = (args.direct_inbox.resolve() / 'requests' if args.direct_inbox else
+                     Path(args.root).resolve() / 'tasks' / 'chat')
         if not directory.exists():
             print(json.dumps({'processed': 0, 'rejected': 0}))
             return 0
@@ -544,17 +584,23 @@ def main(argv=None):
                           'note': 'Erro sanitizado do controlador. O pedido não concede novas permissões.'}
                 print(json.dumps({"supervisor_rejection": path.stem,
                                   "errorKind": type(error).__name__}), flush=True)
-            publish_result(api, path.stem, report)
+            if args.direct_inbox:
+                report['source'] = 'railway:maestro/direct/' + path.stem
+                publish_direct_result(args.direct_inbox, path.stem, report)
+            else:
+                publish_result(api, path.stem, report)
             # Reports remain durable in GitHub. No automatic ChatGPT/May
             # consultation, chat presence, tickets or external handoff.
             # Event-driven owner alert follows durable result publication, not
             # the five-minute recovery schedule or the ChatGPT task cadence.
-            from .notify import notify
-            try:
-                alert = notify(report, os.getenv("GITHUB_TOKEN"))
-            except RuntimeError:
-                # Delivery state must survive an unavailable notification channel.
-                alert = "notification_unavailable"
+            if args.direct_inbox:
+                alert = "railway_local_result_written"
+            else:
+                from .notify import notify
+                try:
+                    alert = notify(report, os.getenv("GITHUB_TOKEN"))
+                except RuntimeError:
+                    alert = "notification_unavailable"
             print(json.dumps({"request_id": path.stem, "alert": alert}))
             processed += 1
         # Durable state has already been updated. Dispatch once, in a separate
@@ -563,7 +609,8 @@ def main(argv=None):
         waiting = ready_request_ids(state, [path.stem for path in paths
                                              if IDENTIFIER.fullmatch(path.stem)])
         continuation = sorted(set(waiting + unprocessed))
-        write_marker(continuation)
+        if not args.direct_inbox:
+            write_marker(continuation)
         print(json.dumps({'processed': processed, 'rejected': rejected,
                           'deferred': deferred,
                           'ready_for_continuation': len(continuation)}))
