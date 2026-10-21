@@ -1,0 +1,8 @@
+{
+  "error": {
+    "kind": "ValueError"
+  },
+  "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
+  "request_id": "ctl-mvhmrrry-1cb4b165",
+  "status": "blocked"
+}
