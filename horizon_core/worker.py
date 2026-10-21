@@ -7,6 +7,7 @@ import time
 import os
 from .context_budget import compact_memory, compact_history
 from .gateway import GatewayError, validate_action
+from .telemetry import record_activity
 from .registry import load_agent
 from .tools import Tools
 from .deterministic import inspect_project, execute_read_only_with_retry
@@ -209,6 +210,7 @@ class Worker:
         if task is None:
             return None
         task_id = task['task_id']
+        record_activity(task_id,task['agent'],'started')
         started = time.monotonic()
         self.persist()
         try:
@@ -337,6 +339,7 @@ class Worker:
                         may_decision = None
                         context['may_decision_source'] = 'verified_owner_comment_untrusted'
                     else:
+                        record_activity(task_id,agent['id'],'thinking',step=step)
                         action = self.gateway.complete(
                              dict(agent, _reasoning_level=effort['level']),
                              [{'role': 'user', 'content': json.dumps(context, ensure_ascii=False)}])
@@ -375,6 +378,7 @@ class Worker:
                     continue
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                 name, args = action['action'], action.get('args', {})
+                record_activity(task_id,agent['id'],name,step=step,path=args.get('path'))
                 if name not in agent['tools']:
                     raise ValueError('Specialist capability denied')
                 if name == 'finish':

@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from .groq_minute_budget import GroqMinuteBudget
+from .telemetry import record_usage
 
 GROQ_UI_AGENTS = frozenset({"frontend-engineer","mobile-app-builder","ui-ux-designer","horizon-ui-guardian"})
 DEFAULT_GROQ_UI_MODEL = "qwen/qwen3.8-27b"
@@ -122,6 +123,10 @@ class _HTTPGateway:
         try:
             with self.opener(request, timeout=self.timeout) as response:
                 result = json.loads(response.read())
+                context = getattr(self, '_usage_context', None)
+                if context and isinstance(result, dict):
+                    usage = result.get('usageMetadata' if self.provider == 'gemini' else 'usage', {})
+                    record_usage(context[0], self.provider, context[1], usage)
                 if self.provider == "groq":
                     headers = getattr(response, "headers", None)
                     if headers is not None:
@@ -199,6 +204,7 @@ class GeminiGateway(_HTTPGateway):
                        {'inlineData':{'mimeType':'image/png','data':base64.b64encode(data).decode()}}]}],
                    'generationConfig':{'responseMimeType':'application/json'}}
         url='https://generativelanguage.googleapis.com/v1beta/models/'+urllib.parse.quote(model,safe='-_.')+':generateContent'
+        self._usage_context=(agent['id'],model)
         result=self._request(urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST'))
         try:
             candidate=result['candidates'][0]
@@ -232,6 +238,7 @@ class GeminiGateway(_HTTPGateway):
         payload = {"systemInstruction": {"parts": [{"text": _prompt(agent)}]}, "contents": contents, "generationConfig": generation}
         url = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(model, safe="-_.") + ":generateContent"
         request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
+        self._usage_context=(agent['id'],model)
         result = self._request(request)
         try:
             candidate = result["candidates"][0]
@@ -314,6 +321,7 @@ class GroqGateway(_HTTPGateway):
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
             method="POST")
+        self._usage_context=(agent['id'],model)
         try:
             result = self._request(request)
         except GatewayError:
