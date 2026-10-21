@@ -72,6 +72,23 @@ class CommitBridgeTests(unittest.TestCase):
         self.assertTrue(operator_policy['allow_new_product_main'])
         yield SimpleNamespace(root=self.root, baseline=self.baseline)
 
+    def test_owner_reset_is_idempotent_and_preserves_new_tasks(self):
+        from horizon_core.commit_bridge import owner_reset
+        self.state.enqueue('old-task', 'backend-engineer', 'synthetic', 'Previous queue task')
+        original = owner_reset(self.state, 'github-sqlite', 'horizon-clean-start-20261021')
+        self.assertEqual(original, {'applied': True, 'removed': 1})
+        self.assertEqual(self.state.tasks(), [])
+        self.state.enqueue('new-task', 'backend-engineer', 'synthetic', 'New legitimate task')
+        repeat = owner_reset(self.state, 'github-sqlite', 'horizon-clean-start-20261021')
+        self.assertEqual(repeat, {'applied': False, 'removed': 0})
+        self.assertEqual([task['task_id'] for task in self.state.tasks()], ['new-task'])
+
+    def test_owner_reset_rejects_unsupported_backend(self):
+        from horizon_core.commit_bridge import owner_reset
+        with self.assertRaisesRegex(RuntimeError, 'canonical encrypted GitHub SQLite'):
+            owner_reset(self.state, 'embedded-postgres', 'horizon-clean-start-20261021')
+        self.assertIsNone(owner_reset(self.state, 'embedded-postgres', None))
+
     def test_controller_assigns_branch_project_and_bounded_namespace(self):
         value = self.validated
         self.assertEqual(value['task']['project'], 'chat:proof-request')
