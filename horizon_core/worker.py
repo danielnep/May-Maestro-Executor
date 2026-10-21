@@ -24,6 +24,28 @@ class PersistenceError(RuntimeError):
     pass
 
 
+def provider_retry_delay(history, error):
+    """Space consecutive outages without punishing later successful progress.
+
+    Honor Groq's local minute-budget estimate when both provider routes were
+    tried. Unrelated completed tool actions reset the exponential backoff.
+    """
+    count = 0
+    for item in reversed(history):
+        if item.get('action') != 'provider_retry':
+            break
+        count += 1
+    fallback_seconds = min(900, 60 * (2 ** min(max(count - 1, 0), 4)))
+    failures = getattr(error, 'failures', None) or []
+    local_wait = any(isinstance(failure, dict) and
+                     failure.get('reason') == 'rate_limited_local'
+                     for failure in failures)
+    hint = getattr(error, 'retry_after_seconds', None)
+    if local_wait and isinstance(hint, (int, float)) and 0 < hint <= 3600:
+        return max(60, min(3600, int(hint + 0.999)))
+    return fallback_seconds
+
+
 class Worker:
     def __init__(self, state, gateway, root, persist=None, max_steps=None, slice_seconds=1500, sandbox_client=None):
         self.state, self.gateway, self.root = state, gateway, root
@@ -615,8 +637,7 @@ class Worker:
                 # Keep the complete task for the next scheduled worker, including
                 # after repeated provider outages. No external escalation by default.
                 history.append({'action': 'provider_retry', 'outcome': details})
-                count = sum(row.get('action') == 'provider_retry' for row in history)
-                delay = min(3600, 60 * (2 ** min(count - 1, 6)))
+                delay = provider_retry_delay(history, error)
                 self.state.checkpoint(task_id, self.worker_id, {
                     'step': step, 'history': history, 'checks': checks,
                     'delegated': delegated, 'failure_counts': failure_counts,
