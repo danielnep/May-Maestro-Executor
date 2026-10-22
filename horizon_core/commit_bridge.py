@@ -564,6 +564,28 @@ def owner_reset(state, backend, reset_id):
     return reset
 
 
+
+def ordered_direct_requests(directory):
+    """Honor the owner's Railway-local queue order; never rename task IDs.
+
+    An invalid or unavailable sidecar fails closed to the original filename order.
+    This only affects work not yet loaded by the executor.
+    """
+    paths = sorted(directory.glob('*.json'))
+    sidecar = directory.parent / 'queue-order.json'
+    try:
+        if sidecar.is_symlink() or not sidecar.is_file() or sidecar.stat().st_size > 16384:
+            return paths
+        values = json.loads(sidecar.read_text(encoding='utf-8'))
+        if not isinstance(values, list) or len(values) > 160 or any(
+                not isinstance(value, str) or not IDENTIFIER.fullmatch(value) for value in values):
+            return paths
+        rank = {value: index for index, value in enumerate(values)}
+        return sorted(paths, key=lambda path: (rank.get(path.stem, len(rank)), path.name))
+    except (OSError, ValueError, UnicodeError, TypeError):
+        return paths
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Versioned ChatGPT requests -> private specialist queue')
     parser.add_argument('--root', default='.')
@@ -618,7 +640,7 @@ def main(argv=None):
         if not directory.exists():
             print(json.dumps({'processed': 0, 'rejected': 0}))
             return 0
-        paths = sorted(directory.glob('*.json'))
+        paths = ordered_direct_requests(directory) if args.direct_inbox else sorted(directory.glob('*.json'))
         for index, path in enumerate(paths):
             if not IDENTIFIER.fullmatch(path.stem):
                 rejected += 1
