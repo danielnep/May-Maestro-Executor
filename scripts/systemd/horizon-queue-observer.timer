@@ -1,0 +1,9 @@
+[Unit]
+Description=Horizon: refresh live worker telemetry every 15 seconds
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=horizon-queue-observer.service
+[Install]
+WantedBy=timers.target
