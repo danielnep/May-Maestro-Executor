@@ -346,6 +346,49 @@ class GroqGateway(_HTTPGateway):
         return action
 
 
+
+class OllamaGateway(_HTTPGateway):
+    """Private CPU inference fallback; never exposes the VPS model API publicly."""
+    provider = "ollama"
+    prefix = "OLLAMA"
+
+    def complete(self, agent, messages):
+        if self.environ.get("HORIZON_LOCAL_MODEL_ENABLED", "").lower() != "true":
+            raise self._error("Local inference not enabled", "configuration")
+        model = self.environ.get("OLLAMA_MODEL") or "qwen3:4b"
+        if not isinstance(model, str) or not model.strip():
+            raise self._error("Local model unavailable", "configuration")
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": _prompt(agent)}] + _messages(messages),
+            "stream": False,
+            "format": "json",
+            "think": False,
+            "options": {"temperature": 0.15, "num_ctx": 4096,
+                        "num_predict": self.max_output_tokens or 1024}
+        }
+        request = urllib.request.Request(
+            "http://127.0.0.1:11434/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST")
+        self._usage_context = (agent["id"], model)
+        result = self._request(request)
+        try:
+            content = result["message"]["content"]
+            if not isinstance(content, str):
+                raise ValueError("invalid model response")
+            action = self._action(content, agent)
+        except (KeyError, TypeError, ValueError):
+            raise self._error("Local inference result was malformed", "invalid_response", True) from None
+        usage = {"prompt_tokens": result.get("prompt_eval_count", 0),
+                 "completion_tokens": result.get("eval_count", 0)}
+        usage["total_tokens"] = usage["prompt_tokens"] + usage["completion_tokens"]
+        action["metadata"] = self._metadata(agent, model, usage)
+        action["metadata"]["local_inference"] = True
+        return action
+
+
 class ModelGateway:
     """Preserve checkpoint safety while trying Gemini, then Groq."""
 
@@ -362,6 +405,9 @@ class ModelGateway:
                 exc.provider = name
                 self._init_errors[name] = exc
                 setattr(self, name, None)
+        self.local = (OllamaGateway(self.environ, opener)
+                      if self.environ.get("HORIZON_LOCAL_MODEL_ENABLED", "").lower() == "true"
+                      else None)
         self.cooldown_seconds = _positive(self.environ, "GROQ_COOLDOWN_SECONDS", 300)
         self._circuit = {}
         self._load_circuit()
@@ -372,7 +418,7 @@ class ModelGateway:
 
     @property
     def calls(self):
-        return sum(provider.calls for provider in (self.groq, self.gemini) if provider is not None)
+        return sum(provider.calls for provider in (self.groq, self.gemini, self.local) if provider is not None)
 
     def _load_circuit(self):
         if self.state is not None:
@@ -491,6 +537,13 @@ class ModelGateway:
                 action["metadata"].update(
                     fallback_from="gemini_groq", fallback_reasons=failures,
                     free_tier_model=True)
+                return action
+            except GatewayError as error:
+                failures.append(error.as_dict())
+        if self.local is not None:
+            try:
+                action = self.local.complete(agent, messages)
+                action["metadata"]["fallback_reasons"] = failures
                 return action
             except GatewayError as error:
                 failures.append(error.as_dict())
