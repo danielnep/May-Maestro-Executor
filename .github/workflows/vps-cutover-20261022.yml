@@ -1,0 +1,38 @@
+name: Horizon VPS | stop legacy agent schedulers
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/vps-cutover-20261022.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: horizon-vps-cutover
+  cancel-in-progress: false
+jobs:
+  stop-legacy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Stop old GitHub Actions agent scheduling only
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          for name in chat-requests.yml agent-watchdog.yml horizon-agent-central.yml agent-executors.yml restore-agent-workflows.yml horizon-agent-recovery-20261022.yml; do
+            state="$(gh api "repos/$repo/actions/workflows/$name" --jq .state)"
+            case "$state" in
+              active)
+                gh api -X PUT "repos/$repo/actions/workflows/$name/disable" >/dev/null
+                ;;
+              disabled_manually|disabled_inactivity) ;;
+              *) echo "::error::Unrecognized workflow state: $name $state"; exit 1 ;;
+            esac
+            new_state="$(gh api "repos/$repo/actions/workflows/$name" --jq .state)"
+            echo "$name: $new_state"
+            test "$new_state" != active
+          done
