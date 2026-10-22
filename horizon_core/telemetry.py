@@ -1,4 +1,4 @@
-"""Minimal, private Railway telemetry. No prompts, responses, tokens or credentials are written."""
+"""Minimal, private VPS telemetry. No prompts, responses, tokens or credentials are written."""
 import datetime
 import json
 import os
@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,79}$")
+_TASK_ID = re.compile(r"^[a-z0-9][a-z0-9:-]{2,109}$")
 _MODEL = re.compile(r"^[a-zA-Z0-9._/-]{1,90}$")
 _ACTIONS = frozenset({"thinking","read_file","list_files","write_file","run_check","finish",
                       "remember","delegate","search_web","fetch_public","inspect_image","started"})
@@ -14,7 +15,7 @@ _SAFE_FILE = re.compile(r"^[a-zA-Z0-9_./-]{1,140}$")
 
 def _telemetry_file(kind):
     configured = os.environ.get("HORIZON_DIRECT_INBOX_DIR")
-    # Production Railway sets this path explicitly. Do not write artifacts to
+    # The dedicated VPS worker sets this path explicitly. Do not write artifacts to
     # arbitrary developer machines or agent scratch worktrees.
     if not configured:
         return None
@@ -76,7 +77,7 @@ def record_usage(agent,provider,model,usage):
 
 
 def record_activity(task_id,agent,action,step=None,path=None):
-    if not (isinstance(task_id,str) and _ID.fullmatch(task_id)
+    if not (isinstance(task_id,str) and _TASK_ID.fullmatch(task_id)
             and isinstance(agent,str) and _ID.fullmatch(agent)
             and action in _ACTIONS):
         return False
