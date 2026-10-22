@@ -147,7 +147,7 @@ class GitHubStateTests(unittest.TestCase):
         self.assertEqual(restored.sha, "a" * 40)
         with sqlite3.connect(self.destination) as connection:
             self.assertEqual(connection.execute("SELECT value FROM memory").fetchone()[0],
-                             b"\\x00\\xffsynthetic")
+                             b"\x00\xffsynthetic")
         self.assertTrue(any("/git/blobs/" + "a" * 40 in request.full_url
                             for request in self.api.calls))
 
