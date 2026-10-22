@@ -12,8 +12,6 @@ install -d -o horizon-worker -g horizon-worker -m 0700 "$QUEUE"
 for group in requests paused cancelled archived results agent-holds agent-settings; do
     install -d -o horizon-worker -g horizon-worker -m 0700 "$QUEUE/$group"
 done
-install -m 0644 "$ROOT/scripts/systemd/horizon-queue-observer.service" /etc/systemd/system/horizon-queue-observer.service
-install -m 0644 "$ROOT/scripts/systemd/horizon-queue-observer.timer" /etc/systemd/system/horizon-queue-observer.timer
 cp "$ROOT/horizon_core/gateway.py" "$WORK/horizon_core/gateway.py"
 chown horizon-worker:horizon-worker "$WORK/horizon_core/gateway.py"
 # The original repository's inbox.json is empty. Never reintroduce historic requests.
@@ -35,6 +33,5 @@ fi
 chown root:root /etc/horizon-worker/runtime.env
 chmod 0600 /etc/horizon-worker/runtime.env
 systemctl daemon-reload
-systemctl enable --now horizon-queue-observer.timer
 systemctl restart horizon-worker.service
 systemctl is-active horizon-worker.service
