@@ -41,3 +41,4 @@ jobs:
         run: |
           gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/chat-requests.yml/dispatches" -f ref=main
           echo "Agent controller dispatch requested; inspect its run for actual completion."
+# Recovery retry after checkout regression test correction (2026-10-22)
