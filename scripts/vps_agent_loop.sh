@@ -10,6 +10,7 @@ while true; do
   elif [[ -z "${GROQ_API_KEY:-}${GEMINI_API_KEY:-}" && "${HORIZON_LOCAL_MODEL_ENABLED:-}" != "true" ]]; then
     echo "standby: configure one verified local or external model provider"
   else
+    /opt/horizon-maestro/venv/bin/python /usr/local/lib/horizon-vps/queue_bridge.py sync /var/lib/horizon-worker/direct-queue /var/lib/horizon-worker/state/active.sqlite3
     /opt/horizon-maestro/venv/bin/python -m horizon_core.app \
       --db /var/lib/horizon-worker/state/active.sqlite3 \
       --root /var/lib/horizon-worker/workspace \
