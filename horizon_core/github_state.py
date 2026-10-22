@@ -85,8 +85,22 @@ class GitHubState:
             raise GitHubStateError("Invalid GitHub JSON response") from None
 
     def _content(self):
-        return self._request("GET", "/contents/" + self.path + "?ref=" + quote(self.branch, safe=""),
-                             missing_ok=True)
+        metadata = self._request("GET", "/contents/" + self.path + "?ref=" + quote(self.branch, safe=""),
+                                 missing_ok=True)
+        if not isinstance(metadata, dict) or metadata.get("encoding") != "none":
+            return metadata
+        # GitHub Contents API omits base64 content for blobs larger than 1 MiB.
+        # Fetch the same immutable blob SHA through the Git Blobs API instead.
+        # Retain the contents SHA for compare-and-swap writes: no state reset.
+        sha = metadata.get("sha")
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            raise GitHubStateError("Invalid GitHub large checkpoint metadata")
+        blob = self._request("GET", "/git/blobs/" + sha)
+        if (not isinstance(blob, dict) or blob.get("sha") != sha
+                or blob.get("encoding") != "base64"
+                or not isinstance(blob.get("content"), str)):
+            raise GitHubStateError("Invalid GitHub checkpoint blob response")
+        return {"sha": sha, "encoding": "base64", "content": blob["content"]}
 
     def pull(self, destination):
         """Atomically restore the checkpoint; 404 alone means no checkpoint.
