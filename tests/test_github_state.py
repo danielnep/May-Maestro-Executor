@@ -26,16 +26,25 @@ class FakeGitHub:
         self.error = None
         self.default = "main"
         self.conflict = False
+        self.large_contents = False
 
     def __call__(self, request, timeout):
         self.calls.append(request)
         url, method = request.full_url, request.method
         if self.error:
             raise HTTPError(url, self.error, "secret must not escape", {}, None)
+        if "/git/blobs/" in url:
+            if url.rsplit("/", 1)[-1] != self.sha:
+                raise HTTPError(url, 404, "missing", {}, None)
+            return Response({"sha": self.sha, "encoding": "base64",
+                             "content": base64.b64encode(self.content).decode()})
         if "/contents/" in url:
             if method == "GET":
                 if self.content is None:
                     raise HTTPError(url, 404, "missing", {}, None)
+                if self.large_contents:
+                    return Response({"sha": self.sha, "encoding": "none",
+                                     "content": "", "size": len(self.content)})
                 return Response({"sha": self.sha, "encoding": "base64",
                                  "content": base64.b64encode(self.content).decode()})
             body = json.loads(request.data)
@@ -126,6 +135,21 @@ class GitHubStateTests(unittest.TestCase):
                             compressed=True, encryption_key=Fernet.generate_key())
         with self.assertRaisesRegex(GitHubStateError, "Invalid GitHub checkpoint"):
             other.pull(self.destination)
+
+    def test_large_checkpoint_restores_via_git_blob_and_keeps_sha(self):
+        self.database()
+        self.state.push(self.source)
+        # Contents API omits base64 for blobs above 1 MiB; blob API retains it.
+        self.api.sha = "a" * 40
+        self.api.large_contents = True
+        restored = GitHubState("owner/repo", opener=self.api)
+        self.assertTrue(restored.pull(self.destination))
+        self.assertEqual(restored.sha, "a" * 40)
+        with sqlite3.connect(self.destination) as connection:
+            self.assertEqual(connection.execute("SELECT value FROM memory").fetchone()[0],
+                             b"\\x00\\xffsynthetic")
+        self.assertTrue(any("/git/blobs/" + "a" * 40 in request.full_url
+                            for request in self.api.calls))
 
     def test_compare_and_swap_never_retries_conflict(self):
         self.database()
