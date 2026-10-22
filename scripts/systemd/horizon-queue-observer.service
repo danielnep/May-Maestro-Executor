@@ -1,0 +1,12 @@
+[Unit]
+Description=Horizon: publish verified SQLite agent state to Central
+After=local-fs.target
+[Service]
+Type=oneshot
+User=horizon-worker
+Group=horizon-worker
+WorkingDirectory=/var/lib/horizon-worker/workspace
+ExecStart=/opt/horizon-maestro/venv/bin/python /usr/local/lib/horizon-vps/queue_bridge.py observe /var/lib/horizon-worker/direct-queue /var/lib/horizon-worker/state/active.sqlite3
+TimeoutStartSec=25
+NoNewPrivileges=true
+ProtectHome=true
