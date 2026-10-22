@@ -29,6 +29,12 @@ class TelemetryTests(unittest.TestCase):
             self.assertEqual(lines[0]["path"],"src/app.js")
             self.assertIsNone(lines[1]["path"])
             self.assertEqual(len(lines),2)
+    def test_subtask_colon_ids_are_recorded_without_leaking_content(self):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"HORIZON_DIRECT_INBOX_DIR":temp}):
+            self.assertTrue(record_activity("chat-ctl-123:ui","qa-engineer","read_file",step=1,path="src/app.js"))
+            records=[json.loads(x) for x in next((Path(temp)/"telemetry").glob("activity-*.jsonl")).read_text().splitlines()]
+            self.assertEqual(records[0]["taskId"],"chat-ctl-123:ui")
+            self.assertFalse(record_activity("../secrets","qa-engineer","read_file"))
     def test_missing_usage_is_not_invented(self):
         with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, {"HORIZON_DIRECT_INBOX_DIR":temp}):
             self.assertFalse(record_usage("qa-engineer","gemini","gemini-3.5-flash-lite",{}))
