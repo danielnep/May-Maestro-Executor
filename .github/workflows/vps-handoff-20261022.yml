@@ -47,7 +47,7 @@ jobs:
                       raise RuntimeError("SQLite checkpoint integrity failure")
               state = target.read_bytes()
           source.close()
-          if not state.startswith(b"SQLite format 3\\x00"):
+          if not state.startswith(b"SQLite format 3\x00"):
               raise RuntimeError("Invalid state header")
           key, nonce = os.urandom(32), os.urandom(12)
           aad = b"horizon-vps-maestro-state-v1"
@@ -58,7 +58,7 @@ jobs:
           package = {"version":1,"source_sha":source_sha,"db_sha256":hashlib.sha256(state).hexdigest(),
                      "nonce":base64.b64encode(nonce).decode(),"wrapped_key":base64.b64encode(wrapped).decode(),
                      "ciphertext":base64.b64encode(encrypted).decode()}
-          raw = (json.dumps(package,sort_keys=True,separators=(",",":"))+"\\n").encode()
+          raw = (json.dumps(package,sort_keys=True,separators=(",",":"))+"\n").encode()
           repo=os.environ["GITHUB_REPOSITORY"]
           path="runtime/horizon-vps-handoff-20261022.enc.json"
           url="https://api.github.com/repos/"+repo+"/contents/"+path
