@@ -1,8 +1,114 @@
 {
-  "error": {
-    "kind": "ValueError"
+  "delivery_mode": "read_result_in_chat",
+  "may_review": {
+    "branch": null,
+    "commit": null,
+    "handoff_mode": "durable_github_result_not_chat_push",
+    "notes": "No verified published preview and complete QA yet; do not claim an audit link was sent.",
+    "preview_url": null,
+    "repository": null,
+    "required_review": [
+      "mobile_and_desktop_flows",
+      "motion_and_transitions",
+      "gestures_and_dismissal",
+      "visual_hierarchy_icons_and_states"
+    ],
+    "result_url": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/results/ctl-mvhmrrry-1cb4b165.json",
+    "status": "in_progress"
   },
-  "note": "Erro sanitizado do controlador. O pedido não concede novas permissões.",
+  "note": "Relato concluído não comprova testes aprovados. Sem envio espontâneo ao chat ou deploy automático.",
+  "publication": {
+    "published": false,
+    "reason": "No generated workspace files"
+  },
+  "quality": {
+    "approved": false,
+    "failed_checks": [],
+    "qa_missing_evidence": [
+      "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-3"
+    ],
+    "qa_missing_for_publication": false
+  },
   "request_id": "ctl-mvhmrrry-1cb4b165",
-  "status": "blocked"
+  "source": "https://github.com/danielnep/May-Maestro-Executor/blob/main/tasks/chat/ctl-mvhmrrry-1cb4b165.json",
+  "status": "pending",
+  "supervision": {
+    "blocked_by": [],
+    "checked_at": "2026-10-22T06:37:26Z",
+    "first_pending_agent": "ui-ux-designer",
+    "first_pending_task": "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-1",
+    "next_retry_at": "2026-10-22T06:38:22Z",
+    "reason": "scheduled_retry",
+    "retry_reason": "provider_retry"
+  },
+  "tasks": [
+    {
+      "agent": "may-maestro",
+      "attempts": 1,
+      "blocked_by": [],
+      "blocker": null,
+      "checkpoint_step": 3,
+      "max_attempts": 3,
+      "model_used": null,
+      "next_retry_at": null,
+      "retry_reason": null,
+      "status": "succeeded",
+      "summary": "Specialist tasks delegated; implementation, tests and publication remain pending.",
+      "task_id": "chat-ctl-mvhmrrry-1cb4b165",
+      "verification": [],
+      "wait_reason": "completed"
+    },
+    {
+      "agent": "ui-ux-designer",
+      "attempts": 0,
+      "blocked_by": [],
+      "blocker": null,
+      "checkpoint_step": 5,
+      "max_attempts": 3,
+      "model_used": null,
+      "next_retry_at": "2026-10-22T06:38:22Z",
+      "retry_reason": "provider_retry",
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-1",
+      "verification": [],
+      "wait_reason": "scheduled_retry"
+    },
+    {
+      "agent": "frontend-engineer",
+      "attempts": 0,
+      "blocked_by": [
+        "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-1"
+      ],
+      "blocker": null,
+      "checkpoint_step": null,
+      "max_attempts": 3,
+      "model_used": null,
+      "next_retry_at": null,
+      "retry_reason": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-2",
+      "verification": [],
+      "wait_reason": "waiting_for_dependencies"
+    },
+    {
+      "agent": "qa-engineer",
+      "attempts": 0,
+      "blocked_by": [
+        "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-2"
+      ],
+      "blocker": null,
+      "checkpoint_step": null,
+      "max_attempts": 3,
+      "model_used": null,
+      "next_retry_at": null,
+      "retry_reason": null,
+      "status": "queued",
+      "summary": "",
+      "task_id": "chat-ctl-mvhmrrry-1cb4b165:ronda-ui-3",
+      "verification": [],
+      "wait_reason": "waiting_for_dependencies"
+    }
+  ]
 }
