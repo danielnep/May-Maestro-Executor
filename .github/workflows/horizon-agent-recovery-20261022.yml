@@ -1,0 +1,43 @@
+name: Horizon - recuperar agentes e retomar fila
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/horizon-agent-recovery-20261022.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: horizon-recovery-once-20261022
+  cancel-in-progress: false
+jobs:
+  restore:
+    if: github.repository == 'danielnep/May-Maestro-Executor'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Reativar controladores preservando checkpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY}"
+          for id in chat-requests.yml agent-watchdog.yml horizon-agent-central.yml agent-executors.yml restore-agent-workflows.yml; do
+            state="$(gh api "repos/$repo/actions/workflows/$id" --jq '.state')"
+            echo "$id before=$state"
+            case "$state" in
+              active) ;;
+              disabled_manually|disabled_inactivity)
+                gh api -X PUT "repos/$repo/actions/workflows/$id/enable" >/dev/null ;;
+              *) echo "::error::Unexpected workflow state $state"; exit 1 ;;
+            esac
+            final="$(gh api "repos/$repo/actions/workflows/$id" --jq '.state')"
+            echo "$id after=$final"
+            test "$final" = active
+          done
+      - name: Executar controlador imediatamente
+        shell: bash
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/workflows/chat-requests.yml/dispatches" -f ref=main
+          echo "Agent controller dispatch requested; inspect its run for actual completion."
