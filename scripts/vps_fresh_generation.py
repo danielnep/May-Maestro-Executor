@@ -9,7 +9,10 @@ import json
 import os
 import sqlite3
 import tempfile
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def digest_memory(connection):
@@ -81,10 +84,15 @@ def reset_with_learning(source, destination):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", required=True)
-    parser.add_argument("--destination", required=True)
+    parser.add_argument("--source", default="/opt/horizon-maestro/state/restored-413c22a0f6db.sqlite3")
+    parser.add_argument("--destination", default="/var/lib/horizon-worker/state/active.sqlite3")
     arguments = parser.parse_args()
-    print(json.dumps(reset_with_learning(arguments.source, arguments.destination)))
+    result = reset_with_learning(arguments.source, arguments.destination)
+    if os.geteuid() == 0:
+        import pwd
+        worker = pwd.getpwnam("horizon-worker")
+        os.chown(arguments.destination, worker.pw_uid, worker.pw_gid)
+    print(json.dumps(result))
 
 
 if __name__ == "__main__":
