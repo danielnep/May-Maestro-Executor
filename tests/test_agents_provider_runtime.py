@@ -20,7 +20,7 @@ class AgentRuntimeTests(unittest.TestCase):
         gateway = GeminiGateway(ENV, lambda *a, **k: reply('gemini'))
         self.assertEqual(gateway.complete(AGENT, MESSAGES)['metadata']['provider'], 'gemini')
 
-    def test_http_errors_and_timeout_use_groq_immediately_with_same_context(self):
+    def test_http_errors_preserve_context_across_gemma_and_groq(self):
         for failure in (400,401,403,404,429,500,503,'timeout'):
             with self.subTest(failure=failure):
                 calls=[]
@@ -32,9 +32,10 @@ class AgentRuntimeTests(unittest.TestCase):
                     return reply('groq')
                 result=ModelGateway(environ=ENV,opener=opener).complete(AGENT,MESSAGES)
                 self.assertEqual(result['metadata']['provider'],'groq')
-                self.assertEqual(len(calls),2)
-                self.assertLessEqual(sum(t for _,t in calls),40)
-                self.assertEqual(json.loads(calls[1][0].data)['messages'][-1], MESSAGES[0])
+                self.assertEqual(len(calls),3)
+                self.assertLessEqual(sum(t for _,t in calls),65)
+                self.assertIn('gemma-4-31b-it',calls[1][0].full_url)
+                self.assertEqual(json.loads(calls[2][0].data)['messages'][-1], MESSAGES[0])
                 self.assertEqual(result['metadata']['fallback_reasons'][0]['status'],None if failure=='timeout' else failure)
 
 class ProbeTests(unittest.TestCase):

@@ -365,7 +365,7 @@ class Worker:
                     else:
                         record_activity(task_id,agent['id'],'thinking',step=step)
                         action = self.gateway.complete(
-                             dict(agent, _reasoning_level=effort['level']),
+                             dict(agent, _reasoning_level=effort['level'], _task_id=task_id),
                              [{'role': 'user', 'content': json.dumps(context, ensure_ascii=False)}])
                 except GatewayError as error:
                     if error.reason == "rate_limited_local":

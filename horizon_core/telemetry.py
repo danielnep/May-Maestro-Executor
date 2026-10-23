@@ -50,7 +50,7 @@ def _count(value):
     return value if type(value) is int and 0<=value<=100000000 else None
 
 
-def record_usage(agent,provider,model,usage):
+def record_usage(agent,provider,model,usage,task_id=None):
     if not (isinstance(agent,str) and _ID.fullmatch(agent) and
             provider in ("gemini","groq") and isinstance(model,str) and
             _MODEL.fullmatch(model) and isinstance(usage,dict)):
@@ -69,8 +69,9 @@ def record_usage(agent,provider,model,usage):
         return False
     if total is None and sent is not None and received is not None:
         total=sent+received
+    safe_task = task_id if isinstance(task_id,str) and _TASK_ID.fullmatch(task_id) else None
     return _write("usage",{
-        "at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "taskId":safe_task,"at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "agent":agent,"provider":provider,"model":model,
         "input":sent,"output":received,"reasoning":reasoning,
         "total":total,"source":"provider_response"})

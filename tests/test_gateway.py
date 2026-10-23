@@ -179,15 +179,28 @@ class GroqRoutingTests(unittest.TestCase):
                    "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
             for agent_id in AGENT_IDS:
                 action = gateway.complete(load_agent(agent_id), self.messages)
-                expected = ("qwen/qwen3.8-27b" if agent_id in
-                    ("frontend-engineer", "mobile-app-builder", "ui-ux-designer",
-                     "horizon-ui-guardian") else "openai/gpt-oss-120b")
+                expected = "openai/gpt-oss-120b"
                 self.assertEqual(action["metadata"]["model"], expected)
                 self.assertEqual(action["metadata"]["provider"], "groq")
         self.assertEqual(gateway.groq.calls, 17)
         self.assertNotIn("PRIVATE", json.dumps(self.requests[-1].full_url))
 
-    def test_gemini_and_gpt_oss_outage_uses_qwen_third(self):
+    def test_gemma_31b_second_receives_same_task_context(self):
+        def primary_unavailable(req, timeout):
+            self.requests.append(req)
+            if "gemma-4-31b-it" not in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"PRIVATE"))
+            return envelope()
+        gateway = ModelGateway(environ=self.env, opener=primary_unavailable)
+        agent = dict(load_agent("backend-engineer"), _task_id="romaneio-compare-01")
+        action = gateway.complete(agent, self.messages)
+        self.assertEqual(action["metadata"]["model"], "gemma-4-31b-it")
+        self.assertEqual(action["metadata"]["routing"], "gemma_second")
+        self.assertEqual(len(self.requests), 2)
+        first, second = (json.loads(req.data)["contents"] for req in self.requests)
+        self.assertEqual(first, second)
+
+    def test_gemini_gemma_and_gpt_oss_outage_uses_qwen_fourth(self):
         def failing(req, timeout):
             self.requests.append(req)
             if "generativelanguage.googleapis.com" in req.full_url:
@@ -200,7 +213,7 @@ class GroqRoutingTests(unittest.TestCase):
             load_agent("backend-engineer"), self.messages)
         self.assertEqual(action["metadata"]["provider"], "groq")
         self.assertEqual(action["metadata"]["model"], "qwen/qwen3.8-27b")
-        self.assertEqual(len(self.requests), 3)
+        self.assertEqual(len(self.requests), 4)
 
     def test_local_model_minute_wait_moves_to_other_groq_model(self):
         def opener(req, timeout):
@@ -228,7 +241,7 @@ class GroqRoutingTests(unittest.TestCase):
         with self.assertRaises(GatewayError) as caught:
             ModelGateway(environ=self.env, opener=fail).complete(load_agent("backend-engineer"), self.messages)
         self.assertEqual(caught.exception.reason, "providers_unavailable")
-        self.assertEqual([x["provider"] for x in caught.exception.failures], ["gemini", "groq"])
+        self.assertEqual([x["provider"] for x in caught.exception.failures], ["gemini", "gemini", "groq"])
         self.assertNotIn("SECRET", str(caught.exception))
         self.assertNotIn("synthetic-groq", str(caught.exception))
 
