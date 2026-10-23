@@ -126,7 +126,8 @@ class _HTTPGateway:
                 context = getattr(self, '_usage_context', None)
                 if context and isinstance(result, dict):
                     usage = result.get('usageMetadata' if self.provider == 'gemini' else 'usage', {})
-                    record_usage(context[0], self.provider, context[1], usage)
+                    record_usage(context[0], self.provider, context[1], usage,
+                                 task_id=context[2] if len(context) > 2 else None)
                 if self.provider == "groq":
                     headers = getattr(response, "headers", None)
                     if headers is not None:
@@ -204,7 +205,7 @@ class GeminiGateway(_HTTPGateway):
                        {'inlineData':{'mimeType':'image/png','data':base64.b64encode(data).decode()}}]}],
                    'generationConfig':{'responseMimeType':'application/json'}}
         url='https://generativelanguage.googleapis.com/v1beta/models/'+urllib.parse.quote(model,safe='-_.')+':generateContent'
-        self._usage_context=(agent['id'],model)
+        self._usage_context=(agent['id'],model,agent.get('_task_id'))
         result=self._request(urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST'))
         try:
             candidate=result['candidates'][0]
@@ -238,7 +239,7 @@ class GeminiGateway(_HTTPGateway):
         payload = {"systemInstruction": {"parts": [{"text": _prompt(agent)}]}, "contents": contents, "generationConfig": generation}
         url = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(model, safe="-_.") + ":generateContent"
         request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
-        self._usage_context=(agent['id'],model)
+        self._usage_context=(agent['id'],model,agent.get('_task_id'))
         result = self._request(request)
         try:
             candidate = result["candidates"][0]
@@ -321,7 +322,7 @@ class GroqGateway(_HTTPGateway):
             data=json.dumps(payload).encode(),
             headers={"Content-Type": "application/json", "Authorization": "Bearer " + key},
             method="POST")
-        self._usage_context=(agent['id'],model)
+        self._usage_context=(agent['id'],model,agent.get('_task_id'))
         try:
             result = self._request(request)
         except GatewayError:
@@ -372,7 +373,7 @@ class OllamaGateway(_HTTPGateway):
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST")
-        self._usage_context = (agent["id"], model)
+        self._usage_context = (agent["id"], model, agent.get("_task_id"))
         result = self._request(request)
         try:
             content = result["message"]["content"]
@@ -485,7 +486,22 @@ class ModelGateway:
         elif not groq_only:
             failures.append({"provider": "gemini", "reason": "cooldown",
                              "status": None, "retryable": True})
-        # Preserve each agent's specialty when Gemini is unavailable:
+        # The same checkpointed messages are passed unchanged to all providers.
+        # Gemma 4 is hosted by Google's API; no model is installed on the VPS.
+        gemma_model = self.environ.get("HORIZON_GEMMA_MODEL", "gemma-4-31b-it")
+        if (not groq_only and self.gemini is not None
+                and now >= self._circuit.get("gemma_retry_after", 0)):
+            try:
+                action = self.gemini.complete(dict(agent, model=gemma_model), messages)
+                action["metadata"].update(fallback_from="gemini", routing="gemma_second")
+                return action
+            except GatewayError as error:
+                failures.append(error.as_dict())
+                if error.reason in ("quota", "transport", "server", "http", "blocked_response"):
+                    self._save_circuit({**self._circuit,
+                                        "gemma_retry_after": now + self.cooldown_seconds})
+        # GPT-OSS is always third; Qwen is the fourth and final remote model.
+
         # visual/mobile specialists get Qwen, architecture/backend GPT-OSS.
         preferred = (self.groq.model_for(agent) if self.groq is not None
                      else (self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
@@ -494,7 +510,8 @@ class ModelGateway:
         other = (self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
                  if preferred.startswith("qwen/") else
                  self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL)
-        models = [preferred, other]
+        models = [self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL,
+                  self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL]
         attempted = set()
         for model in models:
             if model in attempted:
