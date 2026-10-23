@@ -185,21 +185,42 @@ class GroqRoutingTests(unittest.TestCase):
         self.assertEqual(gateway.groq.calls, 17)
         self.assertNotIn("PRIVATE", json.dumps(self.requests[-1].full_url))
 
-    def test_gemma_31b_second_receives_same_task_context(self):
+    def test_gemma_31b_third_receives_same_task_context(self):
+        def preceding_unavailable(req, timeout):
+            self.requests.append(req)
+            if "gemma-4-31b-it" in req.full_url:
+                return envelope()
+            raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"PRIVATE"))
+        gateway = ModelGateway(environ=self.env, opener=preceding_unavailable)
+        agent = dict(load_agent("backend-engineer"), _task_id="romaneio-compare-01")
+        with patch("horizon_core.groq_minute_budget.GroqMinuteBudget.reserve",
+                   return_value=("synthetic", 0, 1536)), patch(
+                   "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
+            action = gateway.complete(agent, self.messages)
+        self.assertEqual(action["metadata"]["model"], "gemma-4-31b-it")
+        self.assertEqual(action["metadata"]["routing"], "gemma_third")
+        self.assertEqual(len(self.requests), 3)
+        self.assertIn("gemini-3.6-flash", self.requests[0].full_url)
+        self.assertEqual(json.loads(self.requests[1].data)["model"], "openai/gpt-oss-120b")
+        self.assertIn("gemma-4-31b-it", self.requests[2].full_url)
+        first, third = (json.loads(req.data)["contents"]
+                        for req in (self.requests[0], self.requests[2]))
+        self.assertEqual(first, third)
+
+    def test_gpt_oss_second_skips_gemma_when_healthy(self):
         def primary_unavailable(req, timeout):
             self.requests.append(req)
-            if "gemma-4-31b-it" not in req.full_url:
+            if "generativelanguage.googleapis.com" in req.full_url:
                 raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"PRIVATE"))
-            return envelope()
-        gateway = ModelGateway(environ=self.env, opener=primary_unavailable)
-        agent = dict(load_agent("backend-engineer"), _task_id="romaneio-compare-01")
-        action = gateway.complete(agent, self.messages)
-        self.assertEqual(action["metadata"]["model"], "gemma-4-31b-it")
-        self.assertEqual(action["metadata"]["routing"], "gemma_second")
+            return self.groq_response()
+        with patch("horizon_core.groq_minute_budget.GroqMinuteBudget.reserve",
+                   return_value=("synthetic", 0, 1536)), patch(
+                   "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
+            action = ModelGateway(environ=self.env, opener=primary_unavailable).complete(
+                load_agent("frontend-engineer"), self.messages)
+        self.assertEqual(action["metadata"]["routing"], "gpt_oss_second")
+        self.assertEqual(action["metadata"]["model"], "openai/gpt-oss-120b")
         self.assertEqual(len(self.requests), 2)
-        first, second = (json.loads(req.data)["contents"] for req in self.requests)
-        self.assertEqual(first, second)
-
     def test_gemini_gemma_and_gpt_oss_outage_uses_qwen_fourth(self):
         def failing(req, timeout):
             self.requests.append(req)
@@ -241,7 +262,7 @@ class GroqRoutingTests(unittest.TestCase):
         with self.assertRaises(GatewayError) as caught:
             ModelGateway(environ=self.env, opener=fail).complete(load_agent("backend-engineer"), self.messages)
         self.assertEqual(caught.exception.reason, "providers_unavailable")
-        self.assertEqual([x["provider"] for x in caught.exception.failures], ["gemini", "gemini", "groq"])
+        self.assertEqual([x["provider"] for x in caught.exception.failures], ["gemini", "groq", "gemini"])
         self.assertNotIn("SECRET", str(caught.exception))
         self.assertNotIn("synthetic-groq", str(caught.exception))
 
@@ -253,14 +274,18 @@ class GroqRoutingTests(unittest.TestCase):
             if "generativelanguage.googleapis.com" in req.full_url:
                 raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"private"))
             return self.groq_response()
-        with patch("horizon_core.gateway.time.time", return_value=1000):
-            first = ModelGateway(state=state, environ=self.env, opener=opener)
-            self.assertEqual(first.complete(load_agent("backend-engineer"), self.messages)["metadata"]["provider"], "groq")
-        with patch("horizon_core.gateway.time.time", return_value=1001):
-            resumed = ModelGateway(state=state, environ=self.env, opener=opener)
-            result = resumed.complete(load_agent("backend-engineer"), self.messages)
-            self.assertTrue(result["metadata"]["fallback_reasons"])
-            self.assertEqual(resumed.gemini.calls, 0)
+        # Isolate persistent Gemini cooldown from Groq's own minute spacing.
+        with patch("horizon_core.groq_minute_budget.GroqMinuteBudget.reserve",
+                   return_value=("synthetic", 0, 1536)), patch(
+                   "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
+            with patch("horizon_core.gateway.time.time", return_value=1000):
+                first = ModelGateway(state=state, environ=self.env, opener=opener)
+                self.assertEqual(first.complete(load_agent("backend-engineer"), self.messages)["metadata"]["provider"], "groq")
+            with patch("horizon_core.gateway.time.time", return_value=1001):
+                resumed = ModelGateway(state=state, environ=self.env, opener=opener)
+                result = resumed.complete(load_agent("backend-engineer"), self.messages)
+                self.assertTrue(result["metadata"]["fallback_reasons"])
+                self.assertEqual(resumed.gemini.calls, 0)
         self.assertNotIn("synthetic-groq", json.dumps(state.recall("__runtime__", "gateway")))
 
     def test_specialist_prompt_concise_and_own_identity(self):
