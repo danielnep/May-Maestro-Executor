@@ -188,7 +188,7 @@ class GroqRoutingTests(unittest.TestCase):
     def test_gemma_31b_second_receives_same_task_context(self):
         def primary_unavailable(req, timeout):
             self.requests.append(req)
-            if "gemini-2.5-flash" in req.full_url:
+            if "gemma-4-31b-it" not in req.full_url:
                 raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"PRIVATE"))
             return envelope()
         gateway = ModelGateway(environ=self.env, opener=primary_unavailable)
