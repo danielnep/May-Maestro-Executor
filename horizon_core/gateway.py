@@ -539,24 +539,6 @@ class ModelGateway:
                 # A bad shared key cannot work for the alternate Groq model.
                 if error.reason in ("authentication",) and error.status in (401, 403):
                     break
-        # Optional Gemini free Flash-Lite rescue, after both Groq models.
-        backup = self.environ.get("GEMINI_FREE_FALLBACK_MODEL", "")
-        gemini_failed_quota = any(row.get("provider") == "gemini"
-                                  and row.get("reason") in ("quota", "cooldown")
-                                  for row in failures)
-        if (not groq_only and backup == "gemini-3.5-flash-lite" and gemini_failed_quota
-                and self.gemini is not None
-                and self.environ.get("GEMINI_FREE_TIER_CONFIRMED", "").lower() == "true"
-                and (agent.get("model") or self.environ.get("GEMINI_MODEL")) != backup):
-            try:
-                action = self.gemini.complete(
-                    dict(agent, model=backup, _reasoning_level="low"), messages)
-                action["metadata"].update(
-                    fallback_from="gemini_groq", fallback_reasons=failures,
-                    free_tier_model=True)
-                return action
-            except GatewayError as error:
-                failures.append(error.as_dict())
         if self.local is not None:
             try:
                 action = self.local.complete(agent, messages)
