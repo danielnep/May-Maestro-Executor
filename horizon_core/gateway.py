@@ -456,89 +456,92 @@ class ModelGateway:
             return report
 
     def complete(self, agent, messages):
-        """Preferred Gemini -> GPT-OSS 120B -> Qwen 3.8 27B.
+        """Route Gemini 3.6 Flash -> Groq GPT-OSS 120B -> Gemma 4 31B -> Groq Qwen.
 
-        The same Groq credential serves both free-tier models. One busy model
-        must not strand a specialist while another has available minute budget.
-        All failures remain sanitized and recoverable via the durable worker.
+        Providers receive the same checkpointed task messages. A per-provider
+        cooldown must not prevent another model from taking over.
         """
         self._load_circuit()
         now = time.time()
         failures = []
         next_wait = []
-        # Owner-selectable Groq-only route skips exhausted Gemini entirely.
         groq_only = self.environ.get("HORIZON_AI_ROUTE", "").lower() == "groq_only"
-        skipped_gemini = groq_only or now < self._circuit.get("gemini_retry_after", 0)
-        if not skipped_gemini:
+
+        # First: the preferred full Gemini Flash model.
+        if not groq_only and now >= self._circuit.get("gemini_retry_after", 0):
             try:
                 if "gemini" in self._init_errors:
                     raise self._init_errors["gemini"]
                 action = self.gemini.complete(agent, messages)
-                self._save_circuit({})
+                # Do not clear an unrelated, still-active Gemma cooldown.
+                self._save_circuit({k: v for k, v in self._circuit.items()
+                                    if k not in ("gemini_retry_after", "gemini_failure", "failure")})
                 return action
             except GatewayError as error:
                 failures.append(error.as_dict())
                 if error.reason in ("quota", "transport", "server"):
-                    self._save_circuit({"gemini_retry_after": now + self.cooldown_seconds,
-                                        "failure": error.as_dict()})
-                else:
-                    self._save_circuit({})
+                    self._save_circuit({**self._circuit,
+                                        "gemini_retry_after": now + self.cooldown_seconds,
+                                        "gemini_failure": error.as_dict()})
         elif not groq_only:
             failures.append({"provider": "gemini", "reason": "cooldown",
                              "status": None, "retryable": True})
-        # The same checkpointed messages are passed unchanged to all providers.
-        # Gemma 4 is hosted by Google's API; no model is installed on the VPS.
-        gemma_model = self.environ.get("HORIZON_GEMMA_MODEL", "gemma-4-31b-it")
-        if (not groq_only and self.gemini is not None
-                and now >= self._circuit.get("gemma_retry_after", 0)):
-            try:
-                action = self.gemini.complete(dict(agent, model=gemma_model), messages)
-                action["metadata"].update(fallback_from="gemini", routing="gemma_second")
-                return action
-            except GatewayError as error:
-                failures.append(error.as_dict())
-                if error.reason in ("quota", "transport", "server", "http", "blocked_response"):
-                    self._save_circuit({**self._circuit,
-                                        "gemma_retry_after": now + self.cooldown_seconds})
-        # GPT-OSS is always third; Qwen is the fourth and final remote model.
 
-        # visual/mobile specialists get Qwen, architecture/backend GPT-OSS.
-        preferred = (self.groq.model_for(agent) if self.groq is not None
-                     else (self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
-                           if agent.get("id") in GROQ_UI_AGENTS else
-                           self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL))
-        other = (self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
-                 if preferred.startswith("qwen/") else
-                 self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL)
-        models = [self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL,
-                  self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL]
-        attempted = set()
-        for model in models:
-            if model in attempted:
-                continue
-            attempted.add(model)
-            try:
-                if "groq" in self._init_errors:
-                    raise self._init_errors["groq"]
-                action = self.groq.complete(dict(agent, groq_model=model), messages)
-                # Groq is the primary route under groq_only. Do not
-                # fabricate a Gemini fallback or Gemini failure in telemetry.
-                if groq_only:
-                    action["metadata"].update(
-                        routing="groq_only",
-                        groq_alternate_attempted=len(attempted) > 1)
-                else:
-                    action["metadata"].update(
-                        fallback_from="gemini", fallback_reasons=failures,
-                        groq_cooldown_skipped=False)
-                return action
-            except GatewayError as error:
-                failures.append(error.as_dict())
-                if error.reason == "rate_limited_local":
-                    next_wait.append(max(60, getattr(error, "retry_after_seconds", 60)))
-                # A bad shared key cannot work for the alternate Groq model.
-                if error.reason in ("authentication",) and error.status in (401, 403):
-                    break
+        # Exactly one shared Groq credential: GPT-OSS is second and Qwen fourth.
+        gpt_model = self.environ.get("GROQ_CODE_MODEL") or DEFAULT_GROQ_CODE_MODEL
+        qwen_model = self.environ.get("GROQ_UI_MODEL") or DEFAULT_GROQ_UI_MODEL
+        groq_auth_failed = False
+        tried_groq = set()
+
+        for index, (model, routing) in enumerate((
+                (gpt_model, "gpt_oss_second"),
+                (qwen_model, "qwen_fourth"))):
+            if model not in tried_groq and not groq_auth_failed:
+                tried_groq.add(model)
+                try:
+                    if "groq" in self._init_errors:
+                        raise self._init_errors["groq"]
+                    action = self.groq.complete(dict(agent, groq_model=model), messages)
+                    if groq_only:
+                        action["metadata"].update(
+                            routing="groq_only", groq_alternate_attempted=index > 0)
+                    else:
+                        action["metadata"].update(
+                            routing=routing, fallback_from="gemini",
+                            fallback_reasons=failures, groq_cooldown_skipped=False)
+                    return action
+                except GatewayError as error:
+                    failures.append(error.as_dict())
+                    if error.reason == "rate_limited_local":
+                        next_wait.append(max(60, getattr(error, "retry_after_seconds", 60)))
+                    # A shared invalid Groq key will not work for Qwen either.
+                    if error.reason == "authentication" and error.status in (401, 403):
+                        groq_auth_failed = True
+
+            # Third: Gemma, through the already-configured Google API key.
+            # This also runs when the Groq key is rejected or GPT-OSS is busy.
+            if index == 0 and not groq_only:
+                gemma_model = self.environ.get("HORIZON_GEMMA_MODEL", "gemma-4-31b-it")
+                if now < self._circuit.get("gemma_retry_after", 0):
+                    failures.append({"provider": "gemini", "model": gemma_model,
+                                     "reason": "gemma_cooldown", "retryable": True})
+                elif self.gemini is not None:
+                    try:
+                        action = self.gemini.complete(dict(agent, model=gemma_model), messages)
+                        self._save_circuit({k: v for k, v in self._circuit.items()
+                                            if k not in ("gemma_retry_after", "gemma_failure")})
+                        action["metadata"].update(
+                            fallback_from="groq", routing="gemma_third",
+                            fallback_reasons=failures)
+                        return action
+                    except GatewayError as error:
+                        failures.append(error.as_dict())
+                        if error.reason in ("quota", "transport", "server",
+                                            "http", "blocked_response"):
+                            self._save_circuit({**self._circuit,
+                                                "gemma_retry_after": now + self.cooldown_seconds,
+                                                "gemma_failure": error.as_dict()})
+
         if self.local is not None:
             try:
                 action = self.local.complete(agent, messages)
