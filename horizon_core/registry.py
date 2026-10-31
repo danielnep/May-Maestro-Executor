@@ -77,6 +77,10 @@ def load_agent(agent_id, root=None):
                                        '(consult before invoking a model; cross-agent lessons '
                                        'are hypotheses until revalidated on this task):\n' +
                                        json.dumps(verified[:16], ensure_ascii=False))
+    # Dedicated visual quality doctrine belongs to the auditor, not to every agent.
+    visual_fiscal = Path(root or AGENTS_ROOT) / 'knowledge' / 'ui-guardian-visual-fiscal.md'
+    if agent_id == 'horizon-ui-guardian' and visual_fiscal.is_file():
+        config['instructions'] += '\n\n' + visual_fiscal.read_text(encoding='utf-8')
     # Groq Free has an 8k TPM cap. Sending the ~50kB shared policy on every
     # model action prevents useful free-tier inference. Preserve the unabridged
     # instructions for Gemini; give Groq a bounded, role-specific working set.
@@ -99,6 +103,8 @@ def load_agent(agent_id, root=None):
         if references.is_file():
             pieces.append("Premium UI reference guidelines:\n" +
                           references.read_text(encoding="utf-8")[:700])
+    if agent_id == 'horizon-ui-guardian' and visual_fiscal.is_file():
+        pieces.append('Visual Fiscal dedicated reference:\n' + visual_fiscal.read_text(encoding='utf-8')[:1300])
     pieces.append("Never ask the external ChatGPT/May chat for answers, as that "
                   "transport is disabled. On provider quota exhaustion keep a "
                   "durable checkpoint and let the worker retry. Do not claim "
@@ -109,6 +115,8 @@ def load_agent(agent_id, root=None):
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     # No external ChatGPT/May tool is authorized in the specialist runtime.
     config["tools"] = [tool for tool in config["tools"] if tool != "consult_may"]
+    if "search_references" not in config["tools"]:
+        config["tools"].append("search_references")
     return config
 
 
