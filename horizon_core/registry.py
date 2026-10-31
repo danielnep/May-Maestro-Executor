@@ -27,6 +27,10 @@ def load_agent(agent_id, root=None):
     # Fail visibly if missing: silently skipping it would defeat the contract.
     meticulous = Path(root or AGENTS_ROOT) / "skills" / "meticulosidade" / "SKILL.md"
     config["instructions"] += "\n\n" + meticulous.read_text(encoding="utf-8")
+    # Google Antigravity reference: optional harness, never implicit activation.
+    antigravity = Path(root or AGENTS_ROOT) / "skills" / "antigravity-harness" / "SKILL.md"
+    if antigravity.is_file():
+        config["instructions"] += "\n\n" + antigravity.read_text(encoding="utf-8")
     knowledge = Path(root or AGENTS_ROOT) / 'knowledge' / 'transactional-integrity.md'
     if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
         config["instructions"] += '\n\n' + knowledge.read_text(encoding='utf-8')
@@ -89,6 +93,8 @@ def load_agent(agent_id, root=None):
     pieces = [base_excerpt,
         ("Shared mandatory engineering rules (full sources remain in repository "
          "for targeted read_file use):\n" + meticulous.read_text(encoding="utf-8")[:1700]),
+        ("Antigravity SDK knowledge (optional executor, NOT active by default):\n" +
+         antigravity.read_text(encoding="utf-8")[:750] if antigravity.is_file() else ""),
         ("Delivery and recovery policy:\n" + policy.read_text(encoding="utf-8")[:1250]
          if policy.is_file() else "")]
     if agent_id in TRANSACTIONAL_KNOWLEDGE_AGENTS and knowledge.is_file():
