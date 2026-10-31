@@ -23,6 +23,9 @@ def load_agent(agent_id, root=None):
         raise ValueError("Specialist identity mismatch")
     config["instructions"] = (directory / "instructions.md").read_text(encoding="utf-8")
     base_instructions = config["instructions"]
+    android_knowledge = Path(root or AGENTS_ROOT) / "knowledge" / "android-ui-auth-verified.md"
+    if android_knowledge.is_file():
+        config["instructions"] += "\n\n" + android_knowledge.read_text(encoding="utf-8")
     # Canonical mandatory skill, loaded for ALL 17 registered agents on each run.
     # Fail visibly if missing: silently skipping it would defeat the contract.
     meticulous = Path(root or AGENTS_ROOT) / "skills" / "meticulosidade" / "SKILL.md"
@@ -104,6 +107,10 @@ def load_agent(agent_id, root=None):
                   "durable checkpoint and let the worker retry. Do not claim "
                   "test passes without tool evidence. Do not expose credentials. "
                   "Preserve the approved project and its operational UI.")
+    if android_knowledge.is_file():
+        pieces.append("Android: run_check android-release verifica build/Lint/APK e pode reportar tests_run=0; não comprova testes funcionais nem assinatura de entrega. android-gradle mantém JUnit obrigatório.")
+    if android_knowledge.is_file():
+        pieces.append("Runtime: confirmar cd do wrapper, --root, PYTHONPATH, módulo.__file__ e AGENTS_ROOT no serviço efetivo antes de aplicar ou validar agentes.")
     config["_groq_instructions"] = "\n\n".join(piece for piece in pieces if piece)
 
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))

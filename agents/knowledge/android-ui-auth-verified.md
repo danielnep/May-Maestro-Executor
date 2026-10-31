@@ -9,3 +9,8 @@ Aplicar apenas quando o trabalho envolver essas superfícies; preservar as permi
 - Na VPS preparada, verificar /opt/horizon-mobile-app/android-env.sh antes de usar o SDK. Há plataformas 35/36, Build Tools 35/36, Platform Tools, Command-line Tools e Gradle 8.9 para o AGP 8.7.3 atual. Ferramenta instalada não equivale a fluxo executado. Emulador foi cancelado pelo proprietário; não iniciar nem consumir recursos com ele sem nova instrução. GPS/câmera físicos permanecem distintos das validações de build e navegador.
 - Quando o proprietário pedir entrega imediata, disponibilizar o APK assinado após integridade conferida, informando a etapa real da revisão; continuar o trabalho autorizado e publicar nova versão se houver outra alteração. Nunca substituir silenciosamente uma compilação já entregue.
 - Registrar causa, correção e teste reproduzível em conhecimento dos agentes e habilidades. Conferir o texto efetivamente carregado, inclusive resumos de contexto do provedor. Regra publicada não comprova, por si só, melhora futura.
+
+## Destino efetivo do runtime
+
+<!-- RUNTIME_EFFECTIVE_ROOT_VERIFIED_20261031 -->
+Antes de aplicar instruções ou ferramentas a agentes, resolver o diretório efetivo após o cd do wrapper, o argumento --root, PYTHONPATH, módulo.__file__ e AGENTS_ROOT. WorkingDirectory do systemd ou nome de pasta de apoio não bastam. Aplicar com backup no código/perfil efetivamente importado e validar load_agent de todos os agentes nos contextos completo e compacto nesse mesmo ambiente. Não chamar validação de uma cópia de apoio de validação do serviço.

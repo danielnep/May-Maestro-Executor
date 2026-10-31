@@ -193,7 +193,7 @@ class Tools:
 
     def run_check(self, args):
         name = args.get('name')
-        if name not in ('python-unittest', 'browser-playwright', 'node-test', 'android-gradle'):
+        if name not in ('python-unittest', 'browser-playwright', 'node-test', 'android-gradle', 'android-release'):
             raise ValueError('Only approved isolated checks are available')
         project_dir = args.get('project_dir', '.')
         project_root = self._project_root(project_dir)
@@ -208,10 +208,10 @@ class Tools:
                 evidence_dir=self._evidence_directory('web-evidence'))
             self.evidence.extend(raw.get('screenshots', []))
             backend = 'docker-web'
-        elif name == 'android-gradle':
+        elif name in ('android-gradle', 'android-release'):
             from android_tools.check import isolated_check
-            raw = isolated_check(project_root,
-                artifacts_dir=self._evidence_directory('android-evidence') / execution_id)
+            artifacts = self._evidence_directory('android-evidence') / execution_id
+            raw = isolated_check(project_root, artifacts_dir=artifacts, release=True) if name == 'android-release' else isolated_check(project_root, artifacts_dir=artifacts)
             backend = 'docker-android'
         elif self.sandbox_client is not None:
             raw = self.sandbox_client.run_check(project_root, scoped)
@@ -252,7 +252,8 @@ class Tools:
                   'timed_out': timed_out is not False, 'truncated': truncated is not False,
                   'cleanup_ok': cleanup is True, 'workspace_unchanged': unchanged,
                   'passed': raw.get('passed') is True and type(exit_code) is int and exit_code == 0
-                            and count > 0 and timed_out is False and truncated is False
+                            and (count > 0 or (name == 'android-release' and raw.get('checks_run') == 3 and raw.get('verification_kind') == 'android-build-lint'))
+                            and timed_out is False and truncated is False
                             and cleanup is True and unchanged}
         if not unchanged:
             result['reason'] = 'Workspace changed during check; rerun the final snapshot'
