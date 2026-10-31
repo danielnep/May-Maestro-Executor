@@ -409,10 +409,6 @@ class ModelGateway:
         self.local = (OllamaGateway(self.environ, opener)
                       if self.environ.get("HORIZON_LOCAL_MODEL_ENABLED", "").lower() == "true"
                       else None)
-        self.antigravity = None
-        if self.environ.get("HORIZON_ANTIGRAVITY_ENABLE") == "1":
-            from .antigravity_bridge import AntigravityGateway
-            self.antigravity = AntigravityGateway(self.environ)
         self.cooldown_seconds = _positive(self.environ, "GROQ_COOLDOWN_SECONDS", 300)
         self._circuit = {}
         self._load_circuit()
@@ -423,7 +419,7 @@ class ModelGateway:
 
     @property
     def calls(self):
-        return sum(provider.calls for provider in (self.groq, self.gemini, self.local, self.antigravity) if provider is not None)
+        return sum(provider.calls for provider in (self.groq, self.gemini, self.local) if provider is not None)
 
     def _load_circuit(self):
         if self.state is not None:
@@ -470,20 +466,6 @@ class ModelGateway:
         failures = []
         next_wait = []
         groq_only = self.environ.get("HORIZON_AI_ROUTE", "").lower() == "groq_only"
-
-        # SDK is opt-in. Failures preserve the existing provider order,
-        # with a bounded circuit-breaker rather than repeated stalls.
-        if self.antigravity is not None and not groq_only:
-            if now >= self._circuit.get("antigravity_retry_after", 0):
-                try:
-                    return self.antigravity.complete(agent, messages)
-                except GatewayError as error:
-                    failures.append(error.as_dict())
-                    self._save_circuit({**self._circuit,
-                                        "antigravity_retry_after": now + self.cooldown_seconds})
-            else:
-                failures.append({"provider": "antigravity", "reason": "cooldown",
-                                 "status": None, "retryable": True})
 
         # First: the preferred full Gemini Flash model.
         if not groq_only and now >= self._circuit.get("gemini_retry_after", 0):
