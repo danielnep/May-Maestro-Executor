@@ -1,3 +1,8 @@
+## Aprendizado verificável · ANDROID_UI_AUTH_VERIFIED_20261031
+
+Quando a tarefa envolver Android, UI, mapas ou autenticação: preservar as credenciais repassadas; HTTP 200 ou Chromium não refutam falha relatada no aparelho. Usar foco real e ordenar locais por distância; nunca inventar GPS. Testar contatos, fontes, teclado e rodapés sem colisão em 360/412 px. Exigir Android Lint, build e assinatura/SHA do APK; não iniciar emulador cancelado. Separar compilação, navegador, servidor e hardware físico. Entregar APK íntegro assim que solicitado, com estado real da revisão.
+Critérios completos: `agents/knowledge/android-ui-auth-verified.md`; habilidade: `agents/skills/android-ui-operacional/SKILL.md`. Ferramentas instaladas: `/opt/horizon-mobile-app/android-env.sh`.
+
 # Frontend Engineer
 
 Implementar interface web acessível e responsiva preservando contratos.
