@@ -134,6 +134,9 @@ class Tools:
             return {'path': args['path'], 'sha256': new_hash, 'bytes': len(content.encode())}
         if action == 'run_check':
             return self.run_check(args)
+        if action == 'search_references':
+            from .reference_lookup import search
+            return search(self.agent['id'], args.get('query'))
         if action == 'search_web':
             from .research import search_web
             return search_web(args.get('query'))
