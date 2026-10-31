@@ -59,12 +59,18 @@ async def run_read_only(role: str, prompt: str, workspace: str) -> dict:
     allowed = Path("/var/lib/horizon-worker/workspace").resolve(strict=True)
     if not root.is_relative_to(allowed):
         raise ValueError("Workspace must remain inside the Horizon worker directory")
-    from google.antigravity import Agent, LocalAgentConfig
+    from google.antigravity import Agent, LocalAgentConfig, types
     from google.antigravity.hooks.policy import allow, deny
 
     instructions = (AGENTS / role / "instructions.md").read_text(encoding="utf-8")
     safe_rules = (AGENTS / "skills" / "antigravity-harness" / "SKILL.md").read_text(encoding="utf-8")
     config = LocalAgentConfig(
+        app_data_dir=str(root / ".horizon-antigravity" / "app"),
+        save_dir=str(root / ".horizon-antigravity" / "sessions"),
+        workspaces=[str(root)],
+        budget_config=types.BudgetConfig(max_model_calls=2, max_tool_calls=5,
+                                         max_output_tokens=750),
+        capabilities=types.CapabilitiesConfig(enable_subagents=False),
         system_instructions=(instructions + "\n\n" + safe_rules +
             "\n\nREAD-ONLY REVIEW ONLY. Do not write files, run shell, "
             "invoke risky external tools or access secrets."),
@@ -99,8 +105,11 @@ def main() -> int:
                          ensure_ascii=False))
         return 0
     except (RuntimeError, ValueError) as exc:
-        print(json.dumps({"status": "blocked", "reason": str(exc), "model_request_sent": False}))
+        print(json.dumps({"status": "blocked", "error_type": type(exc).__name__}))
         return 2
+    except Exception as exc:
+        print(json.dumps({"status": "failed", "error_type": type(exc).__name__}))
+        return 3
 
 
 if __name__ == "__main__":
