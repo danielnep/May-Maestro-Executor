@@ -9,7 +9,7 @@ _ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,79}$")
 _TASK_ID = re.compile(r"^[a-z0-9][a-z0-9:-]{2,109}$")
 _MODEL = re.compile(r"^[a-zA-Z0-9._/-]{1,90}$")
 _ACTIONS = frozenset({"thinking","read_file","list_files","write_file","run_check","finish",
-                      "remember","delegate","search_web","fetch_public","inspect_image","started"})
+                      "remember","delegate","search_web","fetch_public","inspect_image","search_references","started"})
 _SAFE_FILE = re.compile(r"^[a-zA-Z0-9_./-]{1,140}$")
 
 

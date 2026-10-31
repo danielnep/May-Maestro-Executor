@@ -13,3 +13,6 @@ Procedimento:
 
 Não integrar main nem publicar produção sem autorização explícita. Acesso ao navegador sem login não prova interface autenticada.
 
+
+## Fiscal visual (mesmo agente, sem 18º especialista)
+Consultar `agents/knowledge/ui-guardian-visual-fiscal.md`. Revisar originalidade e adequação estética além da conformidade funcional; nunca usar uma paleta universal como veto. Aprovações: antes/depois real, ticket e resumo de até 5 linhas.
