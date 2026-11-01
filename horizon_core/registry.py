@@ -5,7 +5,7 @@ from pathlib import Path
 AGENTS_ROOT = Path(__file__).resolve().parent.parent / "agents"
 AGENT_IDS = (
     "may-maestro", "horizon-project-studio", "software-architect", "frontend-engineer",
-    "backend-engineer", "mobile-app-builder", "ui-ux-designer", "horizon-ui-guardian",
+    "backend-engineer", "mobile-app-builder", "mobile-native-engineer", "ui-ux-designer", "horizon-ui-guardian",
     "database-engineer", "integration-engineer", "qa-engineer", "security-engineer",
     "devops-engineer", "horizon-evolution-agent", "horizon-skills", "corregedoria-may", "may-persona",
 )

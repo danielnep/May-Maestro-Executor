@@ -13,7 +13,7 @@ class SharedIncidentPlaybookTests(unittest.TestCase):
         self.assertTrue(all(entry.get("action") and entry.get("verification") for entry in data["entries"]))
 
     def test_all_specialists_receive_incident_rules(self):
-        self.assertEqual(len(AGENT_IDS), 17)
+        self.assertEqual(len(AGENT_IDS), 18)
         for agent_id in AGENT_IDS:
             with self.subTest(agent=agent_id):
                 instructions = load_agent(agent_id)["instructions"]

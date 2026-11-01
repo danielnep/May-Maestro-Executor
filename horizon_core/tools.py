@@ -134,6 +134,32 @@ class Tools:
             return {'path': args['path'], 'sha256': new_hash, 'bytes': len(content.encode())}
         if action == 'run_check':
             return self.run_check(args)
+        if action == 'search_knowledge':
+            # Audited, bounded, read-only research corpus. No model-generated SQL
+            # or user path, no external IO, and only explicitly enabled agents.
+            import json
+            query = args.get('query')
+            if not isinstance(query, str) or not 2 <= len(query) <= 160:
+                raise ValueError('search_knowledge requires a 2-160 char query')
+            data = json.loads((Path(__file__).resolve().parent.parent /
+                               'agents' / 'knowledge' / 'mobile-native-cases.json').read_text(encoding='utf-8'))
+            if data.get('schema_version') != 1 or not isinstance(data.get('entries'), list):
+                raise ValueError('Invalid mobile knowledge source')
+            terms = set(re.findall(r'\w{3,}', query.casefold(), re.UNICODE))
+            if not terms:
+                return {'query': query, 'matches': []}
+            results = []
+            for row in data['entries'][:120]:
+                tags = set(str(tag).casefold() for tag in row.get('tags', []))
+                title = set(re.findall(r'\w{3,}', str(row.get('title', '')).casefold()))
+                score = len(tags & terms) * 3 + len(title & terms)
+                if score:
+                    results.append((score, row))
+            results.sort(key=lambda pair: (-pair[0], pair[1]['id']))
+            return {'query': query, 'matches': [dict(id=r['id'], title=r['title'],
+                    diagnostic=r['diagnostic'], acceptance=r['acceptance'],
+                    source=r['url'], kind=r['kind'], status=r['status'])
+                    for _, r in results[:5]]}
         if action == 'search_web':
             from .research import search_web
             return search_web(args.get('query'))

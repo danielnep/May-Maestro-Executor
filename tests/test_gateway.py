@@ -38,8 +38,8 @@ class GatewayTests(unittest.TestCase):
             self.assertIn("Specialist ID: " + ident, payload["systemInstruction"]["parts"][0]["text"])
             self.assertEqual(payload["contents"][0]["parts"][0]["text"], self.messages[0]["content"])
             self.assertEqual(payload["generationConfig"]["responseMimeType"], "application/json")
-        self.assertEqual(len(self.requests), 17)
-        self.assertEqual(len(set(AGENT_IDS)), 17)
+        self.assertEqual(len(self.requests), 18)
+        self.assertEqual(len(set(AGENT_IDS)), 18)
 
     def test_key_in_header_not_url_and_specialist_override(self):
         self.env["FRONTEND_GEMINI_KEY"] = "specialist-credential"
@@ -162,7 +162,7 @@ class GroqRoutingTests(unittest.TestCase):
             action = gateway.complete(load_agent(agent_id), self.messages)
             self.assertEqual(action["metadata"]["provider"], "gemini")
             self.assertEqual(action["metadata"]["agent_id"], agent_id)
-        self.assertEqual(len(self.requests), 17)
+        self.assertEqual(len(self.requests), 18)
         self.assertEqual(gateway.groq.calls, 0)
 
     def test_gemini_outage_routes_each_specialist_to_its_groq_model(self):
@@ -182,7 +182,7 @@ class GroqRoutingTests(unittest.TestCase):
                 expected = "openai/gpt-oss-120b"
                 self.assertEqual(action["metadata"]["model"], expected)
                 self.assertEqual(action["metadata"]["provider"], "groq")
-        self.assertEqual(gateway.groq.calls, 17)
+        self.assertEqual(gateway.groq.calls, 18)
         self.assertNotIn("PRIVATE", json.dumps(self.requests[-1].full_url))
 
     def test_gemma_31b_third_receives_same_task_context(self):

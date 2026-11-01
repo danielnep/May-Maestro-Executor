@@ -1,0 +1,9 @@
+{
+  "id": "mobile-native-engineer",
+  "name": "Mobile Native Engineer",
+  "scope": "Especialista Android/iOS, fidelidade visual HTML→APK/IPA, insets e QA de build instalado.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "mobile-native-engineer",
+  "independent_reasoning": true
+}

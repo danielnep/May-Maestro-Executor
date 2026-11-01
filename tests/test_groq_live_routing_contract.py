@@ -14,7 +14,7 @@ class HorizonGroqContract(unittest.TestCase):
         gateway = GroqGateway({})
         self.assertEqual(DEFAULT_GROQ_UI_MODEL, "qwen/qwen3.8-27b")
         self.assertEqual(DEFAULT_GROQ_CODE_MODEL, "openai/gpt-oss-120b")
-        self.assertEqual(len(AGENT_IDS), 17)
+        self.assertEqual(len(AGENT_IDS), 18)
         for agent_id in AGENT_IDS:
             with self.subTest(agent=agent_id):
                 agent = load_agent(agent_id)
