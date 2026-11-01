@@ -290,6 +290,8 @@ class GroqGateway(_HTTPGateway):
         payload = {"model": model,
                    "messages": [{"role": "system", "content": _prompt(groq_agent)}] + _messages(messages),
                    "response_format": {"type": "json_object"}}
+        from .groq_context import fit
+        payload['messages']=fit(payload['messages'])
         if model.startswith("qwen/") or model.startswith("openai/gpt-oss-"):
             payload["reasoning_effort"] = "high" if level == "high" else (
                 "medium" if model.startswith("openai/gpt-oss-") else "low")
