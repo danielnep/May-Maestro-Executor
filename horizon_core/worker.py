@@ -404,6 +404,23 @@ class Worker:
                     continue
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                 name, args = action['action'], action.get('args', {})
+                # Native mobile work must consider current official AND developer-community
+                # evidence before modifying source or reporting completion.
+                mobile_topic = any(token in task['objective'].casefold() for token in
+                                   ('apk', 'aab', 'android', 'ios', 'iphone', 'webview',
+                                    'capacitor', 'flutter', 'react native', 'mobile', 'interface'))
+                researched = any(item.get('action') == 'research_mobile' for item in history)
+                if (agent['id'] == 'mobile-native-engineer' and mobile_topic
+                        and name in ('write_file', 'finish') and not researched):
+                    step += 1
+                    history.append({'action': 'research_required',
+                        'outcome': {'reason': 'two-source-mobile-research-missing',
+                                    'instruction': 'Call research_mobile for current platform, then assess official and forum evidence before deciding.'}})
+                    self.state.checkpoint(task_id, self.worker_id, {
+                        'step': step, 'history': history, 'checks': checks,
+                        'delegated': delegated, 'failure_counts': failure_counts})
+                    self.persist()
+                    continue
                 record_activity(task_id,agent['id'],name,step=step,path=args.get('path'))
                 if name not in agent['tools']:
                     raise ValueError('Specialist capability denied')

@@ -1,0 +1,322 @@
+{
+  "schema_version": 1,
+  "reviewed": "2026-11-01",
+  "discipline": "mobile-native-ui",
+  "entries": [
+    {
+      "id": "android-edge-webview-140",
+      "title": "Android WebView < 140 pode informar safe-area-inset-top zero apesar de barras visíveis",
+      "tags": [
+        "android",
+        "webview",
+        "status",
+        "safe",
+        "inset",
+        "bar",
+        "capacitor"
+      ],
+      "diagnostic": "Verificar versão real do WebView e diferenças entre insets nativos e CSS; não somar padding duas vezes.",
+      "acceptance": "Captura APK com status e navegação, testar WebView antigo e novo; verificar top/bottom e conteúdo clicável.",
+      "url": "https://github.com/ionic-team/capacitor/issues/8651",
+      "kind": "issue",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-keyboard-ime-2026",
+      "title": "Android 15/16: teclado IME cobre inputs em WebView full-screen",
+      "tags": [
+        "android",
+        "keyboard",
+        "ime",
+        "teclado",
+        "input",
+        "webview",
+        "focus"
+      ],
+      "diagnostic": "Auditar aplicação de WindowInsetsCompat.Type.ime e a estratégia de resize nativa antes de CSS. Não pressupor que a janela encolheu.",
+      "acceptance": "Abrir teclado em campo inferior, alternar teclado numérico/emoji/Samsung, garantir botão salvar visível e foco rolável.",
+      "url": "https://github.com/capawesome-team/capacitor-plugins/issues/847",
+      "kind": "issue",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-keyboard-double-gap",
+      "title": "Configurações de edge-to-edge podem duplicar folga entre WebView e teclado",
+      "tags": [
+        "android",
+        "keyboard",
+        "teclado",
+        "gap",
+        "bottom",
+        "margin",
+        "capacitor"
+      ],
+      "diagnostic": "Comparar altura nativa, visualViewport e margens aplicadas; não acumular soluções de plugins concorrentes.",
+      "acceptance": "Capturar estado sem teclado, com teclado, após reabrir e com orientação alterada.",
+      "url": "https://github.com/ionic-team/capacitor/issues/8055",
+      "kind": "issue",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-older-viewport",
+      "title": "Android anteriores ao 15 podem informar visualViewport/innerHeight sem descontar barras",
+      "tags": [
+        "android",
+        "keyboard",
+        "teclado",
+        "visualviewport",
+        "modal",
+        "safe"
+      ],
+      "diagnostic": "Não dimensionar modal exclusivamente por window.innerHeight; conferir inset nativo e baseline anterior.",
+      "acceptance": "Testar modal e salvar em Android 13/14 com teclas e gesto.",
+      "url": "https://github.com/ionic-team/capacitor/issues/8181",
+      "kind": "issue",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-capacitor8",
+      "title": "Discussão de migração Android 15 e Capacitor 8 SystemBars",
+      "tags": [
+        "android",
+        "capacitor",
+        "status",
+        "navigation",
+        "inset",
+        "systembars"
+      ],
+      "diagnostic": "Avaliar versão exata de Capacitor e compatibilidade dos plugins antes de copiar instrução de fórum.",
+      "acceptance": "Comparar APK anterior e novo nas mesmas telas e densidades.",
+      "url": "https://www.reddit.com/r/capacitor/comments/1s4vtw0/android_15_edgetoedge_broke_my_capacitor_app_ui/",
+      "kind": "forum",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-community-safearea",
+      "title": "Plugin comunitário safe-area documenta fallback para WebViews antigos",
+      "tags": [
+        "android",
+        "safe",
+        "inset",
+        "community",
+        "viewport",
+        "capacitor"
+      ],
+      "diagnostic": "Estudar abordagem fallback como alternativa, checar conflito com plugin SystemBars existente antes de instalar.",
+      "acceptance": "Validar suporte na versão efetivamente instalada com testes de abertura e teclado.",
+      "url": "https://github.com/capacitor-community/safe-area",
+      "kind": "discussion",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-capacitor-regression",
+      "title": "Relato: instalar plugin safe-area sem configuração compatível rompeu bridge",
+      "tags": [
+        "android",
+        "safe",
+        "capacitor",
+        "bridge",
+        "crash",
+        "back",
+        "keyboard"
+      ],
+      "diagnostic": "Não instalar múltiplos plugins corretivos sem matriz e smoke test; testar bridge imediatamente após mudança.",
+      "acceptance": "Executar funções nativas câmera/localização e fluxos antes/depois, detectar bridge undefined.",
+      "url": "https://github.com/ionic-team/capacitor/issues/8432",
+      "kind": "issue",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-ionic-resolved-insets",
+      "title": "Ionic corrigiu integração de variáveis CSS de safe areas em 2026",
+      "tags": [
+        "android",
+        "ionic",
+        "safe",
+        "css",
+        "top",
+        "bottom",
+        "capacitor"
+      ],
+      "diagnostic": "Verificar release exata e se projeto usa Ionic, antes de prescrever workaround obsoleto.",
+      "acceptance": "Verificar headers, footers, tabs, overlay, first render e cabeçalho transparente.",
+      "url": "https://github.com/ionic-team/ionic-framework/issues/30090",
+      "kind": "issue",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-cordova-bars",
+      "title": "Discussão de Cordova Android 15 sobre overlay, retorno e teclado",
+      "tags": [
+        "android",
+        "cordova",
+        "status",
+        "bar",
+        "keyboard",
+        "back"
+      ],
+      "diagnostic": "Em Cordova, usar abordagem específica da versão. StatusBarOverlaysWebView legado não garante desativar edge-to-edge.",
+      "acceptance": "Testar back Android, status bar e resize do teclado em APK.",
+      "url": "https://github.com/apache/cordova/discussions/585",
+      "kind": "discussion",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-compose-scaffold",
+      "title": "Comunidade recomenda consumir padding/insets de Scaffold em Jetpack Compose",
+      "tags": [
+        "android",
+        "compose",
+        "scaffold",
+        "status",
+        "bar",
+        "inset",
+        "native"
+      ],
+      "diagnostic": "No Compose, usar insets do scaffold só no conteúdo apropriado; evitar padding duplicado.",
+      "acceptance": "Teste de scroll por trás de app bar com controles acima das áreas não interativas.",
+      "url": "https://www.reddit.com/r/androiddev/comments/1jk4zul",
+      "kind": "forum",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "flutter-breakpoints-constraints",
+      "title": "Flutter layout quebrado em telas diferentes; comunidade critica medidas globais",
+      "tags": [
+        "flutter",
+        "responsive",
+        "layout",
+        "overflow",
+        "screenutil",
+        "mediaquery"
+      ],
+      "diagnostic": "Preferir constraints, LayoutBuilder e responsividade orientada a conteúdo, não multiplicar dimensões absolutas pelo tamanho da tela.",
+      "acceptance": "Testar textos longos, 320-412 dp, fonte ampliada e teclado, sem overflow.",
+      "url": "https://www.reddit.com/r/FlutterDev/comments/1myrn14",
+      "kind": "forum",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "flutter-layout-device",
+      "title": "Relato de Flutter UI quebrando em tamanhos diferentes apesar de SafeArea e MediaQuery",
+      "tags": [
+        "flutter",
+        "responsive",
+        "safearea",
+        "layout",
+        "overflow",
+        "screen"
+      ],
+      "diagnostic": "Identificar qual widget possui constraints incompatíveis antes de acrescentar mais wrappers.",
+      "acceptance": "Capturar cada viewport relevante e registrar erro overflow de framework.",
+      "url": "https://www.reddit.com/r/FlutterDev/comments/1qjcuus/flutter_ui_keeps_breaking_on_different_screen/",
+      "kind": "forum",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "react-native-insets",
+      "title": "Discussão prática sobre safe areas em React Native e Android 15",
+      "tags": [
+        "react",
+        "native",
+        "android",
+        "ios",
+        "safe",
+        "inset",
+        "bottom"
+      ],
+      "diagnostic": "Em React Native considerar safe-area-context; checar duplicação de padding entre navegador, componente e root.",
+      "acceptance": "Comparar Android 14/15 e iOS com barra de gestos em conteúdo inferior.",
+      "url": "https://www.reddit.com/r/reactnative/comments/1tgeiqk/react_native_devs_whats_the_current_direction_for/",
+      "kind": "forum",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "ios-safeareas",
+      "title": "Apple define adaptação de UI às safe areas e tamanho de fonte",
+      "tags": [
+        "ios",
+        "swiftui",
+        "dynamic",
+        "island",
+        "safe",
+        "layout",
+        "font"
+      ],
+      "diagnostic": "Usar safeAreaInsets e comportamento de teclado/navegação específicos da stack, respeitando Dynamic Type.",
+      "acceptance": "Testar iPhones com notch, Dynamic Island, iPad, orientação e fontes ampliadas.",
+      "url": "https://developer.apple.com/design/human-interface-guidelines/layout",
+      "kind": "official",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-framework-edge",
+      "title": "SDK Android descreve edge-to-edge e tratamento de insets",
+      "tags": [
+        "android",
+        "kotlin",
+        "inset",
+        "status",
+        "navigation",
+        "edge"
+      ],
+      "diagnostic": "Verificar WindowInsets, barras e contraste; só converter comportamento para regra aplicável à stack concreta.",
+      "acceptance": "Teste de gestures e 3-buttons, Android 14/15/16 e barras visíveis.",
+      "url": "https://developer.android.com/develop/ui/views/layout/edge-to-edge",
+      "kind": "official",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-screen-regression",
+      "title": "Captura visual de UI Android para detecção de regressão",
+      "tags": [
+        "android",
+        "screenshot",
+        "golden",
+        "visual",
+        "regression",
+        "test",
+        "paparazzi"
+      ],
+      "diagnostic": "Adotar screenshot tests determinísticos com diff e aprovação baseline, complementados por inspeção de pixel real.",
+      "acceptance": "Falhar quando cabeçalho, botão ou mapa se moverem após alteração de empacotamento.",
+      "url": "https://github.com/cashapp/paparazzi",
+      "kind": "opensource",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    },
+    {
+      "id": "android-status-api",
+      "title": "Capacitor informa diferenças de SystemBars e StatusBar no Android recente",
+      "tags": [
+        "capacitor",
+        "android",
+        "systembars",
+        "status",
+        "navigation",
+        "api"
+      ],
+      "diagnostic": "Não depender de APIs que deixaram de controlar overlay em Android 16+; verificar versão do pacote.",
+      "acceptance": "Verificar método vigente na versão instalada e screenshot APK.",
+      "url": "https://github.com/ionic-team/capacitor/blob/main/core/system-bars.md",
+      "kind": "official",
+      "reviewed": "2026-11-01",
+      "status": "observed_not_universal"
+    }
+  ]
+}

@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 
 UI_AGENTS=frozenset(("frontend-engineer","ui-ux-designer",
-                     "horizon-ui-guardian","mobile-app-builder"))
+                     "horizon-ui-guardian","mobile-app-builder","mobile-native-engineer"))
 VIEWPORTS=(
     {"name":"mobile","width":390,"height":844},
     {"name":"desktop","width":1440,"height":960},

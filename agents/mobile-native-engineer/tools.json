@@ -1,0 +1,14 @@
+[
+  "read_file",
+  "list_files",
+  "run_check",
+  "write_file",
+  "remember",
+  "finish",
+  "search_web",
+  "fetch_public",
+  "inspect_image",
+  "search_knowledge",
+  "research_mobile",
+  "android_cli"
+]

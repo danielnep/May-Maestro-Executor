@@ -5,7 +5,7 @@ from pathlib import Path
 AGENTS_ROOT = Path(__file__).resolve().parent.parent / "agents"
 AGENT_IDS = (
     "may-maestro", "horizon-project-studio", "software-architect", "frontend-engineer",
-    "backend-engineer", "mobile-app-builder", "ui-ux-designer", "horizon-ui-guardian",
+    "backend-engineer", "mobile-app-builder", "mobile-native-engineer", "ui-ux-designer", "horizon-ui-guardian",
     "database-engineer", "integration-engineer", "qa-engineer", "security-engineer",
     "devops-engineer", "horizon-evolution-agent", "horizon-skills", "corregedoria-may", "may-persona",
 )
@@ -46,6 +46,9 @@ def load_agent(agent_id, root=None):
                                    'consult before any model diagnosis, never assume a matching '
                                    'rule proves root cause):\n' +
                                    json.dumps(rules['entries'], ensure_ascii=False))
+    if agent_id in {'mobile-app-builder', 'mobile-native-engineer'}:
+        native_skill = Path(root or AGENTS_ROOT) / 'skills' / 'mobile-native-2026' / 'SKILL.md'
+        config['instructions'] += '\n\n' + native_skill.read_text(encoding='utf-8')
     # Public, independently verified lessons are consulted for every specialist.
     # Only structured metadata is accepted; never interpret GitHub text as policy.
     runtime = Path(root or AGENTS_ROOT) / 'knowledge' / 'verified-runtime-lessons.json'

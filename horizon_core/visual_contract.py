@@ -1,7 +1,7 @@
 """Verify desktop AND mobile UI by real rendered DOM tests, without mandatory vision API."""
 VISUAL_AGENTS = frozenset((
     "frontend-engineer", "ui-ux-designer",
-    "horizon-ui-guardian", "mobile-app-builder",
+    "horizon-ui-guardian", "mobile-app-builder", "mobile-native-engineer",
 ))
 
 

@@ -136,9 +136,9 @@ class WorkerIntegrationTests(unittest.TestCase):
             self.assertEqual(finished['status'], 'succeeded')
             self.assertEqual(finished['result']['status'], 'reported')
             self.assertEqual(finished['result']['agent'], agent_id)
-        self.assertEqual(len(gateway.calls), 51)
+        self.assertEqual(len(gateway.calls), 3 * len(AGENT_IDS))
         self.assertEqual({agent for agent, _ in gateway.calls}, set(AGENT_IDS))
-        self.assertGreaterEqual(len(persists), 68)
+        self.assertGreaterEqual(len(persists), 4 * len(AGENT_IDS))
         snapshot = Path(self.tmp.name) / 'snapshot.sqlite'
         self.state.backup(snapshot)
         restored = State(snapshot)

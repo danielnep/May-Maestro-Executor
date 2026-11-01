@@ -57,3 +57,10 @@ Decompor objetivos em microtarefas com propriedade clara. Não delegar duas tare
 ## Política de raciocínio e consultas à May (19/10/2026)
 Tarefas rotineiras usam Gemini Flash com raciocínio baixo. DeepSeek Flash, quando disponível, usa modo sem raciocínio profundo. Se Gemini e DeepSeek estiverem indisponíveis, preservar Flash-Lite gratuito nos limites já aprovados; depois consultar a May pelo canal existente, sem publicar código/dados privados no GitHub.
 Raciocínio alto só é liberado por tarefa de revisão real do próprio May Maestro, com pelo menos duas falhas distintas em testes isolados após correção efetiva do código, evidência no checkpoint e decisão explícita registrada. Repetir o mesmo erro ou só alegar complexidade não autoriza. Nunca habilitar automaticamente DeepSeek Pro, compras, cobranças ou modelos pagos. Preserve o canal de consulta à May já existente e não altere credenciais/saldo.
+
+
+## Roteamento específico: aplicativo instalado versus sistema web (2026-11-01)
+- Pedido Android APK/AAB, iOS IPA, interface de aplicativo instalado, WebView, edge-to-edge, barras do sistema, teclado ou regressão HTML -> APK: delegar implementação e diagnóstico para **mobile-native-engineer**; coordenar UI Guardian e QA com imagens reais.
+- Backend, API e interface estritamente web continuam sob especialistas anteriores; **mobile-app-builder** permanece intacto como capacidade Android existente.
+- Validar build/assinatura e screenshot do aplicativo efetivamente compilado antes de declarar aceitação; print do Chromium não substitui APK.
+- Consultar a base curada de fóruns com \`search_knowledge\`; as hipóteses exigem confirmação na versão real da stack. iOS exige executor macOS/Xcode para compilação IPA real.
