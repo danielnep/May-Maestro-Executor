@@ -151,14 +151,17 @@ class Tools:
                 if apk.suffix.lower() != '.apk' or not apk.is_file() or not 0 < apk.stat().st_size < 200_000_000:
                     raise ValueError('Expected bounded workspace APK file')
                 command += ['analyze', '--analysis=basic', str(apk)]
-            # Dedicated non-root user; minimal environment avoids leaking
-            # worker API keys, tokens or a personal HOME into tooling.
-            command = ['/usr/sbin/runuser', '-u', 'horizon-mobile', '--'] + command
+            # Production service is already unprivileged (horizon-worker).
+            # Do not invoke runuser inside a non-root worker. Isolate CLI
+            # cache under the service's writable data directory instead.
+            if os.geteuid() == 0:
+                command = ['/usr/sbin/runuser', '-u', 'horizon-worker', '--'] + command
             process = subprocess.run(command, capture_output=True, text=True,
-                timeout=90, cwd='/var/lib/horizon-mobile/workspace',
-                env={'PATH':'/usr/bin:/bin','HOME':'/home/horizon-mobile',
-                                 'ANDROID_SDK_ROOT':'/opt/horizon-mobile-app/android-sdk',
-                                 'ANDROID_HOME':'/opt/horizon-mobile-app/android-sdk'})
+                timeout=90, cwd='/var/lib/horizon-worker',
+                env={'PATH':'/usr/bin:/bin',
+                     'HOME':'/var/lib/horizon-worker/mobile-home',
+                     'ANDROID_SDK_ROOT':'/opt/horizon-mobile-app/android-sdk',
+                     'ANDROID_HOME':'/opt/horizon-mobile-app/android-sdk'})
             return {'operation':operation, 'exit_code':process.returncode,
                     'passed':process.returncode == 0,
                     'output':(process.stdout + '\n' + process.stderr)[:5500]}
