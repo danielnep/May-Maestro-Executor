@@ -34,6 +34,48 @@ Este pacote alimenta o agente `mobile-native-engineer`; **17 especialistas anter
 - **Vídeos: Apple WWDC videos**: https://developer.apple.com/videos/
 - **Livro + exemplos: Android UI Development with Jetpack Compose, código da editora (livro pago)**: https://github.com/PacktPublishing/Android-UI-Development-with-Jetpack-Compose
 
+## Pesquisa avançada 2026: fontes primárias extras
+- Android CLI, capacidades para agentes, previews Compose e dispositivos: https://developer.android.com/tools/agents/android-cli
+- Android CLI, referência completa: https://developer.android.com/tools/agents/android-cli-reference
+- Compose WindowInsets e consumo correto: https://developer.android.com/develop/ui/compose/system/insets-ui
+- Android Developers, engenharia de testes: https://developer.android.com/training/testing
+- Android Developers, UIAutomator: https://developer.android.com/training/testing/other-components/ui-automator
+- Android Developers, Compose UI testing: https://developer.android.com/develop/ui/compose/testing
+- Android Developers, Macrobenchmark: https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview
+- Android Developers, API de lint: https://developer.android.com/studio/write/lint
+- Android Developers, APK Analyzer: https://developer.android.com/tools/apkanalyzer
+- Android Studio para Linux: https://developer.android.com/studio
+- Android Kotlin: https://kotlinlang.org/docs/android-overview.html
+- Android Architecture: https://developer.android.com/topic/architecture
+- Jetpack Compose: https://developer.android.com/compose
+- Material 3: https://m3.material.io
+- Capacitor SystemBars: https://github.com/ionic-team/capacitor/blob/main/core/system-bars.md
+- Comunidade Capacitor, WebView < 140: https://github.com/ionic-team/capacitor/issues/8651
+- Comunidade Capacitor, IME e teclado: https://github.com/capawesome-team/capacitor-plugins/issues/847
+- Comunidade React Native, Android 16: https://github.com/react-native-community/discussions-and-proposals/discussions/921
+- React Native, arquitetura atual: https://reactnative.dev/docs/the-new-architecture/landing-page
+- Expo, produção Android/iOS: https://docs.expo.dev/build/introduction/
+- Flutter arquitetura adaptativa: https://docs.flutter.dev/ui/adaptive-responsive
+- Flutter testes: https://docs.flutter.dev/testing/overview
+- Flutter vídeo: https://www.youtube.com/@flutterdev
+- iOS HIG 2026, layout: https://developer.apple.com/design/human-interface-guidelines/layout
+- SwiftUI: https://developer.apple.com/documentation/swiftui
+- XCTest: https://developer.apple.com/documentation/xctest
+- Apple Developer vídeos: https://developer.apple.com/videos/
+- Livro gratuito Swift: https://docs.swift.org/swift-book/documentation/the-swift-programming-language/
+
+### Lições de campo recolhidas
+O histórico de bugs do Ronda Pro deve ser tratado como teste de regressão: área útil Android ≠ viewport web, barra de notificações real não precisa de novo cabeçalho, painel flutuante não pode atravessar safe area, mapa não pode inventar geolocalização, teclado não pode encobrir ações. Uma screenshot fornecida pelo usuário é evidência de defeito visual, não prova da causa. O agente deve reproduzir e confirmar no APK.
+
+### Ferramental real na VPS
+Android Studio Rabbit 2: /opt/horizon-mobile-toolchain/android-studio/bin/studio.sh
+Android CLI SDK: /opt/horizon-mobile-app/android-sdk/cmdline-tools/latest/bin/android
+Flutter stable 3.47.9: /opt/horizon-mobile-toolchain/flutter/bin/flutter
+SDK reutilizado: /opt/horizon-mobile-app/android-sdk
+ADB: /opt/horizon-mobile-app/android-sdk/platform-tools/adb
+Gradle, lint, aapt, apksigner e apkanalyzer são executáveis do SDK/Gradle. Clang, CMake, Ninja e scrcpy estão instalados no host.
+A VPS Linux constrói APK/AAB; Xcode e iOS Simulator exigem um Mac. IPA assinado não foi compilado aqui. Android Studio instalado não significa GUI aberta nem teste físico.
+
 ### Limites técnicos
 - Uma VPS Linux compila **Android**. Para IPA nativo e validação com simulador iOS oficial precisa de macOS/Xcode ou executor Mac autorizado.
 - Cursos e livros com acesso restrito são **links**, não cópias. Os casos do banco de conhecimento são sínteses originais com atribuição, não reproduções integrais.

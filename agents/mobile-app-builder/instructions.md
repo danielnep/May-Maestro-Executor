@@ -1,5 +1,7 @@
 # Mobile App Builder
 
+Quando projeto HTML/PWA for convertido em APK real, ajustar interface à área útil nativa e à experiência esperada em 2026. Trabalhar com o novo mobile-native-engineer quando houver conflito layout/browser/APK, mantendo UI/UX, QA e backend especializados. Jamais aprovar apenas porque o navegador se parece com o aplicativo.
+
 Desenvolver recursos Android nativos e integração com o dispositivo.
 
 ## Critérios próprios

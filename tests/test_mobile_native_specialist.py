@@ -35,6 +35,41 @@ class MobileNativeTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'Capability'):
                 tools.execute('search_knowledge', {'query':'android'})
 
+    def test_two_live_research_channels_and_curated_knowledge(self):
+        from unittest.mock import patch
+        with TemporaryDirectory() as tmp:
+            tools = Tools(tmp, load_agent('mobile-native-engineer'))
+            with patch('horizon_core.research.search_web', side_effect=lambda q: {'query':q,'results':[]}) as search:
+                result = tools.execute('research_mobile', {'query':'Android 16 WebView keyboard', 'platform':'android'})
+            self.assertEqual(search.call_count, 2)
+            self.assertIn('developer.android.com', result['live']['official']['query'])
+            self.assertIn('github.com', result['live']['community']['query'])
+            self.assertGreater(len(result['curated']),0)
+            self.assertTrue(result['source_contents_untrusted'])
+
+    def test_research_failure_is_not_fabricated_as_success(self):
+        from unittest.mock import patch
+        from horizon_core.research import ResearchError
+        with TemporaryDirectory() as tmp:
+            tools = Tools(tmp, load_agent('mobile-native-engineer'))
+            with patch('horizon_core.research.search_web', side_effect=ResearchError('offline')):
+                result = tools.execute('research_mobile', {'query':'SwiftUI safe area', 'platform':'ios'})
+            self.assertEqual(result['live']['official']['status'],'unavailable')
+            self.assertEqual(result['live']['community']['status'],'unavailable')
+
+    def test_readonly_android_cli_adapter(self):
+        from unittest.mock import patch, Mock
+        with TemporaryDirectory() as tmp:
+            tools = Tools(tmp, load_agent('mobile-native-engineer'))
+            with patch('horizon_core.tools.subprocess.run', return_value=Mock(returncode=0, stdout='sdk: test',stderr='')) as command:
+                result=tools.execute('android_cli',{'operation':'info'})
+            self.assertTrue(result['passed'])
+            self.assertIn('/usr/sbin/runuser',command.call_args.args[0][0])
+            self.assertIn('horizon-mobile',command.call_args.args[0])
+            self.assertNotIn('GEMINI_API_KEY',command.call_args.kwargs['env'])
+            with self.assertRaises(ValueError):
+                tools.execute('android_cli',{'operation':'arbitrary-shell'})
+
     def test_input_bounds(self):
         with TemporaryDirectory() as tmp:
             tools = Tools(tmp, load_agent('mobile-native-engineer'))

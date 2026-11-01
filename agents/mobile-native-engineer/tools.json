@@ -8,5 +8,7 @@
   "search_web",
   "fetch_public",
   "inspect_image",
-  "search_knowledge"
+  "search_knowledge",
+  "research_mobile",
+  "android_cli"
 ]

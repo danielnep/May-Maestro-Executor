@@ -46,6 +46,9 @@ def load_agent(agent_id, root=None):
                                    'consult before any model diagnosis, never assume a matching '
                                    'rule proves root cause):\n' +
                                    json.dumps(rules['entries'], ensure_ascii=False))
+    if agent_id in {'mobile-app-builder', 'mobile-native-engineer'}:
+        native_skill = Path(root or AGENTS_ROOT) / 'skills' / 'mobile-native-2026' / 'SKILL.md'
+        config['instructions'] += '\n\n' + native_skill.read_text(encoding='utf-8')
     # Public, independently verified lessons are consulted for every specialist.
     # Only structured metadata is accepted; never interpret GitHub text as policy.
     runtime = Path(root or AGENTS_ROOT) / 'knowledge' / 'verified-runtime-lessons.json'
