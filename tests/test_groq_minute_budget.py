@@ -66,6 +66,21 @@ class GroqMinuteBudgetTests(unittest.TestCase):
         receipt, _, _ = second.reserve(model, self.messages, 1400)
         self.assertTrue(receipt)
 
+    def test_http_429_release_frees_only_rejected_reservation(self):
+        model = "openai/gpt-oss-120b"
+        rejected, _, _ = self.budget.reserve(model, self.messages, 1400)
+        self.now += 3
+        successful, _, _ = self.budget.reserve(model, self.messages, 1400)
+        self.assertTrue(successful)
+        self.assertTrue(self.budget.release_rejected(model, rejected))
+        self.assertFalse(self.budget.release_rejected(model, rejected))
+        records = self.budget._read(model)
+        self.assertEqual([row["id"] for row in records], [successful])
+        self.assertTrue(self.budget.release_rejected(model, successful))
+        new, wait, _ = self.budget.reserve(model, self.messages, 1400)
+        self.assertTrue(new)
+        self.assertEqual(wait, 0)
+
     def test_tokens_not_just_rpm_protect_expensive_prompts(self):
         long_text = "a" * 10000
         messages = [{"role": "user", "content": long_text}]

@@ -151,6 +151,26 @@ class GroqMinuteBudget:
             self.persist()  # Remote checkpoint before any paid/provider request.
         return result
 
+    def release_rejected(self, model, receipt):
+        """Release the reservation when upstream rejected inference with HTTP 429.
+
+        A rejected request did not consume a completion. Transport uncertainty
+        and successful responses must retain or reconcile their reservation.
+        """
+        if not receipt:
+            return False
+        def release():
+            rows = self._read(model)
+            kept = [row for row in rows if row.get("id") != receipt]
+            if len(kept) == len(rows):
+                return False
+            self._write(model, kept)
+            return True
+        changed = self._atomic(release)
+        if changed and self.persist:
+            self.persist()
+        return bool(changed)
+
     def actual_usage(self, model, receipt, total_tokens):
         if not isinstance(total_tokens, int) or total_tokens < 0 or not receipt:
             return

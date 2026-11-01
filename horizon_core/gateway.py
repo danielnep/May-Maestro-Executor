@@ -327,7 +327,11 @@ class GroqGateway(_HTTPGateway):
         self._usage_context=(agent['id'],model,agent.get('_task_id'))
         try:
             result = self._request(request)
-        except GatewayError:
+        except GatewayError as error:
+            # An HTTP 429 is a rejected inference, not consumed Groq tokens.
+            # Remove only that reservation; transport timeouts are uncertain.
+            if error.status == 429:
+                self.minute_budget.release_rejected(model, receipt)
             self.minute_budget.ingest_headers(model, getattr(self, "_last_rate_headers", {}))
             raise
         self.minute_budget.ingest_headers(model, getattr(self, "_last_rate_headers", {}))
@@ -514,7 +518,9 @@ class ModelGateway:
                     return action
                 except GatewayError as error:
                     failures.append(error.as_dict())
-                    if error.reason == "rate_limited_local":
+                    if error.reason in ("rate_limited_local", "quota"):
+                        # Prefer the provider's Retry-After when HTTP 429 occurs.
+                        # No fabricated daily reset or immediate retry loop.
                         next_wait.append(max(60, getattr(error, "retry_after_seconds", 60)))
                     # A shared invalid Groq key will not work for Qwen either.
                     if error.reason == "authentication" and error.status in (401, 403):

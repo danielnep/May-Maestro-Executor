@@ -140,6 +140,26 @@ class GroqRoutingTests(unittest.TestCase):
         self.requests.append(req)
         return envelope() if "generativelanguage.googleapis.com" in req.full_url else self.groq_response()
 
+    def test_provider_429_releases_reservation_and_obeys_retry_after(self):
+        def reject(req, timeout):
+            raise urllib.error.HTTPError(req.full_url, 429, "rate limit",
+                                         {"retry-after": "305"}, io.BytesIO(b"provider private"))
+        state = State(":memory:")
+        self.addCleanup(state.close)
+        gateway = GroqGateway({"GROQ_API_KEY": "synthetic-groq"}, reject, state=state)
+        with self.assertRaises(GatewayError) as caught:
+            gateway.complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(caught.exception.status, 429)
+        self.assertEqual(caught.exception.retry_after_seconds, 305)
+        self.assertFalse(gateway.minute_budget._read("openai/gpt-oss-120b"))
+        self.assertNotIn("provider private", str(caught.exception))
+        only_groq = ModelGateway(environ={"GROQ_API_KEY": "synthetic-groq",
+                                               "HORIZON_AI_ROUTE": "groq_only"}, opener=reject)
+        with self.assertRaises(GatewayError) as blocked:
+            only_groq.complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(blocked.exception.reason, "providers_unavailable")
+        self.assertEqual(blocked.exception.retry_after_seconds, 305)
+
     def test_owner_groq_only_never_calls_gemini_even_with_valid_key(self):
         env = dict(self.env, HORIZON_AI_ROUTE='groq_only')
         gateway = ModelGateway(environ=env, opener=self.opener)
