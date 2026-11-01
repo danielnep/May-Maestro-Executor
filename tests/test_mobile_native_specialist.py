@@ -65,7 +65,7 @@ class MobileNativeTests(unittest.TestCase):
                 result=tools.execute('android_cli',{'operation':'info'})
             self.assertTrue(result['passed'])
             self.assertIn('/usr/sbin/runuser',command.call_args.args[0][0])
-            self.assertIn('horizon-mobile',command.call_args.args[0])
+            self.assertIn('horizon-worker',command.call_args.args[0])
             self.assertNotIn('GEMINI_API_KEY',command.call_args.kwargs['env'])
             with self.assertRaises(ValueError):
                 tools.execute('android_cli',{'operation':'arbitrary-shell'})
