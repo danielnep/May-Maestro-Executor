@@ -8,8 +8,11 @@ import os
 from .context_budget import compact_memory, compact_history
 from .gateway import GatewayError, validate_action
 from .telemetry import record_activity
-from .registry import load_agent
+from .registry import load_agent, AGENT_IDS
 from .tools import Tools
+from . import operations
+from .task_workspace import prepare as prepare_task_workspace
+from .recovery import escalate, gate_original_on_children, ORCHESTRATORS
 from .deterministic import inspect_project, execute_read_only_with_retry
 from .learning import record_failure, verify_check_recovery, useful_lessons
 from .verified_repairs import learn_from_verified_check, replay_if_exact
@@ -77,23 +80,20 @@ class Worker:
         A scheduled run resumes the original task and full checkpoint. Repeated
         attempts are spaced, not performed as a tight/costly API loop.
         """
-        count = max(3, failure_counts.get(reason, 3))
-        wait = min(1800, 60 * (2 ** min(count - 3, 5)))
-        history.append({'action': 'repair_cycle', 'outcome': {
-            'reason': reason, 'detail': detail or reason,
-            'repeated_failures': count,
-            'instruction': 'Reinspect current source, baseline and the last failed '
-                           'check. Diagnose the cause; implement a changed approach '
-                           'before repeating the same check. Retest and preserve all '
-                           'working features. Never report completion without proof.'}})
-        self.state.checkpoint(task_id, self.worker_id, {
-            'step': step, 'history': history, 'checks': checks,
-            'delegated': delegated, 'failure_counts': failure_counts,
-            'defer_reason': 'repair_cycle', 'defer_seconds': wait,
-            'repair_reason': reason, 'deferred_at': time.time()})
-        self.state.defer(task_id, self.worker_id, seconds=wait)
+        task=self.state.get(task_id)
+        details=detail or reason
+        for entry in reversed(history):
+            value=entry.get('outcome') or {}
+            if isinstance(value,dict) and (value.get('tool_error') or value.get('passed') is False):
+                details += ': '+str(value.get('output') or value.get('message') or value.get('reason') or '')[-1400:]
+                break
+        history.append({'action':'repair_cycle','outcome':{'reason':reason,'detail':details,'next_action':'escalate_to_independent_orchestrator'}})
+        checkpoint={'step':step,'history':history,'checks':checks,'delegated':delegated,
+                    'failure_counts':failure_counts,'workspace':str(getattr(self,'project_root',self.root)),
+                    'branch':getattr(self,'project_branch',None)}
+        result=escalate(self.state,task,self.worker_id,checkpoint,reason,details)
         self.persist()
-        return self.state.get(task_id)
+        return result
 
     def persist(self):
         try:
@@ -102,13 +102,13 @@ class Worker:
             raise PersistenceError('Remote checkpoint failed; stop before further work') from None
 
     def workspace_tools(self, task):
-        branch = task['payload'].get('branch')
+        branch = task['payload'].get('branch') or getattr(self,'project_branch',None)
         allowed = []
         for row in self.state.tasks(project=task['project']):
             payload = row['payload']
-            if payload.get('branch') == branch and 'write_file' in load_agent(row['agent'])['tools']:
+            if (not payload.get('branch') or payload.get('branch') == branch) and 'write_file' in load_agent(row['agent'])['tools']:
                 allowed.extend(payload.get('allowed_paths', []))
-        return Tools(self.root, {'tools': ['write_file']}, allowed, branch)
+        return Tools(getattr(self,'project_root',self.root), {'tools': ['write_file']}, allowed, branch)
 
     def restore_workspace(self, task):
         restorer = self.workspace_tools(task)
@@ -120,8 +120,8 @@ class Worker:
 
     def delegate(self, parent, args):
         tasks = args.get('tasks')
-        if not isinstance(tasks, list) or not 1 <= len(tasks) <= 17:
-            raise ValueError('A plan requires 1 to 17 specialist tasks')
+        if not isinstance(tasks, list) or not 1 <= len(tasks) <= len(AGENT_IDS)-1:
+            raise ValueError('A plan requires a bounded number of specialist tasks')
         seen = set()
         specs = []
         for spec in tasks:
@@ -131,8 +131,8 @@ class Worker:
             if not re.fullmatch(r'[a-z0-9][a-z0-9-]{0,49}', local) or local in seen:
                 raise ValueError('Duplicate or invalid plan task id')
             agent = load_agent(spec.get('agent'))
-            if agent['id'] == 'may-maestro':
-                raise ValueError('Recursive orchestration is forbidden')
+            if agent['id'] in ORCHESTRATORS:
+                raise ValueError('Delegate to a specialist; escalate orchestration separately')
             deps = spec.get('depends_on', [])
             if not isinstance(deps, list) or any(d not in seen for d in deps):
                 raise ValueError('Plan dependencies must appear before consumers')
@@ -159,6 +159,7 @@ class Worker:
                       'delegated': delegated, 'failure_counts': failure_counts}
         if not checkpoint_written:
             self.state.checkpoint(task['task_id'], self.worker_id, checkpoint)
+        gate_original_on_children(self.state,task,delegated)
         self.state.complete(task['task_id'], self.worker_id, {
             'agent': agent_id, 'summary': summary,
             'verification': checks, 'delegated': delegated,
@@ -236,6 +237,7 @@ class Worker:
         task_id = task['task_id']
         record_activity(task_id,task['agent'],'started')
         started = time.monotonic()
+        history=[];checks=[];delegated=[];failure_counts={};step=0;active_command=None
         self.persist()
         try:
             # Parent handoff has no workspace to restore. A previously stored
@@ -245,11 +247,13 @@ class Worker:
             recovered = self._recover_delegated_maestro(task, previous)
             if recovered is not None:
                 return recovered
+            self.project_root,self.project_branch=prepare_task_workspace(task,self.root)
+            task['payload']=dict(task['payload'],branch=self.project_branch) if self.project_branch else task['payload']
             self.restore_workspace(task)
             agent = load_agent(task['agent'])
-            inventory = inspect_project(self.root)
+            inventory = inspect_project(self.project_root)
             tool_options = {'sandbox_client': self.sandbox_client} if self.sandbox_client is not None else {}
-            tools = Tools(self.root, agent, task['payload'].get('allowed_paths', []), task['payload'].get('branch'),
+            tools = Tools(self.project_root, agent, task['payload'].get('allowed_paths', []), task['payload'].get('branch'),
                           **tool_options)
             previous = task.get('checkpoint') or {}
             # Legacy consultation checkpoints are migrated to local model retry.
@@ -273,7 +277,7 @@ class Worker:
             # after a successful change to the source or a passing matching check.
             failure_counts = dict(previous.get('failure_counts') or {})
             # Deterministic preflight before asking Gemini to reason.
-            imagination = (imagine_interface(self.root, task['objective'], agent=agent['id'])
+            imagination = (imagine_interface(self.project_root, task['objective'], agent=agent['id'])
                            if agent['id'] in UI_AGENTS else None)
             if step == 0 and not previous:
                 # A proven fix may be replayed ONLY for identical objective, same
@@ -314,6 +318,31 @@ class Worker:
                     record_failure(self.state, task['project'], task['agent'],
                                    task_id, 'run_check_failed', action='run_check',
                                    check=reused['checks'][-1].get('check', ''))
+            # Mobile research is a real tool call before AI action selection.
+            # Query uses generic public technology terms: no project secrets.
+            if agent['id'] == 'mobile-native-engineer' and not any(
+                    item.get('action') == 'research_mobile' for item in history):
+                words = task['objective'].casefold()
+                platform = ('ios' if any(k in words for k in ('ios','iphone','swiftui','ipa'))
+                            else 'flutter' if 'flutter' in words
+                            else 'capacitor' if any(k in words for k in ('webview','capacitor','pwa'))
+                            else 'android')
+                generic = {'ios':'SwiftUI safe areas keyboard app layout 2026',
+                           'flutter':'Flutter Android layout constraints keyboard 2026',
+                           'capacitor':'Android 16 WebView edge to edge keyboard 2026',
+                           'android':'Android 16 WindowInsets Compose keyboard layout 2026'}[platform]
+                try:
+                    research = tools.execute('research_mobile',{'query':generic,'platform':platform})
+                except (OSError,ValueError,RuntimeError) as error:
+                    research = {'tool_error':type(error).__name__,'research_available':False}
+                step += 1
+                history.append({'action':'research_mobile',
+                    'summary':'automatic official and community mobile research',
+                    'outcome':research})
+                self.state.checkpoint(task_id,self.worker_id,
+                    {'step':step,'history':history,'checks':checks,
+                     'delegated':delegated,'failure_counts':failure_counts})
+                self.persist()
             while self.max_steps is None or step < self.max_steps:
                 if step > start_step and time.monotonic() - started >= self.slice_seconds:
                     self.state.yield_task(task_id, self.worker_id)
@@ -326,7 +355,7 @@ class Worker:
                     may_decision = may_decisions.pop(0)
                 # A real Maestro task must approve deeper thinking; old model
                 # failures and repeated identical tests never grant escalation.
-                if (may_decision is None and agent['id'] != 'may-maestro'
+                if (may_decision is None and agent['id'] not in ORCHESTRATORS
                         and escalation_justified(task, history)
                         and not approval_receipt(self.state, task)):
                     review_id = create_reasoning_review(self.state, task, history)
@@ -339,6 +368,7 @@ class Worker:
                         self.state.yield_task(task_id, self.worker_id)
                         self.persist()
                         return self.state.get(task_id)
+                active_command=operations.begin(self.state,task,'model.complete',{'step':step})
                 effort = select_model_effort(self.state, task, history)
                 dependencies = {dep: self.state.get(dep)['result'] for dep in task['depends_on']}
                 context = {'objective': task['objective'], 'project': task['project'],
@@ -365,9 +395,10 @@ class Worker:
                     else:
                         record_activity(task_id,agent['id'],'thinking',step=step)
                         action = self.gateway.complete(
-                             dict(agent, _reasoning_level=effort['level'], _task_id=task_id),
+                             dict(agent, _reasoning_level=effort['level']),
                              [{'role': 'user', 'content': json.dumps(context, ensure_ascii=False)}])
                 except GatewayError as error:
+                    operations.end(self.state,task_id,active_command,error.as_dict(),failed=True);active_command=None
                     if error.reason == "rate_limited_local":
                         # Do not burn retries, call Gemini as a side effect or
                         # lose completed tool work because the minute window is busy.
@@ -403,28 +434,28 @@ class Worker:
                     self.persist()
                     continue
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
+                operations.end(self.state,task_id,active_command,{'selected_action':action['action'],'model':action.get('metadata',{})});active_command=None
                 name, args = action['action'], action.get('args', {})
-                # Native mobile work must consider current official AND developer-community
-                # evidence before modifying source or reporting completion.
-                mobile_topic = any(token in task['objective'].casefold() for token in
-                                   ('apk', 'aab', 'android', 'ios', 'iphone', 'webview',
-                                    'capacitor', 'flutter', 'react native', 'mobile', 'interface'))
-                researched = any(item.get('action') == 'research_mobile' for item in history)
-                if (agent['id'] == 'mobile-native-engineer' and mobile_topic
-                        and name in ('write_file', 'finish') and not researched):
+                if (agent['id'] == 'mobile-native-engineer'
+                        and name in ('write_file','finish')
+                        and not any(item.get('action')=='research_mobile' for item in history)):
                     step += 1
-                    history.append({'action': 'research_required',
-                        'outcome': {'reason': 'two-source-mobile-research-missing',
-                                    'instruction': 'Call research_mobile for current platform, then assess official and forum evidence before deciding.'}})
-                    self.state.checkpoint(task_id, self.worker_id, {
-                        'step': step, 'history': history, 'checks': checks,
-                        'delegated': delegated, 'failure_counts': failure_counts})
+                    history.append({'action':'research_required',
+                        'outcome':{'instruction':'Call research_mobile before mobile implementation'}})
+                    self.state.checkpoint(task_id,self.worker_id,{
+                        'step':step,'history':history,'checks':checks,
+                        'delegated':delegated,'failure_counts':failure_counts})
                     self.persist()
                     continue
+                active_command=operations.begin(self.state,task,name,args)
                 record_activity(task_id,agent['id'],name,step=step,path=args.get('path'))
                 if name not in agent['tools']:
                     raise ValueError('Specialist capability denied')
                 if name == 'finish':
+                    if re.search(r'(?i)\b(unable|cannot|could not|not found|missing required|não consigo|não foi possível|impossível)\b',action['summary']):
+                        operations.end(self.state,task_id,active_command,{'declared_blocker':action['summary']},failed=True);active_command=None
+                        return escalate(self.state,task,self.worker_id,{'step':step,'history':history,'checks':checks,
+                            'delegated':delegated,'failure_counts':failure_counts},'declared_blocker',action['summary'])
                     self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                     # A passing test never cancels a different still-failing test.
                     # Read the latest actual result of each check after the last
@@ -439,6 +470,7 @@ class Worker:
                                         if check.get('passed') is not True
                                         or check.get('tool_error'))
                     if unresolved:
+                        operations.end(self.state,task_id,active_command,{'reason':'unverified_checks','checks':unresolved},failed=True);active_command=None
                         step += 1
                         failure_counts['unverified_checks'] = failure_counts.get('unverified_checks', 0) + 1
                         history.append({'action': 'verification_required',
@@ -472,6 +504,7 @@ class Worker:
                                 'outcome': actual})
                             visual = visual_review_status(history)
                         if not visual['verified']:
+                            operations.end(self.state,task_id,active_command,{'reason':visual['reason']},failed=True);active_command=None
                             step += 1
                             failure_counts['missing_visual_evidence'] = failure_counts.get('missing_visual_evidence', 0) + 1
                             history.append({'action': 'visual_evidence_required',
@@ -500,9 +533,15 @@ class Worker:
                               'verification': checks, 'delegated': delegated,
                               'model': action.get('metadata', {}),
                               'status': 'reported', 'steps': step + 1}
+                    operations.end(self.state,task_id,active_command,result);active_command=None
                     self.state.complete(task_id, self.worker_id, result)
                     self.persist()
                     return self.state.get(task_id)
+                if name == 'escalate':
+                    operations.end(self.state,task_id,active_command,{'reason':args.get('reason'),'target':args.get('target')});active_command=None
+                    return escalate(self.state,task,self.worker_id,{'step':step,'history':history,'checks':checks,
+                        'delegated':delegated,'failure_counts':failure_counts},str(args.get('reason') or 'specialist_blocker'),
+                        args.get('detail'),args.get('target'))
                 if name == 'remember':
                     key = args.get('key')
                     value = args.get('value')
@@ -592,6 +631,7 @@ class Worker:
                             failure_counts.pop('check:' + str(check_name), None)
                             verify_check_recovery(self.state, task['project'], task['agent'],
                                                   task_id, check_name, passed=True)
+                operations.end(self.state,task_id,active_command,outcome,failed=isinstance(outcome,dict) and (bool(outcome.get('tool_error')) or outcome.get('passed') is False));active_command=None
                 step += 1
                 history.append({'action': name, 'summary': action['summary'], 'outcome': outcome,
                                 'model': action.get('metadata', {})})
@@ -603,7 +643,8 @@ class Worker:
                     may_decisions.clear()
                 self.state.renew_lease(task_id, self.worker_id, lease_seconds=1800)
                 checkpoint = {'step': step, 'history': history, 'checks': checks,
-                              'delegated': delegated, 'failure_counts': failure_counts}
+                              'delegated': delegated, 'failure_counts': failure_counts,
+                              'workspace':str(self.project_root),'branch':self.project_branch}
                 if may_decisions:
                     checkpoint['may_plan'] = may_decisions
                 self.state.checkpoint(task_id, self.worker_id, checkpoint)
@@ -616,7 +657,7 @@ class Worker:
                         task_id, step, history, checks, delegated,
                         failure_counts, violations[0],
                         'Repeated failure: ' + ', '.join(violations[:4]))
-                if (agent['id'] == 'may-maestro' and name == 'delegate'
+                if (agent['id'] in ORCHESTRATORS and name == 'delegate'
                         and isinstance(outcome, dict) and outcome.get('delegated')
                         and not may_decisions):
                     # A validated handoff is enough to release the children. A
@@ -639,6 +680,8 @@ class Worker:
         except PersistenceError:
             raise
         except Exception as error:
+            if active_command is not None:
+                operations.end(self.state,task_id,active_command,{'error':type(error).__name__,'message':operations.clean(error,500)},failed=True)
             # Never log HTTP bodies, credentials or provider request payloads.
             details = {'kind': type(error).__name__}
             retryable = bool(getattr(error, 'retryable', False))
@@ -662,6 +705,8 @@ class Worker:
                     'deferred_at': time.time()})
                 self.state.defer(task_id, self.worker_id, seconds=delay)
             else:
-                self.state.fail(task_id, self.worker_id, details, retryable=retryable)
+                details['message']=operations.clean(error,800)
+                escalate(self.state,task,self.worker_id,{'step':step,'history':history,'checks':checks,
+                    'delegated':delegated,'failure_counts':failure_counts},'runtime_'+type(error).__name__,details['message'])
             self.persist()
             return self.state.get(task_id)

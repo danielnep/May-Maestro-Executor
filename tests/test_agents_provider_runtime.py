@@ -20,7 +20,7 @@ class AgentRuntimeTests(unittest.TestCase):
         gateway = GeminiGateway(ENV, lambda *a, **k: reply('gemini'))
         self.assertEqual(gateway.complete(AGENT, MESSAGES)['metadata']['provider'], 'gemini')
 
-    def test_http_errors_preserve_context_as_gpt_oss_second(self):
+    def test_http_errors_and_timeout_use_groq_immediately_with_same_context(self):
         for failure in (400,401,403,404,429,500,503,'timeout'):
             with self.subTest(failure=failure):
                 calls=[]
@@ -33,9 +33,7 @@ class AgentRuntimeTests(unittest.TestCase):
                 result=ModelGateway(environ=ENV,opener=opener).complete(AGENT,MESSAGES)
                 self.assertEqual(result['metadata']['provider'],'groq')
                 self.assertEqual(len(calls),2)
-                self.assertLessEqual(sum(t for _,t in calls),45)
-                self.assertIn('generativelanguage.googleapis.com',calls[0][0].full_url)
-                self.assertEqual(json.loads(calls[1][0].data)['model'],'openai/gpt-oss-120b')
+                self.assertLessEqual(sum(t for _,t in calls),40)
                 self.assertEqual(json.loads(calls[1][0].data)['messages'][-1], MESSAGES[0])
                 self.assertEqual(result['metadata']['fallback_reasons'][0]['status'],None if failure=='timeout' else failure)
 

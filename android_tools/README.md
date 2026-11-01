@@ -16,3 +16,11 @@ A imagem prepara o laboratório confiável com rede; o projeto fornecido ao agen
 API Python: `isolated_check(project_root, artifacts_dir=None) -> dict` retorna `passed`, `tests_run`, `exit_code`, `cleanup`, `artifacts`, `output`. `passed` exige container bem sucedido, XML válido com testes >0 e zero falhas/erros, lint sem errors e APK ZIP com AndroidManifest.xml/classes.dex. APK é debug, sem chave de publicação.
 
 Referências oficiais: https://developer.android.com/build/releases/agp-8-7-0-release-notes ; https://developer.android.com/tools/sdkmanager ; https://developer.android.com/studio/test/command-line ; https://docs.gradle.org/8.9/userguide/gradle_wrapper.html
+
+## Compilação de release e projetos híbridos
+
+O executor aceita `run_check {name: "android-release", project_dir: "."}` para Gradle na raiz ou em android/, conservando o frontend incorporado. Executa assembleRelease, lintRelease e valida APK/manifesto sem rede, sem credenciais ou emulador. Reporta tests_run=0 quando não executa JUnit; este tipo comprova build/Lint e não prova comportamento de UI, GPS ou câmera. A assinatura de entrega não é verificada por esse perfil; usar o pipeline autorizado de assinatura e auditoria. O perfil android-gradle continua exigindo JUnit e Lint, sem relaxar os critérios anteriores.
+
+Ferramentas da VPS: plataformas 35/36, Build Tools 35/36, JDK17 e Gradle8.9 compatível com o AGP8.7.3 atual. Conferir scripts/android-development-check.py no Ronda Pro ou android_tools/android_development_check.py neste repositório.
+
+O laboratório confiável conserva targetSdk35 compatível com AGP8.7.3 e reporta OldTargetApi como aviso não bloqueante; não suprime o aviso, não altera a política Lint de projetos recebidos e continua bloqueando erros/fatais. A contagem de avisos é retornada em lint_warnings.

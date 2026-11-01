@@ -23,12 +23,20 @@ try{
   }
 }catch(error){staticCheck={ran:true,passed:false,reason:'Invalid or missing package manifest'};}
 const result=spawnSync(process.execPath,['--test','--test-reporter=tap',...files],{
-  encoding:'utf8',timeout:90000,maxBuffer:64000,
+  encoding:'utf8',timeout:90000,maxBuffer:1000000,
   env:{PATH:process.env.PATH,HOME:'/tmp'}
 });
 const output=String(result.stdout||'')+String(result.stderr||'');
+const lines=output.split('\n');
+const failureSummaries=[];
+for(let i=0;i<lines.length&&failureSummaries.length<8;i++)if(/^\s*not ok\b/.test(lines[i])){
+ let end=Math.min(lines.length,i+70);
+ for(let j=i+1;j<end;j++)if(/^\s*\.\.\.$/.test(lines[j])){end=j+1;break;}
+ failureSummaries.push(lines.slice(i,end).join('\n').slice(0,2400));
+}
+const actionableOutput=(failureSummaries.length?failureSummaries.join('\n\n')+'\n\n':'')+output.slice(-6000);
 const count=Number((output.match(/# tests (\d+)/)||[])[1]||0);
 const passed=result.status===0&&count>0&&!result.error&&staticCheck.passed;
 console.log(JSON.stringify({check:'node-test',passed,tests:count,exit_code:result.status,
-  output:output.slice(-12000),static_check:staticCheck}));
+  output:actionableOutput.slice(0,18000),static_check:staticCheck,failure_summaries:failureSummaries}));
 process.exit(passed?0:1);

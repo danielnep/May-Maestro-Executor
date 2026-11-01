@@ -12,10 +12,10 @@ RUN mkdir -p /opt/android-sdk/cmdline-tools \
     && mv /tmp/android-tools/cmdline-tools /opt/android-sdk/cmdline-tools/12.0 \
     && rm -rf /tmp/android.zip /tmp/android-tools
 RUN yes | /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager --licenses >/dev/null \
-    ; /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager 'platforms;android-35' 'build-tools;34.0.0' 'platform-tools'
+    ; /opt/android-sdk/cmdline-tools/12.0/bin/sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'platform-tools' 'cmdline-tools;latest'
 COPY lab /opt/warmup
 WORKDIR /opt/warmup
-RUN /opt/gradle-8.9/bin/gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug \
+RUN /opt/gradle-8.9/bin/gradle --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug :app:assembleRelease :app:lintRelease \
     && rm -rf /opt/warmup /opt/gradle-cache/daemon /root/.android
 COPY run.sh /opt/horizon-android-run
 RUN chmod 755 /opt/horizon-android-run && chmod -R a+rX /opt/android-sdk /opt/gradle-cache

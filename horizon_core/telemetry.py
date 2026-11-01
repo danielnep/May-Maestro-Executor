@@ -51,6 +51,7 @@ def _count(value):
 
 
 def record_usage(agent,provider,model,usage,task_id=None):
+    """Record provider usage without blocking the agent on telemetry errors."""
     if not (isinstance(agent,str) and _ID.fullmatch(agent) and
             provider in ("gemini","groq") and isinstance(model,str) and
             _MODEL.fullmatch(model) and isinstance(usage,dict)):
@@ -69,12 +70,14 @@ def record_usage(agent,provider,model,usage,task_id=None):
         return False
     if total is None and sent is not None and received is not None:
         total=sent+received
-    safe_task = task_id if isinstance(task_id,str) and _TASK_ID.fullmatch(task_id) else None
-    return _write("usage",{
-        "taskId":safe_task,"at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    packet={
+        "at":datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "agent":agent,"provider":provider,"model":model,
         "input":sent,"output":received,"reasoning":reasoning,
-        "total":total,"source":"provider_response"})
+        "total":total,"source":"provider_response"}
+    if isinstance(task_id,str) and _TASK_ID.fullmatch(task_id):
+        packet["taskId"]=task_id
+    return _write("usage",packet)
 
 
 def record_activity(task_id,agent,action,step=None,path=None):

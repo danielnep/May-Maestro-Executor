@@ -44,13 +44,13 @@ class AttendanceTests(unittest.TestCase):
         self.state.enqueue("chat-synthetic:qa-review", "qa-engineer", "chat:synthetic",
                            "PRIVATE CLIENT NAME, PASSWORD and 1000 records",
                            payload={"sensitive": "DO NOT PUBLISH THIS SECRET"})
-        self.assertEqual(next(a for a in team_snapshot(self.state)["agents"] if a["agent"] == "qa-engineer")["status"], "na_fila")
+        self.assertEqual(team_snapshot(self.state)["agents"][10]["status"], "na_fila")
         self.state.claim("tester", now=1000, lease_seconds=500)
-        self.assertEqual(next(a for a in team_snapshot(self.state)["agents"] if a["agent"] == "qa-engineer")["status"], "executando")
+        self.assertEqual(team_snapshot(self.state)["agents"][10]["status"], "executando")
         self.state.checkpoint("chat-synthetic:qa-review", "tester",
                               {"step": 2, "private": "ANOTHER PRIVATE VALUE"}, now=1001)
         self.state.defer("chat-synthetic:qa-review", "tester", seconds=120, now=1002)
-        self.assertEqual(next(a for a in team_snapshot(self.state)["agents"] if a["agent"] == "qa-engineer")["status"], "aguardando")
+        self.assertEqual(team_snapshot(self.state)["agents"][10]["status"], "aguardando")
         self.state.claim("tester", now=1123, lease_seconds=500)
         self.state.complete("chat-synthetic:qa-review", "tester",
                             {"summary": "SECRET OUTPUT NEVER EXPOSE"}, now=1124)
@@ -58,7 +58,7 @@ class AttendanceTests(unittest.TestCase):
         self.assertEqual([row["status"] for row in feed["events"]],
                          ["iniciou", "aguardando", "retomou", "concluiu"])
         self.assertEqual(feed["roster"][0]["status"], "concluido")
-        self.assertEqual(next(a for a in team_snapshot(self.state)["agents"] if a["agent"] == "qa-engineer")["status"], "ocioso")
+        self.assertEqual(team_snapshot(self.state)["agents"][10]["status"], "ocioso")
         self.assertNotIn("PRIVATE", json.dumps(feed))
         self.assertNotIn("SECRET", json.dumps(feed))
         self.assertNotIn("PASSWORD", json.dumps(feed))

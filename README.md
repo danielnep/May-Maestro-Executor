@@ -1,4 +1,4 @@
-# Horizon | Equipe de 18 especialistas (17 anteriores + engenharia mobile dedicada)
+# Horizon | Equipe de 17 especialistas
 
 > **Roteamento Groq (20/10/2026, branch de migração):** Groq substitui o provedor anterior: Qwen `qwen/qwen3.8-27b` para frontend/UI/UX/mobile/UI Guardian e GPT-OSS `openai/gpt-oss-120b` para os demais especialistas. O primeiro modelo é preview; se ele falhar, tentar GPT-OSS antes do Gemini. O Gemini permanece como fallback (incluindo Flash Lite nos casos de cota já autorizados). Configurar `GROQ_API_KEY` como secret do **repositório GitHub Actions**. A variável `API_IA_GROQ` é aceita somente se estiver disponível no **mesmo processo executor**; variável do serviço da Michelle não é automaticamente compartilhada. Verificar o catálogo com `python -m horizon_core.provider_access_probe` e os testes antes de integrar. Os parágrafos antigos que citam chamadas reais ao provedor substituído registram evidência histórica, não a configuração atual.\n\n
 > **Estado operacional 19/10/2026:** o controlador de pedidos do chat executa SQLite durável (branch `agent-state/runtime`, `runtime/state.sqlite3.gz` criptografado) por meio de GitHub Actions. PostgreSQL/PGlite Railway foi retirado do caminho ativo após esgotamento do volume; seus dados antigos permanecem preservados e **não foram migrados automaticamente**. O SQLite histórico anterior a essa troca pode estar defasado, portanto não tratar a restauração como equivalência comprovada entre os dois backends.
@@ -37,7 +37,6 @@ O fallback real usado nessa prova foi por configuração Gemini ausente (modelo/
 | Frontend Engineer | Implementar interface web acessível e responsiva preservando contratos. | `frontend-engineer` |
 | Backend Engineer | Implementar APIs, autenticação e regras de negócio com integridade. | `backend-engineer` |
 | Mobile App Builder | Desenvolver recursos Android nativos e integração com o dispositivo. | `mobile-app-builder` |
-| Mobile Native Engineer | Android/iOS, fidelidade visual do app instalado, WebView/safe areas, build e QA mobile. | mobile-native-engineer |
 | UI/UX Designer | Projetar fluxos, hierarquia e interfaces para tarefas reais. | `ui-ux-designer` |
 | Horizon UI Guardian | Auditar interface real, acessibilidade, consistência e fidelidade visual. | `horizon-ui-guardian` |
 | Database Engineer | Modelar dados, consultas e migrações com integridade e desempenho. | `database-engineer` |
