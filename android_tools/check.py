@@ -16,7 +16,7 @@ import zipfile
 IMAGE = 'horizon-android:agp8.7.3'
 
 
-def inspect_results(directory):
+def inspect_results(directory, release=False):
     directory = Path(directory)
     reports = sorted((directory / 'tests').glob('TEST-*.xml'))
     count = failures = errors = skipped = 0
@@ -40,7 +40,8 @@ def inspect_results(directory):
         raise ValueError('Invalid lint report')
     lint_errors = sum(1 for issue in ET.parse(lint).getroot().iter('issue')
                       if issue.attrib.get('severity', '').lower() in ('error', 'fatal'))
-    apk = directory / 'HorizonOfflineLab-debug.apk'
+    lint_warnings = sum(1 for issue in ET.parse(lint).getroot().iter('issue') if issue.attrib.get('severity', '').lower() == 'warning')
+    apk = directory / ('Android-release.apk' if release else 'HorizonOfflineLab-debug.apk')
     if apk.is_symlink() or not 0 < apk.stat().st_size < 100_000_000:
         raise ValueError('Invalid APK artifact')
     with zipfile.ZipFile(apk) as package:
@@ -52,13 +53,15 @@ def inspect_results(directory):
         if package.testzip() is not None:
             raise ValueError('Corrupted APK')
     return {'tests_run': count, 'failures': failures, 'errors': errors, 'skipped': skipped,
-            'lint_errors': lint_errors,
-            'passed': count > 0 and failures == 0 and errors == 0 and skipped == 0 and lint_errors == 0}
+            'lint_errors': lint_errors, 'lint_warnings': lint_warnings,
+            'checks_run': 3 if release else 0, 'verification_kind': 'android-build-lint' if release else 'android-unit-lint',
+            'unit_tests_executed': count > 0, 'signature_verified': False,
+            'passed': (count > 0 or release) and failures == 0 and errors == 0 and skipped == 0 and lint_errors == 0}
 
 
 def _snapshot(root, target):
     total = count = 0
-    denied = {'build', '.gradle', '.git', 'node_modules', 'runtime', 'secrets', 'credentials'}
+    denied = {'build', '.gradle', '.git', 'node_modules', 'runtime', 'secrets', 'credentials', 'artifacts'}
     for source in sorted(root.rglob('*')):
         relative = source.relative_to(root)
         if any(part.startswith('.') or part.lower() in denied for part in relative.parts):
@@ -79,12 +82,13 @@ def _snapshot(root, target):
         dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, dest)
         dest.chmod(0o644)
+    gradle_root = target if (target / 'settings.gradle').is_file() else target / 'android'
     for required in ('settings.gradle', 'build.gradle', 'app/build.gradle'):
-        if not (target / required).is_file():
+        if not (gradle_root / required).is_file():
             raise ValueError('Android Gradle project files are missing')
 
 
-def isolated_check(project_root, artifacts_dir=None):
+def isolated_check(project_root, artifacts_dir=None, release=False):
     root = Path(project_root).resolve()
     if not root.is_dir():
         raise ValueError('Android project directory is missing')
@@ -115,6 +119,8 @@ def isolated_check(project_root, artifacts_dir=None):
                    '--tmpfs=/work:rw,exec,nosuid,size=3g,uid=10001,gid=10001',
                    '--mount', f'type=bind,src={source},dst=/input,readonly',
                    '--mount', f'type=bind,src={result},dst=/output', IMAGE]
+        if release:
+            command[-1:-1] = ['--env', 'HORIZON_ANDROID_CHECK=release']
         try:
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=environment)
             deadline = time.monotonic() + 900
@@ -150,10 +156,10 @@ def isolated_check(project_root, artifacts_dir=None):
         summary = {'passed': False, 'tests_run': 0}
         if exit_code == 0 and not timeout and not truncated:
             try:
-                summary = inspect_results(result)
+                summary = inspect_results(result, release=release)
             except (ValueError, OSError, ET.ParseError, zipfile.BadZipFile) as error:
                 summary['artifact_error'] = str(error)
-        summary.update(check='android-gradle', exit_code=exit_code, timeout=timeout,
+        summary.update(check='android-release' if release else 'android-gradle', exit_code=exit_code, timeout=timeout,
                        truncated=truncated, cleanup=cleanup, output=output.decode('utf-8', errors='replace')[-16000:])
         summary['passed'] = bool(summary['passed'] and exit_code == 0 and cleanup and not timeout and not truncated)
         summary['artifacts'] = []
@@ -161,7 +167,7 @@ def isolated_check(project_root, artifacts_dir=None):
             destination = Path(artifacts_dir).resolve()
             destination.mkdir(parents=True, exist_ok=True)
             # Export only verifier-approved output paths, never arbitrary project outputs.
-            files = [result / 'HorizonOfflineLab-debug.apk', result / 'lint.xml', *sorted((result / 'tests').glob('TEST-*.xml'))]
+            files = [result / ('Android-release.apk' if release else 'HorizonOfflineLab-debug.apk'), result / 'lint.xml', *sorted((result / 'tests').glob('TEST-*.xml'))]
             for file in files:
                 relative = file.relative_to(result)
                 target = destination / relative
@@ -175,8 +181,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--project', default='android_tools/lab')
     parser.add_argument('--artifacts', default=None)
+    parser.add_argument('--release', action='store_true')
     args = parser.parse_args()
-    result = isolated_check(args.project, args.artifacts)
+    result = isolated_check(args.project, args.artifacts, release=args.release)
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result['passed'] else 1
 

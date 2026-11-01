@@ -149,7 +149,7 @@ def run_web_check(root, tools, name='browser-playwright', *, evidence_dir=None, 
                 raise RuntimeError('Zero executed checks never counts as success')
             if report.get('check') != name:
                 raise RuntimeError('Check report identity mismatch')
-            result.update(tests=tests, passed=bool(code == 0 and report.get('passed') is True), report=report)
+            result.update(tests=tests, passed=bool(code == 0 and report.get('passed') is True), report=report, output=report.get('output',output)[-18000:], failure_summaries=report.get('failure_summaries',[]))
             if name == 'browser-playwright':
                 manifest_path = evidence / 'manifest.json'
                 if not manifest_path.is_file() or manifest_path.is_symlink() or manifest_path.stat().st_size > 64000:

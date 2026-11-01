@@ -38,8 +38,8 @@ class GatewayTests(unittest.TestCase):
             self.assertIn("Specialist ID: " + ident, payload["systemInstruction"]["parts"][0]["text"])
             self.assertEqual(payload["contents"][0]["parts"][0]["text"], self.messages[0]["content"])
             self.assertEqual(payload["generationConfig"]["responseMimeType"], "application/json")
-        self.assertEqual(len(self.requests), 17)
-        self.assertEqual(len(set(AGENT_IDS)), 17)
+        self.assertEqual(len(self.requests), 18)
+        self.assertEqual(len(set(AGENT_IDS)), 18)
 
     def test_key_in_header_not_url_and_specialist_override(self):
         self.env["FRONTEND_GEMINI_KEY"] = "specialist-credential"
@@ -104,7 +104,7 @@ class GatewayTests(unittest.TestCase):
     def test_only_maestro_has_delegation_and_auditors_cannot_write(self):
         for ident in AGENT_IDS:
             tools = load_agent(ident)["tools"]
-            self.assertEqual("delegate" in tools, ident == "may-maestro")
+            self.assertEqual("delegate" in tools, ident in {"may-maestro", "horizon-supervisor"})
         for ident in ("may-maestro", "horizon-ui-guardian", "security-engineer", "corregedoria-may", "may-persona"):
             self.assertNotIn("write_file", load_agent(ident)["tools"])
         self.assertIn("write_file", load_agent("frontend-engineer")["tools"])
@@ -162,7 +162,7 @@ class GroqRoutingTests(unittest.TestCase):
             action = gateway.complete(load_agent(agent_id), self.messages)
             self.assertEqual(action["metadata"]["provider"], "gemini")
             self.assertEqual(action["metadata"]["agent_id"], agent_id)
-        self.assertEqual(len(self.requests), 17)
+        self.assertEqual(len(self.requests), 18)
         self.assertEqual(gateway.groq.calls, 0)
 
     def test_gemini_outage_routes_each_specialist_to_its_groq_model(self):
@@ -179,15 +179,13 @@ class GroqRoutingTests(unittest.TestCase):
                    "horizon_core.groq_minute_budget.GroqMinuteBudget.actual_usage"):
             for agent_id in AGENT_IDS:
                 action = gateway.complete(load_agent(agent_id), self.messages)
-                expected = ("qwen/qwen3.8-27b" if agent_id in
-                    ("frontend-engineer", "mobile-app-builder", "ui-ux-designer",
-                     "horizon-ui-guardian") else "openai/gpt-oss-120b")
+                expected = "openai/gpt-oss-120b"
                 self.assertEqual(action["metadata"]["model"], expected)
                 self.assertEqual(action["metadata"]["provider"], "groq")
-        self.assertEqual(gateway.groq.calls, 17)
+        self.assertEqual(gateway.groq.calls, 18)
         self.assertNotIn("PRIVATE", json.dumps(self.requests[-1].full_url))
 
-    def test_gemini_and_gpt_oss_outage_uses_qwen_third(self):
+    def test_gemini_and_gpt_oss_outage_uses_qwen_after_gemma(self):
         def failing(req, timeout):
             self.requests.append(req)
             if "generativelanguage.googleapis.com" in req.full_url:
@@ -200,7 +198,7 @@ class GroqRoutingTests(unittest.TestCase):
             load_agent("backend-engineer"), self.messages)
         self.assertEqual(action["metadata"]["provider"], "groq")
         self.assertEqual(action["metadata"]["model"], "qwen/qwen3.8-27b")
-        self.assertEqual(len(self.requests), 3)
+        self.assertEqual(len(self.requests), 4)
 
     def test_local_model_minute_wait_moves_to_other_groq_model(self):
         def opener(req, timeout):
@@ -228,7 +226,7 @@ class GroqRoutingTests(unittest.TestCase):
         with self.assertRaises(GatewayError) as caught:
             ModelGateway(environ=self.env, opener=fail).complete(load_agent("backend-engineer"), self.messages)
         self.assertEqual(caught.exception.reason, "providers_unavailable")
-        self.assertEqual([x["provider"] for x in caught.exception.failures], ["gemini", "groq"])
+        self.assertEqual([x["provider"] for x in caught.exception.failures], ["gemini", "groq", "gemini"])
         self.assertNotIn("SECRET", str(caught.exception))
         self.assertNotIn("synthetic-groq", str(caught.exception))
 
@@ -247,7 +245,8 @@ class GroqRoutingTests(unittest.TestCase):
             resumed = ModelGateway(state=state, environ=self.env, opener=opener)
             result = resumed.complete(load_agent("backend-engineer"), self.messages)
             self.assertTrue(result["metadata"]["fallback_reasons"])
-            self.assertEqual(resumed.gemini.calls, 0)
+            primary_calls=[q for q in self.requests if '/models/gemini-' in q.full_url]
+            self.assertEqual(len(primary_calls),1)
         self.assertNotIn("synthetic-groq", json.dumps(state.recall("__runtime__", "gateway")))
 
     def test_specialist_prompt_concise_and_own_identity(self):

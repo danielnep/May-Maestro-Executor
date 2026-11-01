@@ -1,0 +1,9 @@
+{
+  "id": "horizon-supervisor",
+  "name": "Horizon Supervisor",
+  "scope": "Resolve escalated cross-agent blockers, delegate focused repairs and verify the original task resumes.",
+  "model": null,
+  "api_key_env": "GEMINI_API_KEY",
+  "memory_namespace": "horizon-supervisor",
+  "independent_reasoning": true
+}

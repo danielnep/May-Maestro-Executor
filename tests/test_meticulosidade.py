@@ -33,7 +33,7 @@ class MeticulosidadeTests(unittest.TestCase):
                 self.assertIn("Rubrica de aceite de 0 a 4", instructions)
 
     def test_17_specialists_receive_exactly_one_canonical_skill(self):
-        self.assertEqual(len(AGENT_IDS), 17)
+        self.assertEqual(len(AGENT_IDS), 18)
         for specialist in AGENT_IDS:
             with self.subTest(agent=specialist):
                 agent = load_agent(specialist)

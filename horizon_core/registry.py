@@ -7,7 +7,7 @@ AGENT_IDS = (
     "may-maestro", "horizon-project-studio", "software-architect", "frontend-engineer",
     "backend-engineer", "mobile-app-builder", "ui-ux-designer", "horizon-ui-guardian",
     "database-engineer", "integration-engineer", "qa-engineer", "security-engineer",
-    "devops-engineer", "horizon-evolution-agent", "horizon-skills", "corregedoria-may", "may-persona",
+    "devops-engineer", "horizon-evolution-agent", "horizon-skills", "corregedoria-may", "may-persona", "horizon-supervisor",
 )
 TRANSACTIONAL_KNOWLEDGE_AGENTS = frozenset(('backend-engineer', 'database-engineer',
     'software-architect', 'qa-engineer', 'security-engineer', 'horizon-evolution-agent',
@@ -23,6 +23,9 @@ def load_agent(agent_id, root=None):
         raise ValueError("Specialist identity mismatch")
     config["instructions"] = (directory / "instructions.md").read_text(encoding="utf-8")
     base_instructions = config["instructions"]
+    android_knowledge = Path(root or AGENTS_ROOT) / "knowledge" / "android-ui-auth-verified.md"
+    if android_knowledge.is_file():
+        config["instructions"] += "\n\n" + android_knowledge.read_text(encoding="utf-8")
     # Canonical mandatory skill, loaded for ALL 17 registered agents on each run.
     # Fail visibly if missing: silently skipping it would defeat the contract.
     meticulous = Path(root or AGENTS_ROOT) / "skills" / "meticulosidade" / "SKILL.md"
@@ -104,11 +107,21 @@ def load_agent(agent_id, root=None):
                   "durable checkpoint and let the worker retry. Do not claim "
                   "test passes without tool evidence. Do not expose credentials. "
                   "Preserve the approved project and its operational UI.")
+    if android_knowledge.is_file():
+        pieces.append("Android: run_check android-release verifica build/Lint/APK e pode reportar tests_run=0; não comprova testes funcionais nem assinatura de entrega. android-gradle mantém JUnit obrigatório.")
+    if android_knowledge.is_file():
+        pieces.append("Runtime: confirmar cd do wrapper, --root, PYTHONPATH, módulo.__file__ e AGENTS_ROOT no serviço efetivo antes de aplicar ou validar agentes.")
     config["_groq_instructions"] = "\n\n".join(piece for piece in pieces if piece)
 
     config["tools"] = json.loads((directory / "tools.json").read_text(encoding="utf-8"))
     # No external ChatGPT/May tool is authorized in the specialist runtime.
     config["tools"] = [tool for tool in config["tools"] if tool != "consult_may"]
+    recovery_policy=('When a problem cannot be solved with your tools, use escalate with the exact reason, failed command and missing capability. '
+        'Never retry an unchanged failure indefinitely. Orchestrators delegate a repair, preserve dependencies and verify it before the original task resumes. '
+        'A finish action cannot stand in for implementing a requested change. Keep actual diagnostics and evidence accessible.')
+    config['instructions']+='\n'+recovery_policy
+    config['_groq_instructions']+='\n'+recovery_policy
+    if 'escalate' not in config['tools']:config['tools'].append('escalate')
     return config
 
 

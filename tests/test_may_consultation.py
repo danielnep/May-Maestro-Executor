@@ -43,8 +43,8 @@ class AllAgentsMayConsultationTests(unittest.TestCase):
             outcome = request_consultation(dict(self.task, agent=agent), "providers_unavailable", api=api)
             self.assertEqual(outcome["status"], "requested", agent)
             self.assertEqual(outcome["agent"], agent)
-        self.assertEqual(api.posts, 17)
-        self.assertEqual(len({item["title"] for item in api.issues}), 17)
+        self.assertEqual(api.posts, 18)
+        self.assertEqual(len({item["title"] for item in api.issues}), 18)
         self.assertEqual(request_consultation(self.task, "unsupported", api=api)["status"], "not_applicable")
         self.assertEqual(request_consultation(dict(self.task, agent="unregistered"), "providers_unavailable", api=api)["status"], "not_applicable")
 

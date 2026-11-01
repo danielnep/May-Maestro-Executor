@@ -136,7 +136,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             self.assertEqual(finished['status'], 'succeeded')
             self.assertEqual(finished['result']['status'], 'reported')
             self.assertEqual(finished['result']['agent'], agent_id)
-        self.assertEqual(len(gateway.calls), 51)
+        self.assertEqual(len(gateway.calls), 54)
         self.assertEqual({agent for agent, _ in gateway.calls}, set(AGENT_IDS))
         self.assertGreaterEqual(len(persists), 68)
         snapshot = Path(self.tmp.name) / 'snapshot.sqlite'
@@ -239,7 +239,10 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.assertEqual((self.root / 'app/ui.py').read_text(), 'TITLE = "Ronda Pro"\n')
         self.assertFalse(self.state.get('job:qa')['checkpoint']['checks'][0]['passed'])
         self.assertEqual(self.state.get('job:review')['status'], 'queued')
-        self.assertIsNone(worker.run_one())
+        recovery=self.state.get('job:qa')['checkpoint'].get('recovery_task')
+        self.assertIsNotNone(recovery)
+        self.assertEqual(self.state.get(recovery)['agent'],'may-maestro')
+        self.assertIn(recovery,self.state.get('job:qa')['depends_on'])
 
     def test_retryable_gateway_failure_resumes_history_without_repeating_tool(self):
         attempts = []
@@ -309,7 +312,7 @@ class WorkerIntegrationTests(unittest.TestCase):
             result = Worker(self.state, gateway, self.root).run_one()
         self.assertEqual(result['status'], 'queued')
         self.assertEqual(result['checkpoint']['checks'][0]['tool_error'], 'RuntimeError')
-        self.assertEqual(result['checkpoint']['history'][-1]['action'], 'repair_cycle')
+        self.assertIsNotNone(result['checkpoint'].get('recovery_task'))
 
     def test_lost_worktree_recovers_checkpoint_and_publishes_succeeded_workspace(self):
         subprocess.run(['git', '-C', str(self.root), 'add', 'README.md'], check=True, capture_output=True)
@@ -497,7 +500,10 @@ class WorkerIntegrationTests(unittest.TestCase):
         self.state.enqueue('denied', 'corregedoria-may', 'fixture', 'Attempt unauthorized fixture modification')
         gateway = FakeGateway(lambda agent, context: action('write_file', {'path': 'README.md', 'content': 'forbidden'}))
         result = Worker(self.state, gateway, self.root).run_one()
-        self.assertEqual(result['status'], 'failed')
+        self.assertEqual(result['status'], 'queued')
+        recovery=result['checkpoint']['recovery_task']
+        self.assertEqual(self.state.get(recovery)['agent'],'may-maestro')
+        self.state.db.execute("UPDATE tasks SET not_before=4102444800 WHERE task_id=?",(recovery,))
         self.assertEqual((self.root / 'README.md').read_text(), 'fixture repository documentation')
         self.state.enqueue('budget', 'frontend-engineer', 'fixture', 'Exercise bounded fixture reasoning')
         gateway = FakeGateway(lambda agent, context: action('read_file', {'path': 'README.md'}))

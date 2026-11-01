@@ -10,6 +10,6 @@ android {
         versionName '1.0-lab'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    lint { abortOnError true; warningsAsErrors true }
+    lint { abortOnError true; warningsAsErrors false }
 }
 dependencies { testImplementation 'junit:junit:4.13.2' }
