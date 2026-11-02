@@ -8,7 +8,7 @@ import hashlib
 import time
 
 KEY = "__learning_v1__"
-MAX_CASES = 24
+GLOBAL_AGENT = "__all_agents__"
 
 
 def learning_namespace(agent):
@@ -53,7 +53,16 @@ def record_failure(state, project, agent, task_id, kind, *, action="", check="")
             "status": "observed", "occurrences": 1,
             "latest_task_id": task_id[:100], "rule": RULES[kind],
         })
-    state.remember(project, learning_namespace(agent), KEY, cases[-MAX_CASES:])
+    state.remember(project, learning_namespace(agent), KEY, cases)
+    if agent != GLOBAL_AGENT:
+        shared = state.recall(project, learning_namespace(GLOBAL_AGENT))
+        shared_cases = list(shared.get(KEY, [])) if isinstance(shared.get(KEY, []), list) else []
+        match = next((row for row in shared_cases if row.get("id") == fingerprint), None)
+        if match:
+            match["occurrences"] = min(100000, match.get("occurrences", 1) + 1)
+        else:
+            shared_cases.append({**cases[-1], "source_agent": agent})
+        state.remember(project, learning_namespace(GLOBAL_AGENT), KEY, shared_cases)
     return fingerprint
 
 
@@ -72,17 +81,33 @@ def verify_check_recovery(state, project, agent, task_id, check, *, passed):
             case["status"] = "verified_by_matching_check"
             updated = True
     if updated:
-        state.remember(project, learning_namespace(agent), KEY, cases[-MAX_CASES:])
+        state.remember(project, learning_namespace(agent), KEY, cases)
+        shared = state.recall(project, learning_namespace(GLOBAL_AGENT))
+        shared_cases = list(shared.get(KEY, []))
+        for case in shared_cases:
+            if case.get("kind") == "run_check_failed" and case.get("check") == check:
+                case["status"] = "verified_by_matching_check"
+        state.remember(project, learning_namespace(GLOBAL_AGENT), KEY, shared_cases)
     return updated
 
 
 def useful_lessons(state, project, agent):
     memory = state.recall(project, learning_namespace(agent))
     lessons = memory.get(KEY, [])
+    shared = state.recall(project, learning_namespace(GLOBAL_AGENT))
+    shared_lessons = shared.get(KEY, [])
+    if isinstance(shared_lessons, list):
+        lessons = (lessons if isinstance(lessons, list) else []) + shared_lessons
     if not isinstance(lessons, list):
         return []
     # Give verifiable evidence priority, followed by recurring observations.
     valid = [row for row in lessons if isinstance(row, dict) and row.get("kind") in RULES]
-    return sorted(valid, key=lambda row: (
+    distinct = {}
+    for row in valid:
+        if isinstance(row.get("id"), str):
+            previous = distinct.get(row["id"])
+            if previous is None or (row.get("status") == "verified_by_matching_check" and previous.get("status") != "verified_by_matching_check"):
+                distinct[row["id"]] = row
+    return sorted(distinct.values(), key=lambda row: (
         row.get("status") != "verified_by_matching_check", -row.get("occurrences", 0)
     ))[:8]
