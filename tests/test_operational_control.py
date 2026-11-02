@@ -35,7 +35,26 @@ class OperationalControl(unittest.TestCase):
         self.assertIsNone(self.state.claim('not-ready'))
         self.state.complete('repair','repairer',{})
         self.assertEqual(self.state.claim('resumed')['task_id'],'original')
-    def test_command_is_durable_and_has_its_actual_failure(self):
+    def test_provider_limit_wait_exposes_model_and_next_retry_without_secret(self):
+        task=self.task
+        self.state.checkpoint(task["task_id"],"worker",{
+            "defer_reason":"provider_retry","defer_seconds":300,
+            "history":[{"action":"provider_retry","outcome":{
+                "failures":[{"provider":"gemini","reason":"quota","status":429,
+                             "model":"gemini-3.6-flash","key_slot":"gemini-key-2",
+                             "retry_after_seconds":85},
+                            {"provider":"groq","reason":"rate_limited_local",
+                             "model":"openai/gpt-oss-120b"}]}}]})
+        self.state.defer(task["task_id"],"worker",seconds=300)
+        result=describe(self.state.get("original"),{"original":self.state.get("original")})
+        self.assertEqual(result["waitReason"],"provider_retry")
+        self.assertEqual(result["providerWait"][0]["keySlot"],"gemini-key-2")
+        self.assertEqual(result["providerWait"][0]["status"],429)
+        self.assertEqual(result["providerWait"][0]["providerRetryAfterSeconds"],85)
+        self.assertEqual(result["providerWait"][1]["model"],"openai/gpt-oss-120b")
+        self.assertTrue(result["nextRetryAt"])
+        self.assertNotIn("GEMINI_API_KEY_2",json.dumps(result))
+
         n=begin(self.state,self.task,'run_check',{'name':'browser-playwright'})
         end(self.state,'original',n,{'passed':False,'output':'permission denied'},failed=True)
         output=detail(self.state.db,'original')

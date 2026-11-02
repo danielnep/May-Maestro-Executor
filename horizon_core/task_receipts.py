@@ -52,12 +52,31 @@ def describe(row,all_tasks,command=None,now=None):
     history=cp.get('history') or []
     error=parse(row.get('error'))
     if not blocker and error:blocker=clean(json.dumps(error,ensure_ascii=False),1500)
-    if not blocker and reason in ('provider_retry','groq_capacity_wait'):
+    failures=[]
+    if reason in ('provider_retry','groq_capacity_wait'):
         outage=next((h.get('outcome',{}) for h in reversed(history) if h.get('action')=='provider_retry'),{})
         failures=outage.get('failures') or ([outage] if outage else [])
-        blocker='; '.join(str(f.get('provider') or 'provider')+': '+str(f.get('reason') or 'capacity_wait')+
-            (' (HTTP '+str(f['status'])+')' if f.get('status') else '') for f in failures if isinstance(f,dict))
-        if not blocker:blocker=reason
+        failures=[f for f in failures if isinstance(f,dict)]
+        if not blocker:
+            blocker='; '.join(str(f.get('provider') or 'provider')+': '+str(f.get('reason') or 'capacity_wait')+
+                (' (HTTP '+str(f['status'])+')' if f.get('status') else '') for f in failures)
+            if not blocker:blocker=reason
+    provider_wait=[]
+    if reason in ('provider_retry','groq_capacity_wait'):
+        for f in failures[:6]:
+            provider=f.get('provider')
+            code=f.get('reason')
+            if provider not in ('gemini','groq') or code not in (
+                'rate_limited_local','quota','cooldown','gemma_cooldown','oversized_prompt',
+                'transport','server','authentication','http','configuration'):
+                continue
+            details={'provider':provider,'reason':code,
+                     'model':str(f.get('model') or 'não identificado')[:90],
+                     'keySlot':f.get('key_slot') if f.get('key_slot') in ('primary','gemini-key-2') else None,
+                     'status':f.get('status') if type(f.get('status')) is int else None}
+            if type(f.get('retry_after_seconds')) in (int,float) and 0<f['retry_after_seconds']<=86400:
+                details['providerRetryAfterSeconds']=f['retry_after_seconds']
+            provider_wait.append(details)
     if not blocker and reason=='repair_cycle':
         failures=[h.get('outcome',{}) for h in history if isinstance(h.get('outcome'),dict) and
                   (h['outcome'].get('tool_error') or h['outcome'].get('passed') is False)]
@@ -79,6 +98,7 @@ def describe(row,all_tasks,command=None,now=None):
     verified=bool(latest) and all(c.get('passed') is True and c.get('simulated') is False for c in latest.values()) and not unfinished
     return {'sequence':row.get('seq'),'executionState':state,'waitReason':reason,
         'blocker':blocker,'blockedBy':pending or unfinished,'nextRetryAt':iso(row.get('not_before')) if state=='deferred' else None,
+        'providerWait':provider_wait if state=='deferred' else [],
         'recoveryTask':cp.get('recovery_task'),'recoveryAgent':cp.get('recovery_agent'),
         'currentCommand':command if state=='running' and command and command['phase']=='running' else None,
         'lastCommand':command,'workspace':cp.get('workspace'),'branch':cp.get('branch'),

@@ -234,6 +234,59 @@ class GroqRoutingTests(unittest.TestCase):
         self.assertEqual(result["metadata"]["model"], "qwen/qwen3.8-27b")
         self.assertEqual(len(self.requests), 1)
 
+    def test_gemini_key_2_fallback_on_primary_quota_when_separate_project(self):
+        requests = []
+        def opener(req, timeout):
+            key = req.get_header("X-goog-api-key")
+            requests.append(key)
+            if key == "gemini-primary-fixture":
+                raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"private"))
+            return envelope()
+        state = State(":memory:")
+        self.addCleanup(state.close)
+        env = dict(self.env, GEMINI_API_KEY="gemini-primary-fixture",
+                   GEMINI_API_KEY_2="gemini-secondary-fixture",
+                   GEMINI_KEY_2_INDEPENDENT_PROJECT="true")
+        gateway = ModelGateway(environ=env, state=state, opener=opener)
+        result = gateway.complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(requests, ["gemini-primary-fixture", "gemini-secondary-fixture"])
+        self.assertEqual(result["metadata"]["key_slot"], "gemini-key-2")
+        self.assertEqual(result["metadata"]["provider"], "gemini")
+        # A new worker process respects the persisted cooldown, no repeated 429.
+        other = ModelGateway(environ=env, state=state, opener=opener)
+        result = other.complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(requests[-1], "gemini-secondary-fixture")
+        self.assertEqual(len(requests), 3)
+        self.assertNotIn("gemini-secondary-fixture", str(state.recall("__runtime__", "gemini-key-2")))
+
+    def test_gemini_key_2_no_rotation_if_same_project_not_verified(self):
+        requests = []
+        def reject(req, timeout):
+            requests.append(req.get_header("X-goog-api-key"))
+            if "generativelanguage" in req.full_url:
+                raise urllib.error.HTTPError(req.full_url, 429, "quota", {}, io.BytesIO(b"private"))
+            return self.groq_response()
+        env = dict(self.env, GEMINI_API_KEY="gemini-primary-fixture",
+                   GEMINI_API_KEY_2="gemini-secondary-fixture",
+                   GEMINI_KEY_2_INDEPENDENT_PROJECT="false")
+        gateway = ModelGateway(environ=env, opener=reject)
+        result = gateway.complete(load_agent("backend-engineer"), self.messages)
+        self.assertEqual(result["metadata"]["provider"], "groq")
+        self.assertNotIn("gemini-secondary-fixture", requests)
+
+    def test_gemini_key_2_is_never_used_when_primary_succeeds(self):
+        requests = []
+        def opener(req, timeout):
+            requests.append(req.get_header("X-goog-api-key"))
+            return envelope()
+        env = dict(self.env, GEMINI_API_KEY="gemini-primary-fixture",
+                   GEMINI_API_KEY_2="gemini-secondary-fixture",
+                   GEMINI_KEY_2_INDEPENDENT_PROJECT="true")
+        gateway = GeminiGateway(env, opener)
+        result = gateway.complete(load_agent("frontend-engineer"), self.messages)
+        self.assertEqual(requests, ["gemini-primary-fixture"])
+        self.assertEqual(result["metadata"]["key_slot"], "primary")
+
     def test_existing_groq_key_alias_is_accepted(self):
         result = GroqGateway({"API_IA_GROQ": "another-synthetic-key"}, self.opener).complete(
             load_agent("backend-engineer"), self.messages)

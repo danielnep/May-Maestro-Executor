@@ -29,6 +29,10 @@ class GatewayError(RuntimeError):
         result = {"provider": self.provider, "reason": self.reason, "status": self.status, "retryable": self.retryable}
         if hasattr(self, "retry_after_seconds"):
             result["retry_after_seconds"] = self.retry_after_seconds
+        if hasattr(self, "model"):
+            result["model"] = self.model
+        if hasattr(self, "key_slot"):
+            result["key_slot"] = self.key_slot
         if hasattr(self, 'shape'):
             result['shape'] = self.shape
         return result
@@ -127,7 +131,8 @@ class _HTTPGateway:
                 if context and isinstance(result, dict):
                     usage = result.get('usageMetadata' if self.provider == 'gemini' else 'usage', {})
                     record_usage(context[0], self.provider, context[1], usage,
-                                 task_id=context[2] if len(context) > 2 else None)
+                                 task_id=context[2] if len(context) > 2 else None,
+                                 key_slot=context[3] if len(context) > 3 else None)
                 if self.provider == "groq":
                     headers = getattr(response, "headers", None)
                     if headers is not None:
@@ -146,6 +151,13 @@ class _HTTPGateway:
                       else "server" if status >= 500 else "http")
             error = self._error(self.provider + " request failed (HTTP " + str(status) + ")",
                                 reason, status == 429 or status >= 500, status)
+            if exc.headers:
+                retry_after = exc.headers.get("retry-after")
+                if retry_after is not None:
+                    try:
+                        error.retry_after_seconds = max(1, min(86400, int(float(retry_after) + 0.99)))
+                    except (ValueError, TypeError):
+                        pass
             if self.provider == "groq" and exc.headers:
                 for header in ("x-ratelimit-limit-tokens",
                                "x-ratelimit-remaining-tokens",
@@ -153,12 +165,6 @@ class _HTTPGateway:
                     value = exc.headers.get(header)
                     if value is not None:
                         self._last_rate_headers[header] = value
-                retry_after = exc.headers.get("retry-after")
-                if retry_after is not None:
-                    try:
-                        error.retry_after_seconds = max(1, min(86400, int(float(retry_after) + 0.99)))
-                    except (ValueError, TypeError):
-                        pass
             raise error from None
         except (urllib.error.URLError, TimeoutError, OSError):
             raise self._error(self.provider + " transport failed; checkpoint before retrying", "transport", True) from None
@@ -188,6 +194,49 @@ class GeminiGateway(_HTTPGateway):
     provider = "gemini"
     prefix = "GEMINI"
 
+    def __init__(self, environ=None, opener=None, state=None):
+        super().__init__(environ, opener)
+        self.state = state
+        self.key_slot = "primary"
+
+    def _gemini_request(self, request, agent):
+        """Use a standby key after 429 only if owner declares another project."""
+        primary_name = agent.get("api_key_env", "GEMINI_API_KEY")
+        backup = self.environ.get("GEMINI_API_KEY_2")
+        primary = self.environ.get("GEMINI_API_KEY")
+        allowed = (self.environ.get("GEMINI_KEY_2_INDEPENDENT_PROJECT", "").lower() == "true"
+                   and primary_name == "GEMINI_API_KEY" and bool(backup)
+                   and backup != primary)
+        memory = (self.state.recall("__runtime__", "gemini-key-2")
+                  if allowed and self.state is not None else {})
+        cooldown = float(memory.get("primary_retry_after", 0) or 0)
+
+        def call(slot):
+            self.key_slot = slot
+            if hasattr(self, "_usage_context") and len(self._usage_context) >= 3:
+                self._usage_context = (*self._usage_context[:3], slot)
+            selected = request if slot == "primary" else urllib.request.Request(
+                request.full_url, data=request.data, method=request.get_method(),
+                headers={"Content-Type": "application/json", "x-goog-api-key": backup})
+            try:
+                return self._request(selected)
+            except GatewayError as error:
+                error.model = agent.get("model") or self.environ.get("GEMINI_MODEL") or "nao_informado"
+                error.key_slot = slot
+                raise
+
+        if allowed and time.time() < cooldown:
+            return call("gemini-key-2")
+        try:
+            return call("primary")
+        except GatewayError as error:
+            if not allowed or error.status != 429:
+                raise
+            if self.state is not None:
+                self.state.remember("__runtime__", "gemini-key-2",
+                                    "primary_retry_after", time.time() + 300)
+            return call("gemini-key-2")
+
     def _enabled(self):
         # Explicit inference authorization is separate from a billing-tier claim.
         return any(self.environ.get(name, "").lower() == "true" for name in
@@ -206,7 +255,7 @@ class GeminiGateway(_HTTPGateway):
                    'generationConfig':{'responseMimeType':'application/json'}}
         url='https://generativelanguage.googleapis.com/v1beta/models/'+urllib.parse.quote(model,safe='-_.')+':generateContent'
         self._usage_context=(agent['id'],model,agent.get('_task_id'))
-        result=self._request(urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST'))
+        result=self._gemini_request(urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','x-goog-api-key':key},method='POST'),agent)
         try:
             candidate=result['candidates'][0]
             if candidate.get('finishReason') not in (None,'STOP'): raise ValueError('Incomplete')
@@ -214,7 +263,9 @@ class GeminiGateway(_HTTPGateway):
             action=self._action(text,agent)
         except (KeyError,IndexError,TypeError,ValueError):
             raise self._error('Vision response was incomplete or invalid','invalid_response',True) from None
-        return {'summary':action['summary'],'metadata':self._metadata(agent,model,result.get('usageMetadata',{})),
+        metadata=self._metadata(agent,model,result.get('usageMetadata',{}))
+        metadata['key_slot']=self.key_slot
+        return {'summary':action['summary'],'metadata':metadata,
                 'actual_image_provided':True}
 
     def complete(self, agent, messages):
@@ -240,7 +291,7 @@ class GeminiGateway(_HTTPGateway):
         url = "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(model, safe="-_.") + ":generateContent"
         request = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": key}, method="POST")
         self._usage_context=(agent['id'],model,agent.get('_task_id'))
-        result = self._request(request)
+        result = self._gemini_request(request,agent)
         try:
             candidate = result["candidates"][0]
             if candidate.get("finishReason") not in (None, "STOP"):
@@ -252,6 +303,7 @@ class GeminiGateway(_HTTPGateway):
         action = self._action(text, agent)
         action["metadata"] = self._metadata(agent, model, usage)
         action["metadata"]["reasoning_level"] = level
+        action["metadata"]["key_slot"] = self.key_slot
         return action
 
 
@@ -406,7 +458,7 @@ class ModelGateway:
         for name, implementation in (("groq", GroqGateway), ("gemini", GeminiGateway)):
             try:
                 instance = (implementation(self.environ, opener, state=state)
-                            if name == "groq" else implementation(self.environ, opener))
+                            if name == "groq" else implementation(self.environ, opener, state=state))
                 setattr(self, name, instance)
             except GatewayError as exc:
                 exc.provider = name
@@ -517,6 +569,7 @@ class ModelGateway:
                             fallback_reasons=failures, groq_cooldown_skipped=False)
                     return action
                 except GatewayError as error:
+                    error.model = model
                     failures.append(error.as_dict())
                     if error.reason in ("rate_limited_local", "quota"):
                         # Prefer the provider's Retry-After when HTTP 429 occurs.

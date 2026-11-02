@@ -13,6 +13,16 @@
 
 Runtime atual: Python 3.11+ na VPS, utilizando APIs Groq e Gemini e agentes especializados independentes. São 19 perfis registrados, com instruções, ferramentas e memória por projeto/agente. A fonte versionada do executor é o GitHub `main`; alterações ainda em desenvolvimento ficam isoladas até validação. O Maestro delega tarefas, não escreve as conclusões dos especialistas. As descrições de Railway e GitHub Actions abaixo são documentação histórica de migração.
 
+## Gemini Key 2.0 (slot secundário, opcional)
+
+- A chave principal continua em `GEMINI_API_KEY`. A nova chave fica somente em `GEMINI_API_KEY_2` na VPS, nunca no GitHub, no painel público, nos logs ou no navegador.
+- `GEMINI_KEY_2_INDEPENDENT_PROJECT=true` é habilitado **somente após o proprietário confirmar** que a chave foi criada em outro projeto Google Cloud. Essa declaração não é verificação independente por API.
+- Com projeto independente confirmado, uma resposta HTTP 429 da chave principal ativa temporariamente a secundária, preservando modelo, instruções e checkpoint. Um cooldown de cinco minutos evita insistir na chave principal a cada tentativa.
+- Sem confirmação, a chave 2 pode permanecer cadastrada, porém não é alternada automaticamente por cota. Duas chaves do **mesmo** projeto compartilham as cotas de RPM/TPM/RPD.
+- Telemetria registra `keySlot=primary` ou `keySlot=gemini-key-2` somente após resposta válida; não identifica valores de chave nem fornece leitura oficial da quota restante do Google.
+- Para acompanhar cotas reais, consultar o AI Studio de cada projeto e confrontar com os contadores locais por slot. Um segundo slot não implica créditos extras nem autorização de cobrança.
+- Após provisionar a nova chave na VPS: validar autenticação sem reproduzir segredo, reiniciar serviços em janela segura e executar um teste de failover controlado.
+
 ## Controle Groq Free: RPM e TPM
 
 - **Limites publicados em 20/10/2026:** tanto `qwen/qwen3.8-27b` quanto `openai/gpt-oss-120b` possuem **30 RPM / 8.000 TPM / 1.000 RPD / 200.000 TPD** no plano gratuito. Fonte: https://console.groq.com/docs/rate-limits. O limite real do projeto/organização pode ser mais restrito.

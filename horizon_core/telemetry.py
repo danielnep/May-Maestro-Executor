@@ -50,7 +50,7 @@ def _count(value):
     return value if type(value) is int and 0<=value<=100000000 else None
 
 
-def record_usage(agent,provider,model,usage,task_id=None):
+def record_usage(agent,provider,model,usage,task_id=None,key_slot=None):
     """Record provider usage without blocking the agent on telemetry errors."""
     if not (isinstance(agent,str) and _ID.fullmatch(agent) and
             provider in ("gemini","groq") and isinstance(model,str) and
@@ -77,6 +77,8 @@ def record_usage(agent,provider,model,usage,task_id=None):
         "total":total,"source":"provider_response"}
     if isinstance(task_id,str) and _TASK_ID.fullmatch(task_id):
         packet["taskId"]=task_id
+    if provider=="gemini" and key_slot in ("primary", "gemini-key-2"):
+        packet["keySlot"]=key_slot
     return _write("usage",packet)
 
 
