@@ -23,6 +23,14 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(item["status"],"observed")
         self.assertNotIn("password",json.dumps(item))
 
+    def test_shared_lessons_across_agents_and_unbounded_retention(self):
+        for n in range(270):
+            record_failure(self.state, "project", "qa-engineer", "task", "run_check_failed", action="run_check", check=f"check-{n}")
+        shared = self.state.recall("project", "__agent_learning__:__all_agents__")["__learning_v1__"]
+        self.assertEqual(len(shared), 270)
+        lessons = useful_lessons(self.state, "project", "frontend-engineer")
+        self.assertTrue(any(row["check"].startswith("check-") for row in lessons))
+
     def test_only_matching_success_promotes_the_failure(self):
         record_failure(self.state, "project", "qa-engineer", "task", "run_check_failed",action="run_check",check="python-unittest")
         self.assertFalse(verify_check_recovery(self.state,"project","qa-engineer","another-task","python-unittest",passed=True))
