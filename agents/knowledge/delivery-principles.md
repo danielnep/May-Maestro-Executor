@@ -176,3 +176,7 @@ comunicação até o ticket ser confirmado na conversa, nem ignorar incerteza
 de entrega. Preservar checkpoint e cooldown por agente. O GitHub Worker
 continua para trabalho de desenvolvimento, não é intermediário obrigatório
 das mensagens. Documentação: docs/direct-chat-agent-bridge.md.
+
+
+## Política de consulta e memória coletiva (02/11/2026)
+Antes de consultar ChatGPT ou repetir falha, aplicar `agents/knowledge/agent-consultation-policy.md`. Toda consulta deve ser deduplicada pelo Maestro e ter ticket rastreável; especialistas mantêm autorização para solicitar consulta via Maestro.
